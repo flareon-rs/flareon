@@ -3,7 +3,7 @@ members = [
     "flareon",
     "flareon-admin",
     "flareon-auth",
-"flareon-macros ",
+    "flareon-macros",
     "flareon-orm",
     # Examples
     "examples/hello-world",

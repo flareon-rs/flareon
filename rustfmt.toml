@@ -1,0 +1,7 @@
+unstable_features = true
+imports_granularity = "module"
+group_imports = "StdExternalCrate"
+normalize_comments = true
+reorder_impl_items = true
+use_field_init_shorthand = true
+wrap_comments = true
