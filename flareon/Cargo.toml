@@ -6,3 +6,11 @@ license.workspace = true
 description = "Modern web framework focused on speed and ease of use."
 
 [dependencies]
+async-trait.workspace = true
+axum.workspace = true
+bytes.workspace = true
+derive_builder.workspace = true
+indexmap.workspace = true
+log.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

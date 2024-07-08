@@ -3,5 +3,8 @@ name = "example-hello-world"
 version = "0.1.0"
 publish = false
 description = "Hello World - Flareon example."
+edition = "2021"
 
 [dependencies]
+flareon = { path = "../../flareon" }
+tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }
