@@ -12,7 +12,7 @@ jobs:
       github.event_name == 'push' || github.event.pull_request.head.repo.full_name !=
       github.repository
 
-    name: Linting Checks
+    name: Lint checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
