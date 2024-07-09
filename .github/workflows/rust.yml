@@ -32,18 +32,13 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-debug-${{ hashFiles('**/Cargo.toml') }}
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
+
+      - name: Cache Cargo registry
+        uses: Swatinem/rust-cache@v2
 
       - name: Build
         run: cargo +${{ matrix.rust }} build
@@ -60,19 +55,14 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-debug-${{ hashFiles('**/Cargo.toml') }}
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
           components: clippy
+
+      - name: Cache Cargo registry
+        uses: Swatinem/rust-cache@v2
 
       - name: Run clippy
         run: cargo clippy -- -Dclippy::all
@@ -86,19 +76,14 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-debug-${{ hashFiles('**/Cargo.toml') }}
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
           components: llvm-tools-preview
+
+      - name: Cache Cargo registry
+        uses: Swatinem/rust-cache@v2
 
       - name: Test
         run: cargo test --all-features --no-fail-fast
@@ -132,19 +117,14 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-debug-${{ hashFiles('**/Cargo.toml') }}
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
           components: rustfmt
+
+      - name: Cache Cargo registry
+        uses: Swatinem/rust-cache@v2
 
       - name: Run fmt
         run: cargo fmt --all -- --check
