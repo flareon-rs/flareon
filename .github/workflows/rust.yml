@@ -41,11 +41,22 @@ jobs:
       - name: Cache Cargo registry
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
       - name: Build
         run: cargo +${{ matrix.rust }} build
 
       - name: Test
-        run: cargo +${{ matrix.rust }} test
+        run: cargo +${{ matrix.rust }} nextest run
+
+      # Nextest does not support doc tests as in stable Rust
+      # they are not exposed in the same way as normal tests.
+      # https://github.com/nextest-rs/nextest/issues/16
+      - name: Test docs
+        run: cargo +${{ matrix.rust }} test --doc
 
   clippy:
     if: github.event_name == 'push' || github.event_name == 'schedule' ||
