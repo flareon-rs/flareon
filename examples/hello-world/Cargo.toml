@@ -5,4 +5,3 @@ publish = false
 description = "Hello World - Flareon example."
 
 [dependencies]
-flareon = { path = "../../flareon" }
