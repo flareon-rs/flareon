@@ -1,8 +1,8 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 ci:
-  autofix_commit_msg: "chore(pre-commit.ci): auto fixes from pre-commit.com hooks"
-  autoupdate_commit_msg: "deps(pre-commit.ci): pre-commit autoupdate"
+  autofix_commit_msg: "chore(pre-commit.ci): auto fixes from pre-commit hooks"
+  autoupdate_commit_msg: "chore(pre-commit.ci): pre-commit autoupdate"
   autoupdate_schedule: "monthly"
 
 fail_fast: false
