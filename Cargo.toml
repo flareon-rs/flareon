@@ -7,6 +7,7 @@ members = [
     "flareon-orm",
     # Examples
     "examples/hello-world",
+    "examples/simple-orm",
 ]
 resolver = "2"
 

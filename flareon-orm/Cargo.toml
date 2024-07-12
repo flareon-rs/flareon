@@ -6,3 +6,4 @@ license.workspace = true
 description = "Modern web framework focused on speed and ease of use - ORM."
 
 [dependencies]
+flareon-macros = { path = "../flareon-macros" }

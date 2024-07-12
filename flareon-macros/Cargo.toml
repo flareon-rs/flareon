@@ -9,3 +9,5 @@ description = "Modern web framework focused on speed and ease of use - macros."
 proc-macro = true
 
 [dependencies]
+syn = "2.0"
+quote = "1.0"
