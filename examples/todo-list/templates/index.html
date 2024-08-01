@@ -1,0 +1,28 @@
+{% let request = request %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TODO List</title>
+</head>
+<body>
+<h1>TODO List</h1>
+<form id="todo-form" action="{{ flareon::reverse_str!(request, "add-todo") }}" method="post">
+    <input type="text" id="title" name="title" placeholder="Enter a new TODO" required>
+    <button type="submit">Add TODO</button>
+</form>
+<ul id="todo-list">
+    {% for todo in todo_items %}
+    <li>
+        {% let todo_id = loop.index0 %}
+        <form action="{{ flareon::reverse_str!(request, "remove-todo", "todo_id" => todo_id) }}" method="post">
+            <span>{{ todo.title }}</span>
+            <button type="submit">Remove</button>
+        </form>
+    </li>
+    {% endfor %}
+</ul>
+</body>
+</html>
