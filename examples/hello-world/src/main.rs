@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use flareon::prelude::{
-    Body, Error, FlareonApp, FlareonProject, Request, Response, Route, StatusCode,
-};
+use flareon::prelude::{Body, Error, FlareonApp, FlareonProject, Response, StatusCode};
+use flareon::request::Request;
+use flareon::router::Route;
 
 fn return_hello(_request: Request) -> Result<Response, Error> {
     Ok(Response::new_html(

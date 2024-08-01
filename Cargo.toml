@@ -7,6 +7,7 @@ members = [
     "flareon-orm",
     # Examples
     "examples/hello-world",
+    "examples/todo-list",
 ]
 resolver = "2"
 
@@ -15,6 +16,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
+askama = "0.12.1"
 async-trait = "0.1.80"
 axum = "0.7.5"
 bytes = "1.6.1"
@@ -22,6 +24,9 @@ chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.8", features = ["derive", "env"] }
 derive_builder = "0.20.0"
 env_logger = "0.11.3"
+flareon = { path = "flareon" }
+flareon_macros = { path = "flareon-macros" }
+form_urlencoded = "1.2.1"
 indexmap = "2.2.6"
 itertools = "0.13.0"
 log = "0.4.22"
