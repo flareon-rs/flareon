@@ -16,7 +16,7 @@
 <ul id="todo-list">
     {% for todo in todo_items %}
     <li>
-        {% let todo_id = loop.index0 %}
+        {% let todo_id = todo.id %}
         <form action="{{ flareon::reverse_str!(request, "remove-todo", "todo_id" => todo_id) }}" method="post">
             <span>{{ todo.title }}</span>
             <button type="submit">Remove</button>

@@ -4,7 +4,6 @@ members = [
     "flareon-admin",
     "flareon-auth",
     "flareon-macros",
-    "flareon-orm",
     # Examples
     "examples/hello-world",
     "examples/todo-list",
@@ -22,7 +21,9 @@ axum = "0.7.5"
 bytes = "1.6.1"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.8", features = ["derive", "env"] }
+convert_case = "0.6.0"
 derive_builder = "0.20.0"
+derive_more = { version = "1.0.0", features = ["full"] }
 env_logger = "0.11.3"
 flareon = { path = "flareon" }
 flareon_macros = { path = "flareon-macros" }
@@ -31,8 +32,10 @@ indexmap = "2.2.6"
 itertools = "0.13.0"
 log = "0.4.22"
 regex = "1.10.5"
+sea-query = "0.32.0-rc.1"
+sea-query-binder = { version = "0.7.0-rc.1", features = ["sqlx-any", "runtime-tokio"] }
 serde = "1.0.203"
 slug = "0.1.5"
-tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }
-tower = "0.4.13"
+sqlx = { version = "0.8.0", features = ["runtime-tokio", "sqlite"] }
 thiserror = "1.0.61"
+tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }

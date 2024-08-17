@@ -1,5 +1,18 @@
+#![warn(
+    missing_debug_implementations,
+    missing_copy_implementations,
+    trivial_casts,
+    trivial_numeric_casts,
+    unreachable_pub,
+    unsafe_code,
+    unstable_features,
+    unused_import_braces,
+    unused_qualifications
+)]
+
 extern crate self as flareon;
 
+pub mod db;
 mod error;
 pub mod forms;
 pub mod prelude;
@@ -23,7 +36,7 @@ use log::info;
 use request::Request;
 use router::{Route, Router};
 
-pub type Result<T> = std::result::Result<T, crate::Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub type StatusCode = axum::http::StatusCode;
 

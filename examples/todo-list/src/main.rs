@@ -1,14 +1,18 @@
 use std::sync::Arc;
 
 use askama::Template;
+use flareon::db::query::ExprEq;
+use flareon::db::{model, Database, Model};
 use flareon::forms::Form;
 use flareon::prelude::{Body, Error, FlareonApp, FlareonProject, Response, Route, StatusCode};
 use flareon::request::Request;
 use flareon::reverse;
-use tokio::sync::RwLock;
+use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
+#[model]
 struct TodoItem {
+    id: i32,
     title: String,
 }
 
@@ -19,10 +23,12 @@ struct IndexTemplate<'a> {
     todo_items: Vec<TodoItem>,
 }
 
-static TODOS: RwLock<Vec<TodoItem>> = RwLock::const_new(Vec::new());
+static DB: OnceCell<Database> = OnceCell::const_new();
 
 async fn index(request: Request) -> Result<Response, Error> {
-    let todo_items = (*TODOS.read().await).clone();
+    let db = DB.get().unwrap();
+
+    let todo_items = TodoItem::objects().all(db).await.unwrap();
     let index_template = IndexTemplate {
         request: &request,
         todo_items,
@@ -45,10 +51,14 @@ async fn add_todo(mut request: Request) -> Result<Response, Error> {
     let todo_form = TodoForm::from_request(&mut request).await.unwrap();
 
     {
-        let mut todos = TODOS.write().await;
-        todos.push(TodoItem {
+        let db = DB.get().unwrap();
+        TodoItem {
+            id: 0,
             title: todo_form.title,
-        });
+        }
+        .save(db)
+        .await
+        .unwrap();
     }
 
     Ok(reverse!(request, "index"))
@@ -56,11 +66,15 @@ async fn add_todo(mut request: Request) -> Result<Response, Error> {
 
 async fn remove_todo(request: Request) -> Result<Response, Error> {
     let todo_id = request.path_param("todo_id").expect("todo_id not found");
-    let todo_id = todo_id.parse::<usize>().expect("todo_id is not a number");
+    let todo_id = todo_id.parse::<i32>().expect("todo_id is not a number");
 
     {
-        let mut todos = TODOS.write().await;
-        todos.remove(todo_id);
+        let db = DB.get().unwrap();
+        TodoItem::objects()
+            .filter(<TodoItem as Model>::Fields::ID.eq(todo_id))
+            .delete(db)
+            .await
+            .unwrap();
     }
 
     Ok(reverse!(request, "index"))
@@ -69,6 +83,19 @@ async fn remove_todo(request: Request) -> Result<Response, Error> {
 #[tokio::main]
 async fn main() {
     env_logger::init();
+
+    let db = DB
+        .get_or_init(|| async { Database::new("sqlite::memory:").await.unwrap() })
+        .await;
+    db.execute(
+        r"
+        CREATE TABLE todo_item (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL
+        );",
+    )
+    .await
+    .unwrap();
 
     let todo_app = FlareonApp::builder()
         .urls([

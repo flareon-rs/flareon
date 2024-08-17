@@ -92,6 +92,6 @@ impl Request {
 
     #[must_use]
     pub fn path_param(&self, name: &str) -> Option<&str> {
-        self.path_params.get(name).map(std::string::String::as_str)
+        self.path_params.get(name).map(String::as_str)
     }
 }

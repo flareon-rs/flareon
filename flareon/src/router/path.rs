@@ -12,7 +12,7 @@ pub(super) struct PathMatcher {
 
 impl PathMatcher {
     #[must_use]
-    pub fn new<T: Into<String>>(path_pattern: T) -> Self {
+    pub(crate) fn new<T: Into<String>>(path_pattern: T) -> Self {
         let path_pattern = path_pattern.into();
 
         let mut last_end = 0;
@@ -61,7 +61,7 @@ impl PathMatcher {
     }
 
     #[must_use]
-    pub fn capture<'matcher, 'path>(
+    pub(crate) fn capture<'matcher, 'path>(
         &'matcher self,
         path: &'path str,
     ) -> Option<CaptureResult<'matcher, 'path>> {
@@ -96,7 +96,7 @@ impl PathMatcher {
         Some(CaptureResult::new(params, current_path))
     }
 
-    pub fn reverse(&self, params: &ReverseParamMap) -> Result<String, ReverseError> {
+    pub(crate) fn reverse(&self, params: &ReverseParamMap) -> Result<String, ReverseError> {
         let mut result = String::new();
 
         for part in &self.parts {
@@ -197,7 +197,7 @@ impl<'matcher, 'path> CaptureResult<'matcher, 'path> {
     }
 
     #[must_use]
-    pub fn matches_fully(&self) -> bool {
+    pub(crate) fn matches_fully(&self) -> bool {
         self.remaining_path.is_empty()
     }
 }
@@ -225,7 +225,7 @@ pub(super) struct PathParam<'a> {
 
 impl<'a> PathParam<'a> {
     #[must_use]
-    pub fn new(name: &'a str, value: &str) -> Self {
+    pub(crate) fn new(name: &'a str, value: &str) -> Self {
         Self {
             name,
             value: value.to_string(),

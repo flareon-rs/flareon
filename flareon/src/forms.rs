@@ -242,7 +242,7 @@ pub struct CharField {
 }
 
 /// Custom options for a `CharField`.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct CharFieldOptions {
     /// The maximum length of the field. Used to set the `maxlength` attribute
     /// in the HTML input element.

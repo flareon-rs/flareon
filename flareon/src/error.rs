@@ -21,6 +21,8 @@ pub enum Error {
     ReverseError(#[from] crate::router::path::ReverseError),
     #[error("Failed to render template: {0}")]
     TemplateRender(#[from] askama::Error),
+    #[error("Database error: {0}")]
+    DatabaseError(#[from] crate::db::DatabaseError),
 }
 
 impl From<Error> for askama::Error {

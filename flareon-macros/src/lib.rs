@@ -1,11 +1,15 @@
 mod form;
+mod model;
 
+use darling::ast::NestedMeta;
+use darling::Error;
 use proc_macro::TokenStream;
 use proc_macro_crate::crate_name;
 use quote::quote;
 use syn::parse_macro_input;
 
 use crate::form::impl_form_for_struct;
+use crate::model::impl_model_for_struct;
 
 /// Derive the [`Form`] trait for a struct.
 ///
@@ -19,6 +23,19 @@ use crate::form::impl_form_for_struct;
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as syn::DeriveInput);
     let token_stream = impl_form_for_struct(ast);
+    token_stream.into()
+}
+
+#[proc_macro_attribute]
+pub fn model(args: TokenStream, input: TokenStream) -> TokenStream {
+    let attr_args = match NestedMeta::parse_meta_list(args.into()) {
+        Ok(v) => v,
+        Err(e) => {
+            return TokenStream::from(Error::from(e).write_errors());
+        }
+    };
+    let ast = parse_macro_input!(input as syn::DeriveInput);
+    let token_stream = impl_model_for_struct(attr_args, ast);
     token_stream.into()
 }
 
