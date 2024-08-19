@@ -3,6 +3,8 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("Could not start server: {source}")]
+    StartServer { source: std::io::Error },
     #[error("Could not retrieve request body: {source}")]
     ReadRequestBody {
         #[from]

@@ -1,12 +1,20 @@
 use convert_case::{Case, Casing};
 use darling::ast::NestedMeta;
-use darling::{FromDeriveInput, FromField};
+use darling::{FromDeriveInput, FromMeta};
+use flareon_codegen::model::{FieldOpts, ModelArgs, ModelOpts, ModelType};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 
 use crate::flareon_ident;
 
-pub fn impl_model_for_struct(_args: Vec<NestedMeta>, ast: syn::DeriveInput) -> TokenStream {
+pub fn impl_model_for_struct(args: Vec<NestedMeta>, ast: syn::DeriveInput) -> TokenStream {
+    let args = match ModelArgs::from_list(&args) {
+        Ok(v) => v,
+        Err(e) => {
+            return e.write_errors();
+        }
+    };
+
     let opts = match ModelOpts::from_derive_input(&ast) {
         Ok(val) => val,
         Err(err) => {
@@ -14,54 +22,12 @@ pub fn impl_model_for_struct(_args: Vec<NestedMeta>, ast: syn::DeriveInput) -> T
         }
     };
 
-    let mut builder = opts.as_model_builder();
+    let mut builder = ModelBuilder::from_model_opts(&opts, &args);
     for field in opts.fields() {
         builder.push_field(field);
     }
 
     quote!(#ast #builder)
-}
-
-#[derive(Debug, FromDeriveInput)]
-#[darling(forward_attrs(allow, doc, cfg), supports(struct_named))]
-struct ModelOpts {
-    ident: syn::Ident,
-    data: darling::ast::Data<darling::util::Ignored, Field>,
-}
-
-impl ModelOpts {
-    fn fields(&self) -> Vec<&Field> {
-        self.data
-            .as_ref()
-            .take_struct()
-            .expect("Only structs are supported")
-            .fields
-    }
-
-    fn field_count(&self) -> usize {
-        self.fields().len()
-    }
-
-    fn as_model_builder(&self) -> ModelBuilder {
-        let table_name = self.ident.to_string().to_case(Case::Snake);
-
-        ModelBuilder {
-            name: self.ident.clone(),
-            table_name,
-            fields_struct_name: format_ident!("{}Fields", self.ident),
-            fields_as_columns: Vec::with_capacity(self.field_count()),
-            fields_as_from_db: Vec::with_capacity(self.field_count()),
-            fields_as_get_values: Vec::with_capacity(self.field_count()),
-            fields_as_field_refs: Vec::with_capacity(self.field_count()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, FromField)]
-#[darling(attributes(form))]
-struct Field {
-    ident: Option<syn::Ident>,
-    ty: syn::Type,
 }
 
 #[derive(Debug)]
@@ -83,7 +49,25 @@ impl ToTokens for ModelBuilder {
 }
 
 impl ModelBuilder {
-    fn push_field(&mut self, field: &Field) {
+    fn from_model_opts(opts: &ModelOpts, args: &ModelArgs) -> Self {
+        let mut ident = opts.ident.to_string();
+        if args.model_type == ModelType::Migration {
+            ident = ident.strip_prefix("_").unwrap().to_string();
+        }
+        let table_name = ident.to_case(Case::Snake);
+
+        Self {
+            name: opts.ident.clone(),
+            table_name,
+            fields_struct_name: format_ident!("{}Fields", opts.ident),
+            fields_as_columns: Vec::with_capacity(opts.field_count()),
+            fields_as_from_db: Vec::with_capacity(opts.field_count()),
+            fields_as_get_values: Vec::with_capacity(opts.field_count()),
+            fields_as_field_refs: Vec::with_capacity(opts.field_count()),
+        }
+    }
+
+    fn push_field(&mut self, field: &FieldOpts) {
         let orm_ident = orm_ident();
 
         let name = field.ident.as_ref().unwrap();

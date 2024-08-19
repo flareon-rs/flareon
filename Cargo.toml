@@ -3,6 +3,8 @@ members = [
     "flareon",
     "flareon-admin",
     "flareon-auth",
+    "flareon-cli",
+    "flareon-codegen",
     "flareon-macros",
     # Examples
     "examples/hello-world",
@@ -15,27 +17,39 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
+anyhow = "1.0.86"
 askama = "0.12.1"
 async-trait = "0.1.80"
 axum = "0.7.5"
 bytes = "1.6.1"
+cargo_toml = "0.20.4"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.8", features = ["derive", "env"] }
+clap-verbosity-flag = "2.2.1"
 convert_case = "0.6.0"
+darling = "0.20.10"
 derive_builder = "0.20.0"
 derive_more = { version = "1.0.0", features = ["full"] }
 env_logger = "0.11.3"
 flareon = { path = "flareon" }
+flareon_codegen = { path = "flareon-codegen" }
 flareon_macros = { path = "flareon-macros" }
 form_urlencoded = "1.2.1"
+glob = "0.3.1"
 indexmap = "2.2.6"
 itertools = "0.13.0"
 log = "0.4.22"
+prettyplease = "0.2.20"
+proc-macro-crate = "3.1.0"
+proc-macro2 = "1.0.86"
+quote = "1.0.36"
 regex = "1.10.5"
 sea-query = "0.32.0-rc.1"
 sea-query-binder = { version = "0.7.0-rc.1", features = ["sqlx-any", "runtime-tokio"] }
 serde = "1.0.203"
 slug = "0.1.5"
-sqlx = { version = "0.8.0", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.8.0", default-features = false, features = ["any", "macros", "json", "runtime-tokio", "sqlite"] }
+syn = { version = "2.0.74", features = ["full", "extra-traits"] }
 thiserror = "1.0.61"
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }
+trybuild = { version = "1.0.99", features = ["diff"] }

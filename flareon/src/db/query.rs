@@ -68,7 +68,7 @@ impl Expr {
     #[must_use]
     pub fn as_sea_query_expr(&self) -> sea_query::SimpleExpr {
         match self {
-            Self::Column(identifier) => identifier.into_column_ref().into(),
+            Self::Column(identifier) => identifier.clone().into_column_ref().into(),
             Self::Eq(lhs, rhs) => lhs.as_sea_query_expr().eq(rhs.as_sea_query_expr()),
             Self::Value(value) => value.as_sea_query_value().into(),
         }

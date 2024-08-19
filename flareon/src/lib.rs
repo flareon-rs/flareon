@@ -222,7 +222,9 @@ pub async fn run(mut project: FlareonProject, address_str: &str) -> Result<()> {
     }
 
     let project = Arc::new(project);
-    let listener = tokio::net::TcpListener::bind(address_str).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(address_str)
+        .await
+        .map_err(|e| Error::StartServer { source: e })?;
 
     let handler = |request: axum::extract::Request| async move {
         pass_to_axum(&project, Request::new(request, project.clone()))
@@ -231,7 +233,7 @@ pub async fn run(mut project: FlareonProject, address_str: &str) -> Result<()> {
     };
     axum::serve(listener, handler.into_make_service())
         .await
-        .unwrap();
+        .map_err(|e| Error::StartServer { source: e })?;
 
     Ok(())
 }

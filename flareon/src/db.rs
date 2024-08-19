@@ -1,14 +1,18 @@
 mod fields;
+pub mod migrations;
 pub mod query;
 
 use std::fmt::Write;
+use std::hash::Hash;
 
 use async_trait::async_trait;
 use derive_more::{Debug, Deref, Display};
 pub use flareon_macros::model;
 use log::debug;
 use query::Query;
-use sea_query::{Iden, QueryBuilder, SchemaBuilder, SimpleExpr, SqliteQueryBuilder};
+use sea_query::{
+    Iden, QueryBuilder, SchemaBuilder, SchemaStatementBuilder, SimpleExpr, SqliteQueryBuilder,
+};
 use sea_query_binder::SqlxBinder;
 use sqlx::any::AnyPoolOptions;
 use sqlx::pool::PoolConnection;
@@ -83,27 +87,71 @@ pub trait Model: Sized + Send {
     }
 }
 
-/// An identifier structure that holds a table or column name as static string.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deref, Display)]
-pub struct Identifier(pub &'static str);
+/// An identifier structure that holds table or column name as a string.
+#[derive(Debug, Clone)]
+pub enum Identifier {
+    Static(&'static str),
+    Owned(String),
+}
 
 impl Identifier {
     /// Creates a new identifier from a static string.
     #[must_use]
     pub const fn new(s: &'static str) -> Self {
-        Self(s)
+        Self::Static(s)
+    }
+
+    /// Creates a new identifier from a string.
+    #[must_use]
+    pub const fn from_string(s: String) -> Self {
+        Self::Owned(s)
     }
 
     /// Returns the inner string of the identifier.
     #[must_use]
     pub fn as_str(&self) -> &str {
-        self.0
+        match self {
+            Self::Static(s) => s,
+            Self::Owned(s) => s,
+        }
     }
 }
 
 impl From<&'static str> for Identifier {
     fn from(s: &'static str) -> Self {
-        Self(s)
+        Self::new(s)
+    }
+}
+
+impl PartialEq for Identifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for Identifier {}
+
+impl PartialOrd for Identifier {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.as_str().cmp(other.as_str()))
+    }
+}
+
+impl Ord for Identifier {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
+impl Hash for Identifier {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
+
+impl Display for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -112,10 +160,15 @@ impl Iden for Identifier {
         s.write_str(self.as_str()).unwrap();
     }
 }
+impl Iden for &Identifier {
+    fn unquoted(&self, s: &mut dyn Write) {
+        s.write_str(self.as_str()).unwrap();
+    }
+}
 
 /// A column structure that holds the name of the column and some additional
 /// schema information.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Column {
     name: Identifier,
     auto_value: bool,
@@ -167,6 +220,10 @@ impl Row {
     }
 }
 
+pub trait DbField {
+    const TYPE: ColumnType;
+}
+
 /// A trait for converting a database value to a Rust value.
 pub trait FromDbValue<'r> {
     type SqlxType: sqlx::decode::Decode<'r, sqlx::any::Any> + Type<sqlx::any::Any>;
@@ -191,7 +248,7 @@ pub struct Database {
     #[debug("...")]
     query_builder: Box<dyn QueryBuilder + Send + Sync>,
     #[debug("...")]
-    _schema_builder: Box<dyn SchemaBuilder + Send + Sync>,
+    schema_builder: Box<dyn SchemaBuilder + Send + Sync>,
 }
 
 impl Database {
@@ -219,7 +276,7 @@ impl Database {
             _url: url,
             db_connection: db_conn,
             query_builder,
-            _schema_builder: schema_builder,
+            schema_builder,
         })
     }
 
@@ -296,7 +353,10 @@ impl Database {
     }
 
     pub async fn query<T: Model>(&self, query: &Query<T>) -> Result<Vec<T>> {
-        let columns_to_get: Vec<_> = T::COLUMNS.iter().map(|column| column.name).collect();
+        let columns_to_get: Vec<_> = T::COLUMNS
+            .iter()
+            .map(|column| column.name.clone())
+            .collect();
         let mut select = sea_query::Query::select();
         select.columns(columns_to_get).from(T::TABLE_NAME);
         query.modify_statement(&mut select);
@@ -323,6 +383,17 @@ impl Database {
         debug!("Delete query: {}", sql);
 
         self.execute_sqlx(sqlx::query_with(&sql, values)).await
+    }
+
+    pub async fn execute_schema<T: SchemaStatementBuilder>(
+        &self,
+        statement: T,
+    ) -> Result<QueryResult> {
+        let sql = statement.build_any(self.schema_builder.as_ref());
+
+        debug!("Schema modification: {}", sql);
+
+        self.execute_sqlx(sqlx::query(&sql)).await
     }
 }
 
@@ -406,4 +477,10 @@ mod tests {
     async fn test_db() -> Database {
         Database::new("sqlite::memory:").await.unwrap()
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ColumnType {
+    Integer,
+    Text,
 }

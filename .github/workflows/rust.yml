@@ -114,7 +114,7 @@ jobs:
           locked: false
 
       - name: Run grcov
-        run: grcov . --binary-path target/debug/deps/ -s . -t lcov --branch --ignore-not-existing --ignore '../**' --ignore '/*' -o coverage.lcov
+        run: grcov . --binary-path target/debug/deps/ -s . -t lcov --branch --ignore-not-existing --ignore '../**' --ignore '/*' --ignore 'examples/**' -o coverage.lcov
 
       - uses: codecov/codecov-action@v4
         with:

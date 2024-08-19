@@ -1,6 +1,9 @@
+mod migrations;
+
 use std::sync::Arc;
 
 use askama::Template;
+use flareon::db::migrations::MigrationEngine;
 use flareon::db::query::ExprEq;
 use flareon::db::{model, Database, Model};
 use flareon::forms::Form;
@@ -28,12 +31,12 @@ static DB: OnceCell<Database> = OnceCell::const_new();
 async fn index(request: Request) -> Result<Response, Error> {
     let db = DB.get().unwrap();
 
-    let todo_items = TodoItem::objects().all(db).await.unwrap();
+    let todo_items = TodoItem::objects().all(db).await?;
     let index_template = IndexTemplate {
         request: &request,
         todo_items,
     };
-    let rendered = index_template.render().unwrap();
+    let rendered = index_template.render()?;
 
     Ok(Response::new_html(
         StatusCode::OK,
@@ -57,8 +60,7 @@ async fn add_todo(mut request: Request) -> Result<Response, Error> {
             title: todo_form.title,
         }
         .save(db)
-        .await
-        .unwrap();
+        .await?;
     }
 
     Ok(reverse!(request, "index"))
@@ -73,8 +75,7 @@ async fn remove_todo(request: Request) -> Result<Response, Error> {
         TodoItem::objects()
             .filter(<TodoItem as Model>::Fields::ID.eq(todo_id))
             .delete(db)
-            .await
-            .unwrap();
+            .await?;
     }
 
     Ok(reverse!(request, "index"))
@@ -87,15 +88,10 @@ async fn main() {
     let db = DB
         .get_or_init(|| async { Database::new("sqlite::memory:").await.unwrap() })
         .await;
-    db.execute(
-        r"
-        CREATE TABLE todo_item (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL
-        );",
-    )
-    .await
-    .unwrap();
+    MigrationEngine::new(migrations::MIGRATIONS)
+        .run(db)
+        .await
+        .unwrap();
 
     let todo_app = FlareonApp::builder()
         .urls([
@@ -115,5 +111,5 @@ async fn main() {
         .build()
         .unwrap();
 
-    flareon::run(todo_project, "127.0.0.1:8000").await.unwrap();
+    flareon::run(todo_project, "127.0.0.1:8080").await.unwrap();
 }
