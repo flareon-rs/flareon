@@ -153,7 +153,8 @@ pub trait FormContext: Sized {
     fn new() -> Self;
 
     /// Returns an iterator over the fields in the form.
-    fn fields(&self) -> impl Iterator<Item = &dyn DynFormField> + '_;
+    fn fields(&self)
+        -> impl DoubleEndedIterator<Item = &dyn DynFormField> + ExactSizeIterator + '_;
 
     /// Sets the value of a form field.
     fn set_value(

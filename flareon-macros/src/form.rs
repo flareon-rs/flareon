@@ -47,7 +47,6 @@ impl FormOpts {
             name: self.ident.clone(),
             context_struct_name: format_ident!("{}Context", self.ident),
             context_struct_errors_name: format_ident!("{}ContextErrors", self.ident),
-            context_struct_field_iterator_name: format_ident!("{}ContextFieldIterator", self.ident),
             fields_as_struct_fields: Vec::with_capacity(self.field_count()),
             fields_as_struct_fields_new: Vec::with_capacity(self.field_count()),
             fields_as_context_from_request: Vec::with_capacity(self.field_count()),
@@ -55,7 +54,7 @@ impl FormOpts {
             fields_as_errors: Vec::with_capacity(self.field_count()),
             fields_as_get_errors: Vec::with_capacity(self.field_count()),
             fields_as_get_errors_mut: Vec::with_capacity(self.field_count()),
-            fields_as_iterator_next: Vec::with_capacity(self.field_count()),
+            fields_as_dyn_field_ref: Vec::with_capacity(self.field_count()),
         }
     }
 }
@@ -73,7 +72,6 @@ struct FormDeriveBuilder {
     name: Ident,
     context_struct_name: Ident,
     context_struct_errors_name: Ident,
-    context_struct_field_iterator_name: Ident,
     fields_as_struct_fields: Vec<TokenStream>,
     fields_as_struct_fields_new: Vec<TokenStream>,
     fields_as_context_from_request: Vec<TokenStream>,
@@ -81,7 +79,7 @@ struct FormDeriveBuilder {
     fields_as_errors: Vec<TokenStream>,
     fields_as_get_errors: Vec<TokenStream>,
     fields_as_get_errors_mut: Vec<TokenStream>,
-    fields_as_iterator_next: Vec<TokenStream>,
+    fields_as_dyn_field_ref: Vec<TokenStream>,
 }
 
 impl ToTokens for FormDeriveBuilder {
@@ -89,7 +87,6 @@ impl ToTokens for FormDeriveBuilder {
         tokens.append_all(self.build_form_impl());
         tokens.append_all(self.build_form_context_impl());
         tokens.append_all(self.build_errors_struct());
-        tokens.append_all(self.build_context_field_iterator_impl());
     }
 }
 
@@ -98,7 +95,6 @@ impl FormDeriveBuilder {
         let crate_ident = flareon_ident();
         let name = field.ident.as_ref().unwrap();
         let ty = &field.ty;
-        let index = self.fields_as_struct_fields.len();
         let opt = &field.opt;
 
         self.fields_as_struct_fields
@@ -141,9 +137,8 @@ impl FormDeriveBuilder {
         self.fields_as_get_errors_mut
             .push(quote!(stringify!(#name) => self.__errors.#name.as_mut()));
 
-        self.fields_as_iterator_next.push(
-            quote!(#index => Some(&self.context.#name as &'a dyn #crate_ident::forms::DynFormField)),
-        );
+        self.fields_as_dyn_field_ref
+            .push(quote!(&self.#name as &dyn #crate_ident::forms::DynFormField));
     }
 
     fn build_form_impl(&self) -> TokenStream {
@@ -176,13 +171,13 @@ impl FormDeriveBuilder {
 
         let context_struct_name = &self.context_struct_name;
         let context_struct_errors_name = &self.context_struct_errors_name;
-        let context_struct_field_iterator_name = &self.context_struct_field_iterator_name;
 
         let fields_as_struct_fields = &self.fields_as_struct_fields;
         let fields_as_struct_fields_new = &self.fields_as_struct_fields_new;
         let fields_as_context_from_request = &self.fields_as_context_from_request;
         let fields_as_get_errors = &self.fields_as_get_errors;
         let fields_as_get_errors_mut = &self.fields_as_get_errors_mut;
+        let fields_as_dyn_field_ref = &self.fields_as_dyn_field_ref;
 
         quote! {
             #[derive(::core::fmt::Debug)]
@@ -200,11 +195,12 @@ impl FormDeriveBuilder {
                     }
                 }
 
-                fn fields(&self) -> impl Iterator<Item = &dyn #crate_ident::forms::DynFormField> + '_ {
-                    #context_struct_field_iterator_name {
-                        context: self,
-                        index: 0,
-                    }
+                fn fields(
+                    &self,
+                ) -> impl ::core::iter::DoubleEndedIterator<
+                    Item = &dyn ::flareon::forms::DynFormField,
+                > + ::core::iter::ExactSizeIterator + '_ {
+                    [#( #fields_as_dyn_field_ref, )*].into_iter()
                 }
 
                 fn set_value(
@@ -270,41 +266,6 @@ impl FormDeriveBuilder {
             struct #context_struct_errors_name {
                 __form: Vec<#crate_ident::forms::FormFieldValidationError>,
                 #( #fields_as_errors, )*
-            }
-        }
-    }
-
-    fn build_context_field_iterator_impl(&self) -> TokenStream {
-        let crate_ident = flareon_ident();
-        let context_struct_name = &self.context_struct_name;
-        let context_struct_field_iterator_name = &self.context_struct_field_iterator_name;
-        let fields_as_iterator_next = &self.fields_as_iterator_next;
-
-        quote! {
-            #[derive(::core::fmt::Debug)]
-            struct #context_struct_field_iterator_name<'a> {
-                context: &'a #context_struct_name,
-                index: usize,
-            }
-
-            #[automatically_derived]
-            impl<'a> Iterator for #context_struct_field_iterator_name<'a> {
-                type Item = &'a dyn #crate_ident::forms::DynFormField;
-
-                fn next(&mut self) -> Option<Self::Item> {
-                    let result = match self.index {
-                        #( #fields_as_iterator_next, )*
-                        _ => None,
-                    };
-
-                    if result.is_some() {
-                        self.index += 1;
-                    } else {
-                        self.index = 0;
-                    }
-
-                    result
-                }
             }
         }
     }
