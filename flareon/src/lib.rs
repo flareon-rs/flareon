@@ -30,6 +30,7 @@ use async_trait::async_trait;
 use axum::handler::HandlerWithoutStateExt;
 use bytes::Bytes;
 use derive_builder::Builder;
+use derive_more::{Deref, From};
 pub use error::Error;
 use indexmap::IndexMap;
 use log::info;
@@ -256,6 +257,27 @@ async fn pass_to_axum(
     match axum_response {
         Ok(response) => Ok(response),
         Err(error) => Err(Error::ResponseBuilder(error)),
+    }
+}
+
+/// A trait for types that can be used to render them as HTML.
+pub trait Render {
+    /// Renders the object as an HTML string.
+    fn render(&self) -> Html;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Deref, From)]
+pub struct Html(String);
+
+impl Html {
+    #[must_use]
+    pub fn new<T: Into<String>>(html: T) -> Self {
+        Self(html.into())
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 

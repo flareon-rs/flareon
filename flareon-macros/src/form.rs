@@ -115,12 +115,13 @@ impl FormDeriveBuilder {
             quote!(#name: {
                 let options = #crate_ident::forms::FormFieldOptions {
                     id: stringify!(#name).to_owned(),
+                    required: true,
                 };
                 type Field = <#ty as #crate_ident::forms::AsFormField>::Type;
                 type CustomOptions = <Field as #crate_ident::forms::FormField>::CustomOptions;
                 let mut custom_options: CustomOptions = ::core::default::Default::default();
                 #( #custom_options_setters; )*
-                <Field as #crate_ident::forms::FormField>::with_options(options, custom_options)
+                <#ty as #crate_ident::forms::AsFormField>::new_field(options, custom_options)
             })
         });
 

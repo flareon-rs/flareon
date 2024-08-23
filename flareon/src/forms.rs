@@ -1,3 +1,5 @@
+pub mod fields;
+
 use std::borrow::Cow;
 
 use async_trait::async_trait;
@@ -5,6 +7,7 @@ pub use flareon_macros::Form;
 use thiserror::Error;
 
 use crate::request::Request;
+use crate::{Html, Render};
 
 /// Error occurred while processing a form.
 #[derive(Debug, Error)]
@@ -21,37 +24,61 @@ pub enum FormError<T: Form> {
     ValidationError { context: T::Context },
 }
 
-const FORM_FIELD_REQUIRED: &str = "This field is required.";
-
 /// An error that can occur when validating a form field.
 #[derive(Debug, Error)]
 #[error("{message}")]
-pub struct FormFieldValidationError {
-    message: Cow<'static, str>,
+pub enum FormFieldValidationError {
+    /// The field is required.
+    #[error("This field is required.")]
+    Required,
+    /// The field value is too long.
+    #[error("This exceeds the maximum length of {max_length}.")]
+    MaximumLengthExceeded {
+        /// The maximum length of the field.
+        max_length: u32,
+    },
+    /// The field value is required to be true.
+    #[error("This field must be checked.")]
+    BooleanRequiredToBeTrue,
+    /// The field value is invalid.
+    #[error("Value is not valid for this field.")]
+    InvalidValue(String),
+    #[error("{0}")]
+    Custom(Cow<'static, str>),
+}
+
+impl FormFieldValidationError {
+    /// Creates a new `FormFieldValidationError` for an invalid value of a
+    /// field.
+    #[must_use]
+    pub fn invalid_value<T: Into<String>>(value: T) -> Self {
+        Self::InvalidValue(value.into())
+    }
+
+    /// Creates a new `FormFieldValidationError` for a field value that is too
+    /// long.
+    #[must_use]
+    pub fn maximum_length_exceeded(max_length: u32) -> Self {
+        Self::MaximumLengthExceeded { max_length }
+    }
+
+    /// Creates a new `FormFieldValidationError` from a `String`.
+    #[must_use]
+    pub const fn from_string(message: String) -> Self {
+        Self::Custom(Cow::Owned(message))
+    }
+
+    /// Creates a new `FormFieldValidationError` from a static string.
+    #[must_use]
+    pub const fn from_static(message: &'static str) -> Self {
+        Self::Custom(Cow::Borrowed(message))
+    }
 }
 
 #[derive(Debug)]
 pub enum FormErrorTarget<'a> {
     Field(&'a str),
     Form,
-}
-
-impl FormFieldValidationError {
-    /// Creates a new `FormFieldValidationError` from a `String`.
-    #[must_use]
-    pub const fn from_string(message: String) -> Self {
-        Self {
-            message: Cow::Owned(message),
-        }
-    }
-
-    /// Creates a new `FormFieldValidationError` from a static string.
-    #[must_use]
-    pub const fn from_static(message: &'static str) -> Self {
-        Self {
-            message: Cow::Borrowed(message),
-        }
-    }
 }
 
 /// A trait for types that can be used as forms.
@@ -152,6 +179,11 @@ pub trait FormContext: Sized {
 #[derive(Debug)]
 pub struct FormFieldOptions {
     pub id: String,
+    /// Whether the field is required. Note that this really only adds
+    /// "required" field to the HTML input element, since by default all
+    /// fields are required. If you want to make a field optional, just use
+    /// [`Option`] in the struct definition.
+    pub required: bool,
 }
 
 /// A form field.
@@ -160,7 +192,7 @@ pub struct FormFieldOptions {
 /// is used to render the field in an HTML form, set the value of the field, and
 /// validate it. Typically, the implementors of this trait are used indirectly
 /// through the [`Form`] trait and field types that implement [`AsFormField`].
-pub trait FormField: Sized {
+pub trait FormField: Render + Sized {
     /// Custom options for the form field, unique for each field type.
     type CustomOptions: Default;
 
@@ -175,14 +207,14 @@ pub trait FormField: Sized {
         &self.options().id
     }
 
+    /// Returns the string value of the form field.
+    fn value(&self) -> Option<&str>;
+
     /// Sets the string value of the form field.
     ///
     /// This method should convert the value to the appropriate type for the
     /// field, such as a number for a number field.
     fn set_value(&mut self, value: Cow<str>);
-
-    /// Renders the form field as an HTML string.
-    fn render(&self) -> String;
 }
 
 /// A version of [`FormField`] that can be used in a dynamic context.
@@ -199,7 +231,7 @@ pub trait DynFormField {
 
     fn dyn_set_value(&mut self, value: Cow<str>);
 
-    fn dyn_render(&self) -> String;
+    fn dyn_render(&self) -> Html;
 }
 
 impl<T: FormField> DynFormField for T {
@@ -215,8 +247,8 @@ impl<T: FormField> DynFormField for T {
         FormField::set_value(self, value);
     }
 
-    fn dyn_render(&self) -> String {
-        FormField::render(self)
+    fn dyn_render(&self) -> Html {
+        Render::render(self)
     }
 }
 
@@ -228,116 +260,14 @@ impl<T: FormField> DynFormField for T {
 pub trait AsFormField {
     type Type: FormField;
 
+    fn new_field(
+        options: FormFieldOptions,
+        custom_options: <Self::Type as FormField>::CustomOptions,
+    ) -> Self::Type {
+        Self::Type::with_options(options, custom_options)
+    }
+
     fn clean_value(field: &Self::Type) -> Result<Self, FormFieldValidationError>
     where
         Self: Sized;
-}
-
-/// A form field for a string.
-#[derive(Debug)]
-pub struct CharField {
-    options: FormFieldOptions,
-    custom_options: CharFieldOptions,
-    value: Option<String>,
-}
-
-/// Custom options for a `CharField`.
-#[derive(Debug, Default, Copy, Clone)]
-pub struct CharFieldOptions {
-    /// The maximum length of the field. Used to set the `maxlength` attribute
-    /// in the HTML input element.
-    pub max_length: Option<u32>,
-}
-
-impl CharFieldOptions {
-    /// Sets the maximum length for the `CharField`.
-    pub fn set_max_length(&mut self, max_length: u32) {
-        self.max_length = Some(max_length);
-    }
-}
-
-impl FormField for CharField {
-    type CustomOptions = CharFieldOptions;
-
-    fn with_options(options: FormFieldOptions, custom_options: Self::CustomOptions) -> Self {
-        Self {
-            options,
-            custom_options,
-            value: None,
-        }
-    }
-
-    fn options(&self) -> &FormFieldOptions {
-        &self.options
-    }
-
-    fn set_value(&mut self, value: Cow<str>) {
-        self.value = Some(value.into_owned());
-    }
-
-    fn render(&self) -> String {
-        let mut tag = HtmlTag::input("text");
-        tag.attr("name", self.id());
-        if let Some(max_length) = self.custom_options.max_length {
-            tag.attr("maxlength", &max_length.to_string());
-        }
-        tag.render()
-    }
-}
-
-impl AsFormField for String {
-    type Type = CharField;
-
-    fn clean_value(field: &Self::Type) -> Result<Self, FormFieldValidationError> {
-        if let Some(value) = &field.value {
-            Ok(value.clone())
-        } else {
-            Err(FormFieldValidationError::from_static(FORM_FIELD_REQUIRED))
-        }
-    }
-}
-
-/// A helper struct for rendering HTML tags.
-#[derive(Debug)]
-struct HtmlTag {
-    tag: String,
-    attributes: Vec<(String, String)>,
-}
-
-impl HtmlTag {
-    #[must_use]
-    fn new(tag: &str) -> Self {
-        Self {
-            tag: tag.to_string(),
-            attributes: Vec::new(),
-        }
-    }
-
-    #[must_use]
-    fn input(input_type: &str) -> Self {
-        let mut input = Self::new("input");
-        input.attr("type", input_type);
-        input
-    }
-
-    fn attr(&mut self, key: &str, value: &str) -> &mut Self {
-        assert!(
-            !self.attributes.iter().any(|(k, _)| k == key),
-            "Attribute already exists: {key}"
-        );
-        self.attributes.push((key.to_string(), value.to_string()));
-        self
-    }
-
-    #[must_use]
-    fn render(&self) -> String {
-        let mut result = format!("<{} ", self.tag);
-
-        for (key, value) in &self.attributes {
-            result.push_str(&format!("{key}=\"{value}\" "));
-        }
-
-        result.push_str(" />");
-        result
-    }
 }
