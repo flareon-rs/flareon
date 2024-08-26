@@ -16,7 +16,7 @@ use sea_query::{
 use sea_query_binder::SqlxBinder;
 use sqlx::any::AnyPoolOptions;
 use sqlx::pool::PoolConnection;
-use sqlx::{AnyPool, Type};
+use sqlx::{AnyPool, Type, TypeInfo};
 use thiserror::Error;
 
 /// An error that can occur when interacting with the database.
@@ -27,6 +27,11 @@ pub enum DatabaseError {
     DatabaseEngineError(#[from] sqlx::Error),
     #[error("Error when building query: {0}")]
     QueryBuildingError(#[from] sea_query::error::Error),
+    #[error("Type mismatch in database value: expected `{expected}`, found `{found}`. Perhaps migration is needed."
+    )]
+    TypeMismatch { expected: String, found: String },
+    #[error("Error when decoding database value: {0}")]
+    ValueDecode(Box<dyn std::error::Error + 'static + Send + Sync>),
 }
 
 pub type Result<T> = std::result::Result<T, DatabaseError>;
@@ -72,7 +77,7 @@ pub trait Model: Sized + Send {
     fn from_db(db_row: Row) -> Result<Self>;
 
     /// Gets the values of the model for the given columns.
-    fn get_values(&self, columns: &[usize]) -> Vec<&dyn ValueRef>;
+    fn get_values(&self, columns: &[usize]) -> Vec<&dyn ToDbValue>;
 
     /// Returns a query for all objects of this model.
     #[must_use]
@@ -212,28 +217,56 @@ impl Row {
         Self { inner }
     }
 
-    pub fn get<'r, T: FromDbValue<'r>>(&'r self, index: usize) -> Result<T> {
-        Ok(T::from_sqlx(sqlx::Row::try_get::<T::SqlxType, _>(
-            &self.inner,
-            index,
-        )?))
+    pub fn get<T: FromDbValue>(&self, index: usize) -> Result<T> {
+        let value = SqlxValueRef::new(sqlx::Row::try_get_raw(&self.inner, index)?);
+        Ok(T::from_sqlx(value)?)
     }
 }
 
-pub trait DbField {
+pub trait DbField: FromDbValue + ToDbValue {
     const TYPE: ColumnType;
 }
 
 /// A trait for converting a database value to a Rust value.
-pub trait FromDbValue<'r> {
-    type SqlxType: sqlx::decode::Decode<'r, sqlx::any::Any> + Type<sqlx::any::Any>;
-
-    fn from_sqlx(value: Self::SqlxType) -> Self;
+pub trait FromDbValue: Sized {
+    fn from_sqlx(value: SqlxValueRef) -> Result<Self>;
 }
 
 /// A trait for converting a Rust value to a database value.
-pub trait ValueRef: Send + Sync {
+pub trait ToDbValue: Send + Sync {
     fn as_sea_query_value(&self) -> sea_query::Value;
+}
+
+#[derive(Debug)]
+pub struct SqlxValueRef<'r> {
+    inner: sqlx::any::AnyValueRef<'r>,
+}
+
+impl<'r> SqlxValueRef<'r> {
+    #[must_use]
+    fn new(inner: sqlx::any::AnyValueRef<'r>) -> Self {
+        Self { inner }
+    }
+
+    pub fn get<T: sqlx::decode::Decode<'r, sqlx::any::Any> + Type<sqlx::any::Any>>(
+        self,
+    ) -> Result<T> {
+        use sqlx::ValueRef;
+
+        let value = self.inner;
+
+        if !value.is_null() {
+            let ty = value.type_info();
+
+            if !ty.is_null() && !T::compatible(&ty) {
+                return Err(DatabaseError::TypeMismatch {
+                    expected: T::type_info().to_string(),
+                    found: ty.to_string(),
+                });
+            }
+        }
+        T::decode(value).map_err(|source| DatabaseError::ValueDecode(source))
+    }
 }
 
 /// A database connection structure that holds the connection to the database.
@@ -481,6 +514,13 @@ mod tests {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ColumnType {
+    TinyInteger,
+    SmallInteger,
     Integer,
+    BigInteger,
+    TinyUnsignedInteger,
+    SmallUnsignedInteger,
+    UnsignedInteger,
+    BigUnsignedInteger,
     Text,
 }

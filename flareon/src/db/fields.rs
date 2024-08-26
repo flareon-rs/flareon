@@ -1,40 +1,29 @@
 use flareon::db::DbField;
 use sea_query::Value;
 
-use crate::db::{ColumnType, FromDbValue, ValueRef};
+use crate::db::{ColumnType, FromDbValue, Result, SqlxValueRef, ToDbValue};
 
-impl DbField for i32 {
-    const TYPE: ColumnType = ColumnType::Integer;
+macro_rules! impl_db_field {
+    ($ty:ty, $column_type:ident) => {
+        impl DbField for $ty {
+            const TYPE: ColumnType = ColumnType::$column_type;
+        }
+
+        impl FromDbValue for $ty {
+            fn from_sqlx(value: SqlxValueRef) -> Result<Self> {
+                value.get::<$ty>()
+            }
+        }
+
+        impl ToDbValue for $ty {
+            fn as_sea_query_value(&self) -> Value {
+                self.clone().into()
+            }
+        }
+    };
 }
 
-impl FromDbValue<'_> for i32 {
-    type SqlxType = i32;
-
-    fn from_sqlx(value: Self::SqlxType) -> Self {
-        value
-    }
-}
-
-impl ValueRef for i32 {
-    fn as_sea_query_value(&self) -> Value {
-        (*self).into()
-    }
-}
-
-impl DbField for String {
-    const TYPE: ColumnType = ColumnType::Text;
-}
-
-impl FromDbValue<'_> for String {
-    type SqlxType = String;
-
-    fn from_sqlx(value: Self::SqlxType) -> Self {
-        value
-    }
-}
-
-impl ValueRef for String {
-    fn as_sea_query_value(&self) -> Value {
-        self.into()
-    }
-}
+impl_db_field!(i16, SmallInteger);
+impl_db_field!(i32, Integer);
+impl_db_field!(i64, BigInteger);
+impl_db_field!(String, Text);

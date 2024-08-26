@@ -4,7 +4,7 @@ use derive_more::Debug;
 use sea_query::IntoColumnRef;
 
 use crate::db;
-use crate::db::{Database, FromDbValue, Identifier, Model, QueryResult, ValueRef};
+use crate::db::{Database, FromDbValue, Identifier, Model, QueryResult, ToDbValue};
 
 #[derive(Debug)]
 pub struct Query<T> {
@@ -50,13 +50,13 @@ impl<T: Model> Query<T> {
 #[derive(Debug)]
 pub enum Expr {
     Column(Identifier),
-    Value(#[debug("{}", _0.as_sea_query_value())] Box<dyn ValueRef>),
+    Value(#[debug("{}", _0.as_sea_query_value())] Box<dyn ToDbValue>),
     Eq(Box<Expr>, Box<Expr>),
 }
 
 impl Expr {
     #[must_use]
-    pub fn value<T: ValueRef + 'static>(value: T) -> Self {
+    pub fn value<T: ToDbValue + 'static>(value: T) -> Self {
         Self::Value(Box::new(value))
     }
 
@@ -81,7 +81,7 @@ pub struct FieldRef<T> {
     phantom_data: PhantomData<T>,
 }
 
-impl<'a, T: FromDbValue<'a> + ValueRef> FieldRef<T> {
+impl<T: FromDbValue + ToDbValue> FieldRef<T> {
     #[must_use]
     pub const fn new(identifier: Identifier) -> Self {
         Self {
@@ -95,7 +95,7 @@ pub trait ExprEq<T> {
     fn eq(self, other: T) -> Expr;
 }
 
-impl<T: ValueRef + 'static> ExprEq<T> for FieldRef<T> {
+impl<T: ToDbValue + 'static> ExprEq<T> for FieldRef<T> {
     fn eq(self, other: T) -> Expr {
         Expr::eq(Expr::Column(self.identifier), Expr::value(other))
     }

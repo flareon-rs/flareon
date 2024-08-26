@@ -93,7 +93,7 @@ impl ModelBuilder {
         ));
 
         self.fields_as_get_values.push(quote!(
-            #index => &self.#name as &dyn #orm_ident::ValueRef
+            #index => &self.#name as &dyn #orm_ident::ToDbValue
         ));
 
         self.fields_as_field_refs.push(quote!(
@@ -128,7 +128,7 @@ impl ModelBuilder {
                     })
                 }
 
-                fn get_values(&self, columns: &[usize]) -> Vec<&dyn #orm_ident::ValueRef> {
+                fn get_values(&self, columns: &[usize]) -> Vec<&dyn #orm_ident::ToDbValue> {
                     columns
                         .iter()
                         .map(|&column| match column {
