@@ -219,7 +219,7 @@ impl Row {
 
     pub fn get<T: FromDbValue>(&self, index: usize) -> Result<T> {
         let value = SqlxValueRef::new(sqlx::Row::try_get_raw(&self.inner, index)?);
-        Ok(T::from_sqlx(value)?)
+        T::from_sqlx(value)
     }
 }
 
@@ -265,7 +265,7 @@ impl<'r> SqlxValueRef<'r> {
                 });
             }
         }
-        T::decode(value).map_err(|source| DatabaseError::ValueDecode(source))
+        T::decode(value).map_err(DatabaseError::ValueDecode)
     }
 }
 
