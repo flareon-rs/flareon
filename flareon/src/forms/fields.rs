@@ -1,8 +1,11 @@
 use std::borrow::Cow;
+use std::fmt::{Debug, Display};
 use std::num::{
     NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize, NonZeroU128,
     NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize,
 };
+
+use derive_more::Deref;
 
 use crate::forms::{AsFormField, FormField, FormFieldOptions, FormFieldValidationError};
 use crate::{Html, Render};
@@ -48,7 +51,7 @@ macro_rules! impl_form_field {
 
 impl_form_field!(StringField, StringFieldOptions, "a string");
 
-/// Custom options for a `CharField`.
+/// Custom options for a [`StringField`].
 #[derive(Debug, Default, Copy, Clone)]
 pub struct StringFieldOptions {
     /// The maximum length of the field. Used to set the `maxlength` attribute
@@ -84,6 +87,96 @@ impl AsFormField for String {
             }
         }
         Ok(value.to_owned())
+    }
+}
+
+/// A newtype for String holding a password.
+///
+/// This type is used to avoid accidentally logging or displaying passwords in
+/// debug output or other places where the password should be kept secret.
+///
+/// This type also implements `AsFormField` to allow it to be used in forms as
+/// an HTML password field.
+#[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deref)]
+pub struct Password(pub String);
+
+impl Password {
+    /// Creates a new `Password` from a string.
+    #[must_use]
+    pub fn new<T: Into<String>>(password: T) -> Self {
+        Self(password.into())
+    }
+
+    /// Returns the password as a string.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consumes the `Password` and returns the inner string.
+    #[must_use]
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl Debug for Password {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Password").field(&"********").finish()
+    }
+}
+
+impl Display for Password {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "********")
+    }
+}
+
+impl From<String> for Password {
+    fn from(password: String) -> Self {
+        Self(password)
+    }
+}
+
+impl_form_field!(PasswordField, PasswordFieldOptions, "a password");
+
+/// Custom options for a [`PasswordField`].
+#[derive(Debug, Default, Copy, Clone)]
+pub struct PasswordFieldOptions {
+    /// The maximum length of the field. Used to set the `maxlength` attribute
+    /// in the HTML input element.
+    pub max_length: Option<u32>,
+}
+
+impl Render for PasswordField {
+    fn render(&self) -> Html {
+        let mut tag = HtmlTag::input("password");
+        tag.attr("name", self.id());
+        if self.options.required {
+            tag.bool_attr("required");
+        }
+        if let Some(max_length) = self.custom_options.max_length {
+            tag.attr("maxlength", &max_length.to_string());
+        }
+        tag.render()
+    }
+}
+
+impl AsFormField for Password {
+    type Type = PasswordField;
+
+    fn clean_value(field: &Self::Type) -> Result<Self, FormFieldValidationError> {
+        let value = check_required(field)?;
+
+        if let Some(max_length) = field.custom_options.max_length {
+            if value.len() as u32 > max_length {
+                return Err(FormFieldValidationError::maximum_length_exceeded(
+                    max_length,
+                ));
+            }
+        }
+
+        Ok(Password::new(value))
     }
 }
 
