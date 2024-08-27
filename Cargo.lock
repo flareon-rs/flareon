@@ -724,6 +724,7 @@ version = "2.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c25829bde82205da46e1823b2259db6273379f626fc211f126f65654a2669be"
 dependencies = [
+ "chrono",
  "deunicode",
  "dummy",
  "rand",
@@ -743,6 +744,7 @@ dependencies = [
  "async-trait",
  "axum",
  "bytes",
+ "chrono",
  "derive_builder",
  "derive_more",
  "fake",
@@ -1675,6 +1677,7 @@ version = "0.32.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6fba498acd58ce434669f273505cd07737065472eb541c3f813c7f4ce33993f5"
 dependencies = [
+ "chrono",
  "inherent",
  "sea-query-derive",
 ]
@@ -1685,6 +1688,7 @@ version = "0.7.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edc3296903e60ddc7c9f4601cd6ef31a4b1584bf22480587e00b9ef743071b57"
 dependencies = [
+ "chrono",
  "sea-query",
  "sqlx",
 ]
@@ -1875,6 +1879,7 @@ dependencies = [
  "atoi",
  "byteorder",
  "bytes",
+ "chrono",
  "crc",
  "crossbeam-queue",
  "either",
@@ -1955,6 +1960,7 @@ dependencies = [
  "bitflags 2.6.0",
  "byteorder",
  "bytes",
+ "chrono",
  "crc",
  "digest",
  "dotenvy",
@@ -1996,6 +2002,7 @@ dependencies = [
  "base64",
  "bitflags 2.6.0",
  "byteorder",
+ "chrono",
  "crc",
  "dotenvy",
  "etcetera",
@@ -2031,6 +2038,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b2cdd83c008a622d94499c0006d8ee5f821f36c89b7d625c900e5dc30b5c5ee"
 dependencies = [
  "atoi",
+ "chrono",
  "flume",
  "futures-channel",
  "futures-core",

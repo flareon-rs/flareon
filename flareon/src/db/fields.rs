@@ -23,7 +23,19 @@ macro_rules! impl_db_field {
     };
 }
 
+impl_db_field!(bool, Boolean);
+impl_db_field!(i8, TinyInteger);
 impl_db_field!(i16, SmallInteger);
 impl_db_field!(i32, Integer);
 impl_db_field!(i64, BigInteger);
+impl_db_field!(u8, TinyUnsignedInteger);
+impl_db_field!(u16, SmallUnsignedInteger);
+impl_db_field!(u32, UnsignedInteger);
+impl_db_field!(u64, BigUnsignedInteger);
+impl_db_field!(f32, Float);
+impl_db_field!(f64, Double);
+impl_db_field!(chrono::NaiveDate, Date);
+impl_db_field!(chrono::NaiveTime, Time);
+impl_db_field!(chrono::NaiveDateTime, DateTime);
+impl_db_field!(chrono::DateTime<chrono::FixedOffset>, TimestampWithTimeZone);
 impl_db_field!(String, Text);

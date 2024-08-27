@@ -436,6 +436,7 @@ pub struct RowsNum(pub u64);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ColumnType {
+    Boolean,
     TinyInteger,
     SmallInteger,
     Integer,
@@ -444,12 +445,18 @@ pub enum ColumnType {
     SmallUnsignedInteger,
     UnsignedInteger,
     BigUnsignedInteger,
+    Float,
+    Double,
+    Time,
+    Date,
+    DateTime,
+    Timestamp,
+    TimestampWithTimeZone,
     Text,
 }
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]

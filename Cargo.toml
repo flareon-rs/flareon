@@ -31,7 +31,7 @@ darling = "0.20.10"
 derive_builder = "0.20.0"
 derive_more = { version = "1.0.0", features = ["full"] }
 env_logger = "0.11.3"
-fake = { version = "2.9.2", features = ["derive"] }
+fake = { version = "2.9.2", features = ["derive", "chrono"] }
 flareon = { path = "flareon" }
 flareon_codegen = { path = "flareon-codegen" }
 flareon_macros = { path = "flareon-macros" }
@@ -47,10 +47,10 @@ quote = "1.0.36"
 rand = "0.8.5"
 regex = "1.10.5"
 sea-query = "0.32.0-rc.1"
-sea-query-binder = { version = "0.7.0-rc.1", features = ["sqlx-sqlite", "runtime-tokio"] }
+sea-query-binder = { version = "0.7.0-rc.1", features = ["sqlx-sqlite", "with-chrono", "runtime-tokio"] }
 serde = "1.0.203"
 slug = "0.1.5"
-sqlx = { version = "0.8.0", default-features = false, features = ["macros", "json", "runtime-tokio", "sqlite"] }
+sqlx = { version = "0.8.0", default-features = false, features = ["macros", "json", "runtime-tokio", "sqlite", "chrono"] }
 syn = { version = "2.0.74", features = ["full", "extra-traits"] }
 thiserror = "1.0.61"
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }

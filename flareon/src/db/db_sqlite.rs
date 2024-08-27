@@ -1,7 +1,7 @@
 use derive_more::Debug;
 use flareon::db::{SqlxRowRef, SqlxValueRef};
 use log::debug;
-use sea_query::{QueryStatementWriter, SchemaStatementBuilder, SqliteQueryBuilder};
+use sea_query::{SchemaStatementBuilder, SqliteQueryBuilder};
 use sea_query_binder::{SqlxBinder, SqlxValues};
 use sqlx::{Database, Row, SqlitePool};
 

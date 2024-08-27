@@ -248,6 +248,7 @@ impl Debug for DynMigrationWrapper {
 impl From<ColumnType> for sea_query::ColumnType {
     fn from(value: ColumnType) -> Self {
         match value {
+            ColumnType::Boolean => Self::Boolean,
             ColumnType::TinyInteger => Self::TinyInteger,
             ColumnType::SmallInteger => Self::SmallInteger,
             ColumnType::Integer => Self::Integer,
@@ -256,6 +257,13 @@ impl From<ColumnType> for sea_query::ColumnType {
             ColumnType::SmallUnsignedInteger => Self::SmallUnsigned,
             ColumnType::UnsignedInteger => Self::Unsigned,
             ColumnType::BigUnsignedInteger => Self::BigUnsigned,
+            ColumnType::Float => Self::Float,
+            ColumnType::Double => Self::Double,
+            ColumnType::Time => Self::Time,
+            ColumnType::Date => Self::Date,
+            ColumnType::DateTime => Self::DateTime,
+            ColumnType::Timestamp => Self::Timestamp,
+            ColumnType::TimestampWithTimeZone => Self::TimestampWithTimeZone,
             ColumnType::Text => Self::Text,
         }
     }
