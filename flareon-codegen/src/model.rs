@@ -61,7 +61,7 @@ impl FieldOpts {
     #[must_use]
     pub fn as_field(&self) -> Field {
         let name = self.ident.as_ref().unwrap();
-        let column_name = name.to_string().to_case(Case::Snake);
+        let column_name = name.to_string();
         let is_auto = column_name == "id";
 
         Field {

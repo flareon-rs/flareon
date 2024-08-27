@@ -1,3 +1,4 @@
+pub mod db_sqlite;
 mod fields;
 pub mod migrations;
 pub mod query;
@@ -10,14 +11,12 @@ use derive_more::{Debug, Deref, Display};
 pub use flareon_macros::model;
 use log::debug;
 use query::Query;
-use sea_query::{
-    Iden, QueryBuilder, SchemaBuilder, SchemaStatementBuilder, SimpleExpr, SqliteQueryBuilder,
-};
+use sea_query::{Iden, SchemaStatementBuilder, SimpleExpr};
 use sea_query_binder::SqlxBinder;
-use sqlx::any::AnyPoolOptions;
-use sqlx::pool::PoolConnection;
-use sqlx::{AnyPool, Type, TypeInfo};
+use sqlx::{Type, TypeInfo};
 use thiserror::Error;
+
+use crate::db::db_sqlite::{DatabaseSqlite, SqliteRow, SqliteValueRef};
 
 /// An error that can occur when interacting with the database.
 #[derive(Debug, Error)]
@@ -191,14 +190,14 @@ impl Column {
     }
 
     #[must_use]
-    pub const fn auto(mut self, auto_value: bool) -> Self {
-        self.auto_value = auto_value;
+    pub const fn auto(mut self) -> Self {
+        self.auto_value = true;
         self
     }
 
     #[must_use]
-    pub const fn null(mut self, null: bool) -> Self {
-        self.null = null;
+    pub const fn null(mut self) -> Self {
+        self.null = true;
         self
     }
 }
@@ -206,20 +205,19 @@ impl Column {
 /// A row structure that holds the data of a single row retrieved from the
 /// database.
 #[derive(Debug)]
-pub struct Row {
-    #[debug("...")]
-    inner: sqlx::any::AnyRow,
+pub enum Row {
+    Sqlite(SqliteRow),
 }
 
 impl Row {
-    #[must_use]
-    fn new(inner: sqlx::any::AnyRow) -> Self {
-        Self { inner }
-    }
-
     pub fn get<T: FromDbValue>(&self, index: usize) -> Result<T> {
-        let value = SqlxValueRef::new(sqlx::Row::try_get_raw(&self.inner, index)?);
-        T::from_sqlx(value)
+        let result = match self {
+            Row::Sqlite(sqlite_row) => sqlite_row
+                .get_raw(index)
+                .and_then(|value| T::from_sqlite(value))?,
+        };
+
+        Ok(result)
     }
 }
 
@@ -229,7 +227,7 @@ pub trait DbField: FromDbValue + ToDbValue {
 
 /// A trait for converting a database value to a Rust value.
 pub trait FromDbValue: Sized {
-    fn from_sqlx(value: SqlxValueRef) -> Result<Self>;
+    fn from_sqlite(value: SqliteValueRef) -> Result<Self>;
 }
 
 /// A trait for converting a Rust value to a database value.
@@ -237,23 +235,23 @@ pub trait ToDbValue: Send + Sync {
     fn as_sea_query_value(&self) -> sea_query::Value;
 }
 
-#[derive(Debug)]
-pub struct SqlxValueRef<'r> {
-    inner: sqlx::any::AnyValueRef<'r>,
+trait SqlxRowRef {
+    type ValueRef<'r>: SqlxValueRef<'r>
+    where
+        Self: 'r;
+
+    fn get_raw(&self, index: usize) -> Result<Self::ValueRef<'_>>;
 }
 
-impl<'r> SqlxValueRef<'r> {
-    #[must_use]
-    fn new(inner: sqlx::any::AnyValueRef<'r>) -> Self {
-        Self { inner }
-    }
+trait SqlxValueRef<'r>: Sized {
+    type DB: sqlx::Database;
 
-    pub fn get<T: sqlx::decode::Decode<'r, sqlx::any::Any> + Type<sqlx::any::Any>>(
-        self,
-    ) -> Result<T> {
+    fn get_raw(self) -> <Self::DB as sqlx::Database>::ValueRef<'r>;
+
+    fn get<T: sqlx::decode::Decode<'r, Self::DB> + Type<Self::DB>>(self) -> Result<T> {
         use sqlx::ValueRef;
 
-        let value = self.inner;
+        let value = self.get_raw();
 
         if !value.is_null() {
             let ty = value.type_info();
@@ -277,71 +275,34 @@ impl<'r> SqlxValueRef<'r> {
 #[derive(Debug)]
 pub struct Database {
     _url: String,
-    db_connection: AnyPool,
-    #[debug("...")]
-    query_builder: Box<dyn QueryBuilder + Send + Sync>,
-    #[debug("...")]
-    schema_builder: Box<dyn SchemaBuilder + Send + Sync>,
+    inner: DatabaseImpl,
+}
+
+#[derive(Debug)]
+enum DatabaseImpl {
+    Sqlite(DatabaseSqlite),
 }
 
 impl Database {
     pub async fn new<T: Into<String>>(url: T) -> Result<Self> {
-        sqlx::any::install_default_drivers();
-
         let url = url.into();
-
-        let db_conn = AnyPoolOptions::new()
-            .max_connections(1)
-            .connect(&url)
-            .await?;
-        let (query_builder, schema_builder): (
-            Box<dyn QueryBuilder + Send + Sync>,
-            Box<dyn SchemaBuilder + Send + Sync>,
-        ) = {
-            if url.starts_with("sqlite:") {
-                (Box::new(SqliteQueryBuilder), Box::new(SqliteQueryBuilder))
-            } else {
-                todo!("Other databases are not supported yet");
+        let db = if url.starts_with("sqlite:") {
+            let inner = DatabaseSqlite::new(&url).await?;
+            Self {
+                _url: url,
+                inner: DatabaseImpl::Sqlite(inner),
             }
+        } else {
+            todo!("Other databases are not supported yet");
         };
 
-        Ok(Self {
-            _url: url,
-            db_connection: db_conn,
-            query_builder,
-            schema_builder,
-        })
+        Ok(db)
     }
 
     pub async fn close(self) -> Result<()> {
-        self.db_connection.close().await;
-        Ok(())
-    }
-
-    pub async fn execute(&self, query: &str) -> Result<QueryResult> {
-        let sqlx_query = sqlx::query(query);
-
-        self.execute_sqlx(sqlx_query).await
-    }
-
-    async fn execute_sqlx<'a, A>(
-        &self,
-        sqlx_query: sqlx::query::Query<'a, sqlx::any::Any, A>,
-    ) -> Result<QueryResult>
-    where
-        A: 'a + sqlx::IntoArguments<'a, sqlx::any::Any>,
-    {
-        let result = sqlx_query.execute(&mut *self.conn().await?).await?;
-        let result = QueryResult {
-            rows_affected: RowsNum(result.rows_affected()),
-        };
-
-        debug!("Rows affected: {}", result.rows_affected.0);
-        Ok(result)
-    }
-
-    async fn conn(&self) -> Result<PoolConnection<sqlx::any::Any>> {
-        Ok(self.db_connection.acquire().await?)
+        match self.inner {
+            DatabaseImpl::Sqlite(inner) => inner.close().await,
+        }
     }
 
     pub async fn insert<T: Model>(&self, data: &mut T) -> Result<()> {
@@ -362,7 +323,7 @@ impl Database {
             .collect::<Vec<_>>();
         let values = data.get_values(&value_indices);
 
-        let (sql, values) = sea_query::Query::insert()
+        let insert_statement = sea_query::Query::insert()
             .into_table(T::TABLE_NAME)
             .columns(non_auto_column_identifiers)
             .values(
@@ -372,14 +333,11 @@ impl Database {
                     .collect::<Vec<_>>(),
             )?
             .returning_col(Identifier::new("id"))
-            .build_any_sqlx(self.query_builder.as_ref());
+            .to_owned();
 
-        debug!("Insert query: {}", sql);
+        let row = self.fetch_one(insert_statement).await?;
+        let id = row.get::<i64>(0)?;
 
-        let row = sqlx::query_with(&sql, values)
-            .fetch_one(&mut *self.conn().await?)
-            .await?;
-        let id: i64 = sqlx::Row::try_get(&row, 0)?;
         debug!("Inserted row with id: {}", id);
 
         Ok(())
@@ -393,50 +351,78 @@ impl Database {
         let mut select = sea_query::Query::select();
         select.columns(columns_to_get).from(T::TABLE_NAME);
         query.modify_statement(&mut select);
-        let (sql, values) = select.build_any_sqlx(self.query_builder.as_ref());
 
-        debug!("Select query: {}", sql);
+        let rows = self.fetch_all(select).await?;
+        let result = rows.into_iter().map(T::from_db).collect::<Result<_>>()?;
 
-        let rows: Vec<T> = sqlx::query_with(&sql, values)
-            .fetch_all(&mut *self.conn().await?)
-            .await?
-            .into_iter()
-            .map(|row| T::from_db(Row::new(row)))
-            .collect::<Result<_>>()?;
-
-        Ok(rows)
+        Ok(result)
     }
 
-    pub async fn delete<T: Model>(&self, query: &Query<T>) -> Result<QueryResult> {
+    pub async fn delete<T: Model>(&self, query: &Query<T>) -> Result<StatementResult> {
         let mut delete = sea_query::Query::delete();
         delete.from_table(T::TABLE_NAME);
         query.modify_statement(&mut delete);
-        let (sql, values) = delete.build_any_sqlx(self.query_builder.as_ref());
 
-        debug!("Delete query: {}", sql);
-
-        self.execute_sqlx(sqlx::query_with(&sql, values)).await
+        self.execute_statement(delete).await
     }
 
-    pub async fn execute_schema<T: SchemaStatementBuilder>(
+    async fn fetch_one<T>(&self, statement: T) -> Result<Row>
+    where
+        T: SqlxBinder,
+    {
+        let result = match &self.inner {
+            DatabaseImpl::Sqlite(inner) => Row::Sqlite(inner.fetch_one(statement).await?),
+        };
+
+        Ok(result)
+    }
+
+    async fn fetch_all<T>(&self, statement: T) -> Result<Vec<Row>>
+    where
+        T: SqlxBinder,
+    {
+        let result = match &self.inner {
+            DatabaseImpl::Sqlite(inner) => inner
+                .fetch_all(statement)
+                .await?
+                .into_iter()
+                .map(Row::Sqlite)
+                .collect(),
+        };
+
+        Ok(result)
+    }
+
+    async fn execute_statement<T>(&self, statement: T) -> Result<StatementResult>
+    where
+        T: SqlxBinder,
+    {
+        let result = match &self.inner {
+            DatabaseImpl::Sqlite(inner) => inner.execute_statement(statement).await?,
+        };
+
+        Ok(result)
+    }
+
+    async fn execute_schema<T: SchemaStatementBuilder>(
         &self,
         statement: T,
-    ) -> Result<QueryResult> {
-        let sql = statement.build_any(self.schema_builder.as_ref());
+    ) -> Result<StatementResult> {
+        let result = match &self.inner {
+            DatabaseImpl::Sqlite(inner) => inner.execute_schema(statement).await?,
+        };
 
-        debug!("Schema modification: {}", sql);
-
-        self.execute_sqlx(sqlx::query(&sql)).await
+        Ok(result)
     }
 }
 
-/// Result of a query execution.
+/// Result of a statement execution.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct QueryResult {
+pub struct StatementResult {
     rows_affected: RowsNum,
 }
 
-impl QueryResult {
+impl StatementResult {
     /// Returns the number of rows affected by the query.
     #[must_use]
     pub fn rows_affected(&self) -> RowsNum {
@@ -447,70 +433,6 @@ impl QueryResult {
 /// A structure that holds the number of rows.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deref, Display)]
 pub struct RowsNum(pub u64);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_identifier() {
-        let id = Identifier::new("test");
-        assert_eq!(id.as_str(), "test");
-    }
-
-    #[test]
-    fn test_column() {
-        let column = Column::new(Identifier::new("test"));
-        assert_eq!(column.name.as_str(), "test");
-        assert!(!column.auto_value);
-        assert!(!column.null);
-    }
-
-    #[derive(std::fmt::Debug, PartialEq)]
-    #[model]
-    struct TestModel {
-        id: i32,
-        name: String,
-    }
-
-    #[tokio::test]
-    async fn test_model_crud() {
-        let db = test_db().await;
-
-        db.execute(
-            r"
-        CREATE TABLE test_model (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL
-        );",
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(TestModel::objects().all(&db).await.unwrap(), vec![]);
-
-        let mut model = TestModel {
-            id: 0,
-            name: "test".to_owned(),
-        };
-        model.save(&db).await.unwrap();
-
-        assert_eq!(TestModel::objects().all(&db).await.unwrap().len(), 1);
-
-        use crate::db::query::ExprEq;
-        TestModel::objects()
-            .filter(<TestModel as Model>::Fields::ID.eq(1))
-            .delete(&db)
-            .await
-            .unwrap();
-
-        assert_eq!(TestModel::objects().all(&db).await.unwrap(), vec![]);
-    }
-
-    async fn test_db() -> Database {
-        Database::new("sqlite::memory:").await.unwrap()
-    }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ColumnType {
@@ -523,4 +445,36 @@ pub enum ColumnType {
     UnsignedInteger,
     BigUnsignedInteger,
     Text,
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_identifier() {
+        let id = Identifier::new("test");
+        assert_eq!(id.as_str(), "test");
+
+        let id_owned = Identifier::from_string("test_owned".to_string());
+        assert_eq!(id_owned.as_str(), "test_owned");
+
+        assert_eq!(id, Identifier::new("test"));
+        assert!(id < id_owned);
+    }
+
+    #[test]
+    fn test_column() {
+        let column = Column::new(Identifier::new("test"));
+        assert_eq!(column.name.as_str(), "test");
+        assert!(!column.auto_value);
+        assert!(!column.null);
+
+        let column_auto = column.clone().auto();
+        assert!(column_auto.auto_value);
+
+        let column_null = column.clone().null();
+        assert!(column_null.null);
+    }
 }

@@ -73,7 +73,7 @@ async fn remove_todo(request: Request) -> Result<Response, Error> {
     {
         let db = DB.get().unwrap();
         TodoItem::objects()
-            .filter(<TodoItem as Model>::Fields::ID.eq(todo_id))
+            .filter(<TodoItem as Model>::Fields::id.eq(todo_id))
             .delete(db)
             .await?;
     }

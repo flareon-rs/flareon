@@ -22,3 +22,7 @@ sea-query.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+fake.workspace = true
+rand.workspace = true

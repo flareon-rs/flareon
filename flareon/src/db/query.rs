@@ -4,7 +4,7 @@ use derive_more::Debug;
 use sea_query::IntoColumnRef;
 
 use crate::db;
-use crate::db::{Database, FromDbValue, Identifier, Model, QueryResult, ToDbValue};
+use crate::db::{Database, FromDbValue, Identifier, Model, StatementResult, ToDbValue};
 
 #[derive(Debug)]
 pub struct Query<T> {
@@ -36,7 +36,7 @@ impl<T: Model> Query<T> {
         db.query(self).await
     }
 
-    pub async fn delete(&self, db: &Database) -> db::Result<QueryResult> {
+    pub async fn delete(&self, db: &Database) -> db::Result<StatementResult> {
         db.delete(self).await
     }
 

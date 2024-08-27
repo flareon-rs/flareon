@@ -1,7 +1,7 @@
 use flareon::db::DbField;
 use sea_query::Value;
 
-use crate::db::{ColumnType, FromDbValue, Result, SqlxValueRef, ToDbValue};
+use crate::db::{ColumnType, FromDbValue, Result, SqliteValueRef, SqlxValueRef, ToDbValue};
 
 macro_rules! impl_db_field {
     ($ty:ty, $column_type:ident) => {
@@ -10,7 +10,7 @@ macro_rules! impl_db_field {
         }
 
         impl FromDbValue for $ty {
-            fn from_sqlx(value: SqlxValueRef) -> Result<Self> {
+            fn from_sqlite(value: SqliteValueRef) -> Result<Self> {
                 value.get::<$ty>()
             }
         }

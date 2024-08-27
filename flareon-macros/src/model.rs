@@ -1,7 +1,7 @@
 use convert_case::{Case, Casing};
 use darling::ast::NestedMeta;
 use darling::{FromDeriveInput, FromMeta};
-use flareon_codegen::model::{FieldOpts, ModelArgs, ModelOpts, ModelType};
+use flareon_codegen::model::{Field, ModelArgs, ModelOpts, ModelType};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 
@@ -24,7 +24,7 @@ pub fn impl_model_for_struct(args: Vec<NestedMeta>, ast: syn::DeriveInput) -> To
 
     let mut builder = ModelBuilder::from_model_opts(&opts, &args);
     for field in opts.fields() {
-        builder.push_field(field);
+        builder.push_field(&field.as_field());
     }
 
     quote!(#ast #builder)
@@ -67,23 +67,25 @@ impl ModelBuilder {
         }
     }
 
-    fn push_field(&mut self, field: &FieldOpts) {
+    fn push_field(&mut self, field: &Field) {
         let orm_ident = orm_ident();
 
-        let name = field.ident.as_ref().unwrap();
-        let const_name = format_ident!("{}", name.to_string().to_case(Case::UpperSnake));
+        let name = &field.field_name;
         let ty = &field.ty;
         let index = self.fields_as_columns.len();
-
-        let column_name = name.to_string().to_case(Case::Snake);
-        let is_auto = column_name == "id";
+        let column_name = &field.column_name;
+        let is_auto = field.auto_value;
+        let is_null = field.null;
 
         {
             let mut field_as_column = quote!(#orm_ident::Column::new(
                 #orm_ident::Identifier::new(#column_name)
             ));
             if is_auto {
-                field_as_column.append_all(quote!(.auto(true)));
+                field_as_column.append_all(quote!(.auto()));
+            }
+            if is_null {
+                field_as_column.append_all(quote!(.null()));
             }
             self.fields_as_columns.push(field_as_column);
         }
@@ -97,7 +99,7 @@ impl ModelBuilder {
         ));
 
         self.fields_as_field_refs.push(quote!(
-            pub const #const_name: #orm_ident::query::FieldRef<#ty> =
+            pub const #name: #orm_ident::query::FieldRef<#ty> =
                 #orm_ident::query::FieldRef::<#ty>::new(#orm_ident::Identifier::new(#column_name));
         ));
     }
@@ -149,6 +151,7 @@ impl ModelBuilder {
             #[derive(::core::fmt::Debug)]
             pub struct #fields_struct_name;
 
+            #[allow(non_upper_case_globals)]
             impl #fields_struct_name {
                 #(#fields_as_field_refs)*
             }
