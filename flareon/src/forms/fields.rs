@@ -92,8 +92,8 @@ impl_form_field!(IntegerField, IntegerFieldOptions, "an integer", T: Integer);
 /// Custom options for a `IntegerField`.
 #[derive(Debug, Copy, Clone)]
 pub struct IntegerFieldOptions<T> {
-    min: Option<T>,
-    max: Option<T>,
+    pub min: Option<T>,
+    pub max: Option<T>,
 }
 
 impl<T: Integer> Default for IntegerFieldOptions<T> {

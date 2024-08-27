@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use fake::{Dummy, Fake, Faker};
 use flareon::db::migrations::{Field, Operation};
 use flareon::db::query::ExprEq;
