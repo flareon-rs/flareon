@@ -149,7 +149,7 @@ impl MigrationGenerator {
         Ok(())
     }
 
-    fn args_from_attr(path: &PathBuf, attr: &&Attribute) -> Result<ModelArgs, ParsingError> {
+    fn args_from_attr(path: &Path, attr: &&Attribute) -> Result<ModelArgs, ParsingError> {
         match attr.meta {
             Meta::Path(_) => {
                 // Means `#[model]` without any arguments
@@ -158,7 +158,7 @@ impl MigrationGenerator {
             _ => ModelArgs::from_meta(&attr.meta).map_err(|e| {
                 ParsingError::from_darling(
                     "couldn't parse model macro arguments".to_string(),
-                    path.clone(),
+                    path.to_owned(),
                     e,
                 )
             }),
