@@ -1,10 +1,12 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
+use flareon_macros::model;
 use log::info;
 use sea_query::ColumnDef;
 
-use crate::db::{ColumnType, Database, Identifier, Result};
+use crate::db::query::ExprEq;
+use crate::db::{ColumnType, Database, DbField, Identifier, Model, Result};
 
 #[derive(Debug)]
 pub struct MigrationEngine {
@@ -36,28 +38,76 @@ impl MigrationEngine {
 
     pub async fn run(&self, database: &Database) -> Result<()> {
         info!("Running migrations");
+
+        APPLIED_MIGRATION_MIGRATION.forwards(database).await?;
+
         for migration in &self.migrations {
-            info!(
-                "Applying migration {} for app {}",
-                migration.migration_name(),
-                migration.app_name()
-            );
             for operation in migration.operations() {
+                if Self::is_migration_applied(database, migration).await? {
+                    info!(
+                        "Migration {} for app {} is already applied",
+                        migration.migration_name(),
+                        migration.app_name()
+                    );
+                    continue;
+                }
+
+                info!(
+                    "Applying migration {} for app {}",
+                    migration.migration_name(),
+                    migration.app_name()
+                );
                 operation.forwards(database).await?;
+                Self::mark_migration_applied(database, migration).await?;
             }
         }
 
         Ok(())
     }
+
+    async fn is_migration_applied(
+        database: &Database,
+        migration: &DynMigrationWrapper,
+    ) -> Result<bool> {
+        AppliedMigration::objects()
+            .filter(
+                <AppliedMigration as Model>::Fields::app
+                    .eq(migration.app_name())
+                    .and(<AppliedMigration as Model>::Fields::name.eq(migration.migration_name())),
+            )
+            .exists(database)
+            .await
+    }
+
+    async fn mark_migration_applied(
+        database: &Database,
+        migration: &DynMigrationWrapper,
+    ) -> Result<()> {
+        let mut applied_migration = AppliedMigration {
+            id: 0,
+            app: migration.app_name().to_string(),
+            name: migration.migration_name().to_string(),
+            applied: chrono::Utc::now().into(),
+        };
+
+        database.insert(&mut applied_migration).await?;
+        Ok(())
+    }
 }
 
 /// A migration operation that can be run forwards or backwards.
-#[derive(Debug, Clone)]
+///
+/// The preferred way to create an operation is to use the
+/// `Operation::create_model`, `Operation::add_field`, etc. methods, as they
+/// provide backwards compatibility in case the `Operation` struct is changed in
+/// the future.
+#[derive(Debug, Copy, Clone)]
 pub enum Operation {
     /// Create a new model with the given fields.
     CreateModel {
         table_name: Identifier,
         fields: &'static [Field],
+        if_not_exists: bool,
     },
     /// Add a new field to an existing model.
     AddField {
@@ -67,20 +117,35 @@ pub enum Operation {
 }
 
 impl Operation {
+    #[must_use]
+    pub const fn create_model() -> CreateModelBuilder {
+        CreateModelBuilder::new()
+    }
+
+    #[must_use]
+    pub const fn add_field() -> AddFieldBuilder {
+        AddFieldBuilder::new()
+    }
+
     pub async fn forwards(&self, database: &Database) -> Result<()> {
         match self {
-            Self::CreateModel { table_name, fields } => {
-                let mut query = sea_query::Table::create()
-                    .table(table_name.clone())
-                    .to_owned();
+            Self::CreateModel {
+                table_name,
+                fields,
+                if_not_exists,
+            } => {
+                let mut query = sea_query::Table::create().table(*table_name).to_owned();
                 for field in *fields {
                     query.col(ColumnDef::from(field));
+                }
+                if *if_not_exists {
+                    query.if_not_exists();
                 }
                 database.execute_schema(query).await?;
             }
             Self::AddField { table_name, field } => {
                 let query = sea_query::Table::alter()
-                    .table(table_name.clone())
+                    .table(*table_name)
                     .add_column(ColumnDef::from(field))
                     .to_owned();
                 database.execute_schema(query).await?;
@@ -94,16 +159,15 @@ impl Operation {
             Self::CreateModel {
                 table_name,
                 fields: _,
+                if_not_exists: _,
             } => {
-                let query = sea_query::Table::drop()
-                    .table(table_name.clone())
-                    .to_owned();
+                let query = sea_query::Table::drop().table(*table_name).to_owned();
                 database.execute_schema(query).await?;
             }
             Self::AddField { table_name, field } => {
                 let query = sea_query::Table::alter()
-                    .table(table_name.clone())
-                    .drop_column(field.column_name.clone())
+                    .table(*table_name)
+                    .drop_column(field.column_name)
                     .to_owned();
                 database.execute_schema(query).await?;
             }
@@ -112,7 +176,7 @@ impl Operation {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Field {
     pub column_name: Identifier,
     pub column_type: ColumnType,
@@ -157,8 +221,7 @@ impl Field {
 
 impl From<&Field> for ColumnDef {
     fn from(column: &Field) -> Self {
-        let mut def =
-            ColumnDef::new_with_type(column.column_name.clone(), column.column_type.into());
+        let mut def = ColumnDef::new_with_type(column.column_name, column.column_type.into());
         if column.primary_key {
             def.primary_key();
         }
@@ -169,6 +232,108 @@ impl From<&Field> for ColumnDef {
             def.null();
         }
         def
+    }
+}
+
+macro_rules! unwrap_builder_option {
+    ($self:ident, $field:ident) => {
+        match $self.$field {
+            Some(value) => value,
+            None => panic!(concat!("`", stringify!($field), "` is required")),
+        }
+    };
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct CreateModelBuilder {
+    table_name: Option<Identifier>,
+    fields: Option<&'static [Field]>,
+    if_not_exists: bool,
+}
+
+impl Default for CreateModelBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CreateModelBuilder {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            table_name: None,
+            fields: None,
+            if_not_exists: false,
+        }
+    }
+
+    #[must_use]
+    pub const fn table_name(mut self, table_name: Identifier) -> Self {
+        self.table_name = Some(table_name);
+        self
+    }
+
+    #[must_use]
+    pub const fn fields(mut self, fields: &'static [Field]) -> Self {
+        self.fields = Some(fields);
+        self
+    }
+
+    #[must_use]
+    pub const fn if_not_exists(mut self) -> Self {
+        self.if_not_exists = true;
+        self
+    }
+
+    #[must_use]
+    pub const fn build(self) -> Operation {
+        Operation::CreateModel {
+            table_name: unwrap_builder_option!(self, table_name),
+            fields: unwrap_builder_option!(self, fields),
+            if_not_exists: self.if_not_exists,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct AddFieldBuilder {
+    table_name: Option<Identifier>,
+    field: Option<Field>,
+}
+
+impl Default for AddFieldBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AddFieldBuilder {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            table_name: None,
+            field: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn table_name(mut self, table_name: Identifier) -> Self {
+        self.table_name = Some(table_name);
+        self
+    }
+
+    #[must_use]
+    pub const fn field(mut self, field: Field) -> Self {
+        self.field = Some(field);
+        self
+    }
+
+    #[must_use]
+    pub const fn build(self) -> Operation {
+        Operation::AddField {
+            table_name: unwrap_builder_option!(self, table_name),
+            field: unwrap_builder_option!(self, field),
+        }
     }
 }
 
@@ -268,3 +433,28 @@ impl From<ColumnType> for sea_query::ColumnType {
         }
     }
 }
+
+#[derive(Debug)]
+#[model(table_name = "flareon__migrations", model_type = "internal")]
+struct AppliedMigration {
+    id: i32,
+    app: String,
+    name: String,
+    applied: chrono::DateTime<chrono::FixedOffset>,
+}
+
+const APPLIED_MIGRATION_MIGRATION: Operation = Operation::create_model()
+    .table_name(Identifier::new("flareon__migrations"))
+    .fields(&[
+        Field::new(Identifier::new("id"), <i32 as DbField>::TYPE)
+            .primary_key()
+            .auto(),
+        Field::new(Identifier::new("app"), <String as DbField>::TYPE),
+        Field::new(Identifier::new("name"), <String as DbField>::TYPE),
+        Field::new(
+            Identifier::new("applied"),
+            <chrono::DateTime<chrono::FixedOffset> as DbField>::TYPE,
+        ),
+    ])
+    .if_not_exists()
+    .build();

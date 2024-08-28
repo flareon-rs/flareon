@@ -92,70 +92,26 @@ pub trait Model: Sized + Send {
 }
 
 /// An identifier structure that holds table or column name as a string.
-#[derive(Debug, Clone)]
-pub enum Identifier {
-    Static(&'static str),
-    Owned(String),
-}
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, Deref)]
+pub struct Identifier(&'static str);
 
 impl Identifier {
     /// Creates a new identifier from a static string.
     #[must_use]
     pub const fn new(s: &'static str) -> Self {
-        Self::Static(s)
-    }
-
-    /// Creates a new identifier from a string.
-    #[must_use]
-    pub const fn from_string(s: String) -> Self {
-        Self::Owned(s)
+        Self(s)
     }
 
     /// Returns the inner string of the identifier.
     #[must_use]
     pub fn as_str(&self) -> &str {
-        match self {
-            Self::Static(s) => s,
-            Self::Owned(s) => s,
-        }
+        self.0
     }
 }
 
 impl From<&'static str> for Identifier {
     fn from(s: &'static str) -> Self {
         Self::new(s)
-    }
-}
-
-impl PartialEq for Identifier {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_str() == other.as_str()
-    }
-}
-
-impl Eq for Identifier {}
-
-impl PartialOrd for Identifier {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.as_str().cmp(other.as_str()))
-    }
-}
-
-impl Ord for Identifier {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.as_str().cmp(other.as_str())
-    }
-}
-
-impl Hash for Identifier {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.as_str().hash(state);
-    }
-}
-
-impl Display for Identifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
     }
 }
 
@@ -172,7 +128,7 @@ impl Iden for &Identifier {
 
 /// A column structure that holds the name of the column and some additional
 /// schema information.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Column {
     name: Identifier,
     auto_value: bool,
@@ -344,10 +300,7 @@ impl Database {
     }
 
     pub async fn query<T: Model>(&self, query: &Query<T>) -> Result<Vec<T>> {
-        let columns_to_get: Vec<_> = T::COLUMNS
-            .iter()
-            .map(|column| column.name.clone())
-            .collect();
+        let columns_to_get: Vec<_> = T::COLUMNS.iter().map(|column| column.name).collect();
         let mut select = sea_query::Query::select();
         select.columns(columns_to_get).from(T::TABLE_NAME);
         query.modify_statement(&mut select);
@@ -356,6 +309,17 @@ impl Database {
         let result = rows.into_iter().map(T::from_db).collect::<Result<_>>()?;
 
         Ok(result)
+    }
+
+    pub async fn exists<T: Model>(&self, query: &Query<T>) -> Result<bool> {
+        let mut select = sea_query::Query::select();
+        select.expr(sea_query::Expr::value(1)).from(T::TABLE_NAME);
+        query.modify_statement(&mut select);
+        select.limit(1);
+
+        let rows = self.fetch_option(select).await?;
+
+        Ok(rows.is_some())
     }
 
     pub async fn delete<T: Model>(&self, query: &Query<T>) -> Result<StatementResult> {
@@ -372,6 +336,17 @@ impl Database {
     {
         let result = match &self.inner {
             DatabaseImpl::Sqlite(inner) => Row::Sqlite(inner.fetch_one(statement).await?),
+        };
+
+        Ok(result)
+    }
+
+    async fn fetch_option<T>(&self, statement: T) -> Result<Option<Row>>
+    where
+        T: SqlxBinder,
+    {
+        let result = match &self.inner {
+            DatabaseImpl::Sqlite(inner) => inner.fetch_option(statement).await?.map(Row::Sqlite),
         };
 
         Ok(result)
@@ -463,12 +438,6 @@ mod tests {
     fn test_identifier() {
         let id = Identifier::new("test");
         assert_eq!(id.as_str(), "test");
-
-        let id_owned = Identifier::from_string("test_owned".to_string());
-        assert_eq!(id_owned.as_str(), "test_owned");
-
-        assert_eq!(id, Identifier::new("test"));
-        assert!(id < id_owned);
     }
 
     #[test]
@@ -478,10 +447,10 @@ mod tests {
         assert!(!column.auto_value);
         assert!(!column.null);
 
-        let column_auto = column.clone().auto();
+        let column_auto = column.auto();
         assert!(column_auto.auto_value);
 
-        let column_null = column.clone().null();
+        let column_null = column.null();
         assert!(column_null.null);
     }
 }

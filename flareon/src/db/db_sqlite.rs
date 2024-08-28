@@ -33,6 +33,18 @@ impl DatabaseSqlite {
         Ok(SqliteRow::new(row))
     }
 
+    pub(super) async fn fetch_option<T: SqlxBinder>(
+        &self,
+        statement: T,
+    ) -> Result<Option<SqliteRow>> {
+        let (sql, values) = Self::build_sql(statement);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_optional(&self.db_connection)
+            .await?;
+        Ok(row.map(SqliteRow::new))
+    }
+
     pub(super) async fn fetch_all<T: SqlxBinder>(&self, statement: T) -> Result<Vec<SqliteRow>> {
         let (sql, values) = Self::build_sql(statement);
 
@@ -85,7 +97,7 @@ impl DatabaseSqlite {
         T: SqlxBinder,
     {
         let (sql, values) = statement.build_sqlx(SqliteQueryBuilder);
-        debug!("SQLite Query: {}", sql);
+        debug!("SQLite Query: `{}` (values: {:?})", sql, values);
 
         (sql, values)
     }

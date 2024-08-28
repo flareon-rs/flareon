@@ -1,0 +1,5 @@
+error: migration model names must start with an underscore
+ --> tests/ui/attr_model_migration_invalid_name.rs:4:8
+  |
+4 | struct MyModel {
+  |        ^^^^^^^

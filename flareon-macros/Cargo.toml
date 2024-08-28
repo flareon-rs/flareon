@@ -13,7 +13,6 @@ name = "tests"
 path = "tests/compile_tests.rs"
 
 [dependencies]
-convert_case.workspace = true
 darling.workspace = true
 flareon_codegen.workspace = true
 proc-macro-crate.workspace = true

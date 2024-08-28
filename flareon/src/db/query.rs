@@ -36,6 +36,10 @@ impl<T: Model> Query<T> {
         db.query(self).await
     }
 
+    pub async fn exists(&self, db: &Database) -> db::Result<bool> {
+        db.exists(self).await
+    }
+
     pub async fn delete(&self, db: &Database) -> db::Result<StatementResult> {
         db.delete(self).await
     }
@@ -51,6 +55,7 @@ impl<T: Model> Query<T> {
 pub enum Expr {
     Column(Identifier),
     Value(#[debug("{}", _0.as_sea_query_value())] Box<dyn ToDbValue>),
+    And(Box<Expr>, Box<Expr>),
     Eq(Box<Expr>, Box<Expr>),
 }
 
@@ -61,6 +66,11 @@ impl Expr {
     }
 
     #[must_use]
+    pub fn and(self, other: Self) -> Self {
+        Self::And(Box::new(self), Box::new(other))
+    }
+
+    #[must_use]
     pub fn eq(lhs: Self, rhs: Self) -> Self {
         Self::Eq(Box::new(lhs), Box::new(rhs))
     }
@@ -68,7 +78,8 @@ impl Expr {
     #[must_use]
     pub fn as_sea_query_expr(&self) -> sea_query::SimpleExpr {
         match self {
-            Self::Column(identifier) => identifier.clone().into_column_ref().into(),
+            Self::Column(identifier) => (*identifier).into_column_ref().into(),
+            Self::And(lhs, rhs) => lhs.as_sea_query_expr().and(rhs.as_sea_query_expr()),
             Self::Eq(lhs, rhs) => lhs.as_sea_query_expr().eq(rhs.as_sea_query_expr()),
             Self::Value(value) => value.as_sea_query_value().into(),
         }
@@ -92,11 +103,11 @@ impl<T: FromDbValue + ToDbValue> FieldRef<T> {
 }
 
 pub trait ExprEq<T> {
-    fn eq(self, other: T) -> Expr;
+    fn eq<V: Into<T>>(self, other: V) -> Expr;
 }
 
 impl<T: ToDbValue + 'static> ExprEq<T> for FieldRef<T> {
-    fn eq(self, other: T) -> Expr {
-        Expr::eq(Expr::Column(self.identifier), Expr::value(other))
+    fn eq<V: Into<T>>(self, other: V) -> Expr {
+        Expr::eq(Expr::Column(self.identifier), Expr::value(other.into()))
     }
 }

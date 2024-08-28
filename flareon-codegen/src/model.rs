@@ -1,10 +1,11 @@
 use convert_case::{Case, Casing};
 use darling::{FromDeriveInput, FromField, FromMeta};
 
-#[derive(Debug, FromMeta)]
+#[derive(Debug, Default, FromMeta)]
 pub struct ModelArgs {
     #[darling(default)]
     pub model_type: ModelType,
+    pub table_name: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default, FromMeta)]
@@ -12,6 +13,7 @@ pub enum ModelType {
     #[default]
     Application,
     Migration,
+    Internal,
 }
 
 #[derive(Debug, Clone, FromDeriveInput)]
@@ -31,22 +33,34 @@ impl ModelOpts {
             .fields
     }
 
-    #[must_use]
-    pub fn field_count(&self) -> usize {
-        self.fields().len()
-    }
-}
+    pub fn as_model(&self, args: &ModelArgs) -> Result<Model, syn::Error> {
+        let fields = self.fields().iter().map(|field| field.as_field()).collect();
 
-impl From<ModelOpts> for Model {
-    fn from(opts: ModelOpts) -> Self {
-        let table_name = opts.ident.to_string().to_case(Case::Snake);
-        let fields = opts.fields().iter().map(|field| field.as_field()).collect();
+        let mut original_name = self.ident.to_string();
+        if args.model_type == ModelType::Migration {
+            original_name = original_name
+                .strip_prefix("_")
+                .ok_or_else(|| {
+                    syn::Error::new(
+                        self.ident.span(),
+                        "migration model names must start with an underscore",
+                    )
+                })?
+                .to_string();
+        }
+        let table_name = if let Some(table_name) = &args.table_name {
+            table_name.clone()
+        } else {
+            original_name.to_string().to_case(Case::Snake)
+        };
 
-        Self {
-            name: opts.ident.clone(),
+        Ok(Model {
+            name: self.ident.clone(),
+            original_name,
+            model_type: args.model_type,
             table_name,
             fields,
-        }
+        })
     }
 }
 
@@ -62,13 +76,17 @@ impl FieldOpts {
     pub fn as_field(&self) -> Field {
         let name = self.ident.as_ref().unwrap();
         let column_name = name.to_string();
+        // TODO define a separate type for auto fields
         let is_auto = column_name == "id";
+        // TODO define #[model(primary_key)] attribute
+        let is_primary_key = column_name == "id";
 
         Field {
             field_name: name.clone(),
             column_name,
             ty: self.ty.clone(),
             auto_value: is_auto,
+            primary_key: is_primary_key,
             null: false,
         }
     }
@@ -77,8 +95,17 @@ impl FieldOpts {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Model {
     pub name: syn::Ident,
+    pub original_name: String,
+    pub model_type: ModelType,
     pub table_name: String,
     pub fields: Vec<Field>,
+}
+
+impl Model {
+    #[must_use]
+    pub fn field_count(&self) -> usize {
+        self.fields.len()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -87,5 +114,6 @@ pub struct Field {
     pub column_name: String,
     pub ty: syn::Type,
     pub auto_value: bool,
+    pub primary_key: bool,
     pub null: bool,
 }

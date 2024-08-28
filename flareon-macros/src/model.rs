@@ -1,12 +1,12 @@
-use convert_case::{Case, Casing};
 use darling::ast::NestedMeta;
 use darling::{FromDeriveInput, FromMeta};
-use flareon_codegen::model::{Field, ModelArgs, ModelOpts, ModelType};
+use flareon_codegen::model::{Field, Model, ModelArgs, ModelOpts};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 
 use crate::flareon_ident;
 
+#[must_use]
 pub fn impl_model_for_struct(args: Vec<NestedMeta>, ast: syn::DeriveInput) -> TokenStream {
     let args = match ModelArgs::from_list(&args) {
         Ok(v) => v,
@@ -22,10 +22,13 @@ pub fn impl_model_for_struct(args: Vec<NestedMeta>, ast: syn::DeriveInput) -> To
         }
     };
 
-    let mut builder = ModelBuilder::from_model_opts(&opts, &args);
-    for field in opts.fields() {
-        builder.push_field(&field.as_field());
-    }
+    let model = match opts.as_model(&args) {
+        Ok(val) => val,
+        Err(err) => {
+            return err.to_compile_error();
+        }
+    };
+    let builder = ModelBuilder::from_model(model);
 
     quote!(#ast #builder)
 }
@@ -49,22 +52,22 @@ impl ToTokens for ModelBuilder {
 }
 
 impl ModelBuilder {
-    fn from_model_opts(opts: &ModelOpts, args: &ModelArgs) -> Self {
-        let mut ident = opts.ident.to_string();
-        if args.model_type == ModelType::Migration {
-            ident = ident.strip_prefix("_").unwrap().to_string();
+    fn from_model(model: Model) -> Self {
+        let field_count = model.field_count();
+        let mut model_builder = Self {
+            name: model.name.clone(),
+            table_name: model.table_name,
+            fields_struct_name: format_ident!("{}Fields", model.name),
+            fields_as_columns: Vec::with_capacity(field_count),
+            fields_as_from_db: Vec::with_capacity(field_count),
+            fields_as_get_values: Vec::with_capacity(field_count),
+            fields_as_field_refs: Vec::with_capacity(field_count),
+        };
+        for field in &model.fields {
+            model_builder.push_field(field);
         }
-        let table_name = ident.to_case(Case::Snake);
 
-        Self {
-            name: opts.ident.clone(),
-            table_name,
-            fields_struct_name: format_ident!("{}Fields", opts.ident),
-            fields_as_columns: Vec::with_capacity(opts.field_count()),
-            fields_as_from_db: Vec::with_capacity(opts.field_count()),
-            fields_as_get_values: Vec::with_capacity(opts.field_count()),
-            fields_as_field_refs: Vec::with_capacity(opts.field_count()),
-        }
+        model_builder
     }
 
     fn push_field(&mut self, field: &Field) {
@@ -104,6 +107,7 @@ impl ModelBuilder {
         ));
     }
 
+    #[must_use]
     fn build_model_impl(&self) -> TokenStream {
         let orm_ident = orm_ident();
 
@@ -143,6 +147,7 @@ impl ModelBuilder {
         }
     }
 
+    #[must_use]
     fn build_fields_struct(&self) -> TokenStream {
         let fields_struct_name = &self.fields_struct_name;
         let fields_as_field_refs = &self.fields_as_field_refs;
@@ -159,6 +164,7 @@ impl ModelBuilder {
     }
 }
 
+#[must_use]
 fn orm_ident() -> TokenStream {
     let crate_ident = flareon_ident();
     quote! { #crate_ident::db }

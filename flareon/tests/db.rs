@@ -44,15 +44,15 @@ async fn migrate_test_model(db: &Database) {
     crate::CREATE_TEST_MODEL.forwards(db).await.unwrap();
 }
 
-const CREATE_TEST_MODEL: Operation = Operation::CreateModel {
-    table_name: Identifier::new("test_model"),
-    fields: &[
+const CREATE_TEST_MODEL: Operation = Operation::create_model()
+    .table_name(Identifier::new("test_model"))
+    .fields(&[
         Field::new(Identifier::new("id"), <i32 as DbField>::TYPE)
             .primary_key()
             .auto(),
         Field::new(Identifier::new("name"), <String as DbField>::TYPE),
-    ],
-};
+    ])
+    .build();
 
 macro_rules! all_fields_migration_field {
     ($name:ident, $ty:ty) => {
@@ -99,9 +99,9 @@ async fn migrate_all_fields_model(db: &Database) {
     CREATE_ALL_FIELDS_MODEL.forwards(db).await.unwrap();
 }
 
-const CREATE_ALL_FIELDS_MODEL: Operation = Operation::CreateModel {
-    table_name: Identifier::new("all_fields_model"),
-    fields: &[
+const CREATE_ALL_FIELDS_MODEL: Operation = Operation::create_model()
+    .table_name(Identifier::new("all_fields_model"))
+    .fields(&[
         Field::new(Identifier::new("id"), <i32 as DbField>::TYPE)
             .primary_key()
             .auto(),
@@ -121,8 +121,8 @@ const CREATE_ALL_FIELDS_MODEL: Operation = Operation::CreateModel {
         all_fields_migration_field!(datetime, chrono::NaiveDateTime),
         all_fields_migration_field!(datetime_timezone, chrono::DateTime<chrono::FixedOffset>),
         all_fields_migration_field!(string, String),
-    ],
-};
+    ])
+    .build();
 
 #[tokio::test]
 async fn test_all_fields_model() {

@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -11,7 +13,8 @@ use flareon_codegen::model::{Field, Model, ModelArgs, ModelOpts, ModelType};
 use log::{debug, info};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_quote, ItemStruct};
+use syn::spanned::Spanned;
+use syn::{parse_quote, Attribute, ItemStruct, Meta};
 
 use crate::utils::find_cargo_toml;
 
@@ -113,10 +116,19 @@ impl MigrationGenerator {
         let mut migration_models = Vec::new();
         for item in syntax.items {
             if let syn::Item::Struct(item) = item {
-                if item.attrs.iter().any(is_app_model_attr) {
-                    app_state.models.push(ModelInSource::from_item(item)?);
-                } else if item.attrs.iter().any(is_migration_model_attr) {
-                    migration_models.push(ModelInSource::from_item(item)?);
+                for attr in &item.attrs {
+                    if is_model_attr(attr) {
+                        let args = Self::args_from_attr(path, &attr)?;
+                        let model_in_source = ModelInSource::from_item(item, &args)?;
+
+                        match args.model_type {
+                            ModelType::Application => app_state.models.push(model_in_source),
+                            ModelType::Migration => migration_models.push(model_in_source),
+                            ModelType::Internal => {}
+                        }
+
+                        break;
+                    }
                 }
             }
         }
@@ -135,6 +147,22 @@ impl MigrationGenerator {
         }
 
         Ok(())
+    }
+
+    fn args_from_attr(path: &PathBuf, attr: &&Attribute) -> Result<ModelArgs, ParsingError> {
+        match attr.meta {
+            Meta::Path(_) => {
+                // Means `#[model]` without any arguments
+                Ok(ModelArgs::default())
+            }
+            _ => ModelArgs::from_meta(&attr.meta).map_err(|e| {
+                ParsingError::from_darling(
+                    "couldn't parse model macro arguments".to_string(),
+                    path.clone(),
+                    e,
+                )
+            }),
+        }
     }
 
     #[must_use]
@@ -295,7 +323,7 @@ impl MigrationGenerator {
 
         let app_name = &self.crate_name;
         let migration_def = quote! {
-            struct Migration;
+            pub(super) struct Migration;
 
             impl ::flareon::db::migrations::Migration for Migration {
                 const APP_NAME: &'static str = #app_name;
@@ -455,42 +483,16 @@ struct ModelInSource {
 }
 
 impl ModelInSource {
-    fn from_item(item: ItemStruct) -> anyhow::Result<Self> {
+    fn from_item(item: ItemStruct, args: &ModelArgs) -> anyhow::Result<Self> {
         let input: syn::DeriveInput = item.clone().into();
         let opts = ModelOpts::from_derive_input(&input)
             .map_err(|e| anyhow::anyhow!("cannot parse model: {}", e))?;
-        let model = Model::from(opts);
+        let model = opts.as_model(args)?;
 
         Ok(Self {
             model_item: item,
             model,
         })
-    }
-}
-
-#[must_use]
-fn is_app_model_attr(attr: &syn::Attribute) -> bool {
-    if !is_model_attr(attr) {
-        return false;
-    }
-
-    let args = ModelArgs::from_meta(&attr.meta);
-    match args {
-        Ok(args) => args.model_type == ModelType::Application,
-        Err(_) => true,
-    }
-}
-
-#[must_use]
-fn is_migration_model_attr(attr: &syn::Attribute) -> bool {
-    if !is_model_attr(attr) {
-        return false;
-    }
-
-    let args = ModelArgs::from_meta(&attr.meta);
-    match args {
-        Ok(args) => args.model_type == ModelType::Migration,
-        Err(_) => false,
     }
 }
 
@@ -518,6 +520,9 @@ impl Repr for Field {
         };
         if self.auto_value {
             tokens = quote! { #tokens.auto() }
+        }
+        if self.primary_key {
+            tokens = quote! { #tokens.primary_key() }
         }
         tokens
     }
@@ -566,23 +571,59 @@ impl Repr for DynOperation {
             Self::CreateModel { table_name, fields } => {
                 let fields = fields.iter().map(Repr::repr).collect::<Vec<_>>();
                 quote! {
-                    ::flareon::db::migrations::Operation::CreateModel {
-                        table_name: ::flareon::db::Identifier::new(#table_name),
-                        fields: &[
+                    ::flareon::db::migrations::Operation::create_model()
+                        .table_name(::flareon::db::Identifier::new(#table_name))
+                        .fields(&[
                             #(#fields,)*
-                        ],
-                    }
+                        ])
+                        .build()
                 }
             }
             Self::AddField { table_name, field } => {
                 let field = field.repr();
                 quote! {
-                    ::flareon::db::migrations::Operation::AddField {
-                        table_name: ::flareon::db::Identifier::new(#table_name),
-                        field: #field,
-                    }
+                    ::flareon::db::migrations::Operation::add_field()
+                        .table_name(::flareon::db::Identifier::new(#table_name))
+                        .field(#field)
+                        .build()
                 }
             }
         }
     }
 }
+
+#[derive(Debug)]
+struct ParsingError {
+    message: String,
+    path: PathBuf,
+    location: String,
+    source: Option<String>,
+}
+
+impl ParsingError {
+    fn from_darling(message: String, path: PathBuf, error: darling::Error) -> Self {
+        let message = format!("{message}: {error}");
+        let span = error.span();
+        let location = format!("{}:{}", span.start().line, span.start().column);
+
+        Self {
+            message,
+            path,
+            location,
+            source: span.source_text().clone(),
+        }
+    }
+}
+
+impl Display for ParsingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)?;
+        if let Some(source) = &self.source {
+            write!(f, "\n{source}")?;
+        }
+        write!(f, "\n    at {}:{}", self.path.display(), self.location)?;
+        Ok(())
+    }
+}
+
+impl Error for ParsingError {}
