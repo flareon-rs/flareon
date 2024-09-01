@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 flareon = { path = "../../flareon" }
-tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
