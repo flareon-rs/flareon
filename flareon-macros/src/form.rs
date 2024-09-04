@@ -6,7 +6,7 @@ use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 
 use crate::flareon_ident;
 
-pub fn impl_form_for_struct(ast: syn::DeriveInput) -> TokenStream {
+pub(super) fn impl_form_for_struct(ast: syn::DeriveInput) -> TokenStream {
     let opts = match FormOpts::from_derive_input(&ast) {
         Ok(val) => val,
         Err(err) => {

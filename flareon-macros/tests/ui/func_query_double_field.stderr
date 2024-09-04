@@ -1,0 +1,5 @@
+error: expected an operator or a method call
+  --> tests/ui/func_query_double_field.rs:15:16
+   |
+15 |         $name $name
+   |                ^^^^

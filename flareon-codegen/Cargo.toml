@@ -8,4 +8,9 @@ description = "Modern web framework focused on speed and ease of use - code gene
 [dependencies]
 convert_case.workspace = true
 darling.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
 syn.workspace = true
+
+[dev-dependencies]
+proc-macro2 = { workspace = true, features = ["span-locations"] }

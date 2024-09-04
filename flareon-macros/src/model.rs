@@ -7,7 +7,7 @@ use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use crate::flareon_ident;
 
 #[must_use]
-pub fn impl_model_for_struct(args: Vec<NestedMeta>, ast: syn::DeriveInput) -> TokenStream {
+pub(super) fn impl_model_for_struct(args: Vec<NestedMeta>, ast: syn::DeriveInput) -> TokenStream {
     let args = match ModelArgs::from_list(&args) {
         Ok(v) => v,
         Err(e) => {

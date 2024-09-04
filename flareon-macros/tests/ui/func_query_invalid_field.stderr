@@ -1,0 +1,12 @@
+error[E0599]: no function or associated item named `nonexistent` found for struct `MyModelFields` in the current scope
+  --> tests/ui/func_query_invalid_field.rs:15:10
+   |
+4  |   #[model]
+   |   -------- function or associated item `nonexistent` not found for this struct
+...
+13 | /     query!(
+14 | |         MyModel,
+15 | |         $nonexistent == 42
+   | |         -^^^^^^^^^^^ function or associated item not found in `MyModelFields`
+   | |_________|
+   |

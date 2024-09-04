@@ -1,0 +1,5 @@
+error: expected field, literal, or identifier
+  --> tests/ui/func_query_double_op.rs:15:29
+   |
+15 |         $name == "hello" && && $description == "world" || $visits == 0
+   |                             ^^

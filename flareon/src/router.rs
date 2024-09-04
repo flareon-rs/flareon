@@ -161,7 +161,7 @@ impl Debug for RouteInner {
 #[macro_export]
 macro_rules! reverse {
     ($request:expr, $view_name:literal $(, $($key:expr => $value:expr),* )?) => {
-        ::flareon::Response::new_redirect($crate::reverse_str!(
+        $crate::Response::new_redirect($crate::reverse_str!(
             $request,
             $view_name,
             $( $($key => $value),* )?

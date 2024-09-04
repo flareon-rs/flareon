@@ -23,3 +23,4 @@ syn.workspace = true
 [dev-dependencies]
 flareon.workspace = true
 trybuild.workspace = true
+rustversion.workspace = true

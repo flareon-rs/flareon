@@ -1,5 +1,6 @@
 mod form;
 mod model;
+mod query;
 
 use darling::ast::NestedMeta;
 use darling::Error;
@@ -10,6 +11,7 @@ use syn::parse_macro_input;
 
 use crate::form::impl_form_for_struct;
 use crate::model::impl_model_for_struct;
+use crate::query::{query_to_tokens, Query};
 
 /// Derive the [`Form`] trait for a struct.
 ///
@@ -37,6 +39,12 @@ pub fn model(args: TokenStream, input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as syn::DeriveInput);
     let token_stream = impl_model_for_struct(attr_args, ast);
     token_stream.into()
+}
+
+#[proc_macro]
+pub fn query(input: TokenStream) -> TokenStream {
+    let query_input = parse_macro_input!(input as Query);
+    query_to_tokens(query_input).into()
 }
 
 pub(crate) fn flareon_ident() -> proc_macro2::TokenStream {

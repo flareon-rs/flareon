@@ -1,7 +1,7 @@
 use fake::{Dummy, Fake, Faker};
 use flareon::db::migrations::{Field, Operation};
 use flareon::db::query::ExprEq;
-use flareon::db::{model, Database, DbField, Identifier, Model};
+use flareon::db::{model, query, Database, DbField, Identifier, Model};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -29,6 +29,29 @@ async fn test_model_crud() {
         .unwrap();
 
     assert_eq!(TestModel::objects().all(&db).await.unwrap(), vec![]);
+
+    db.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_model_macro_filtering() {
+    let db = test_sqlite_db().await;
+
+    migrate_test_model(&db).await;
+
+    assert_eq!(TestModel::objects().all(&db).await.unwrap(), vec![]);
+
+    let mut model = TestModel {
+        id: 0,
+        name: "test".to_owned(),
+    };
+    model.save(&db).await.unwrap();
+    let objects = query!(TestModel, $name == "test").all(&db).await.unwrap();
+    assert_eq!(objects.len(), 1);
+    assert_eq!(objects[0].name, "test");
+
+    let objects = query!(TestModel, $name == "t").all(&db).await.unwrap();
+    assert!(objects.is_empty());
 
     db.close().await.unwrap();
 }

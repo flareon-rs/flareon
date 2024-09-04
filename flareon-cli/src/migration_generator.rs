@@ -13,7 +13,6 @@ use flareon_codegen::model::{Field, Model, ModelArgs, ModelOpts, ModelType};
 use log::{debug, info};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::spanned::Spanned;
 use syn::{parse_quote, Attribute, ItemStruct, Meta};
 
 use crate::utils::find_cargo_toml;

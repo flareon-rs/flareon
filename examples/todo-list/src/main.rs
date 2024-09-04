@@ -4,8 +4,7 @@ use std::sync::Arc;
 
 use askama::Template;
 use flareon::db::migrations::MigrationEngine;
-use flareon::db::query::ExprEq;
-use flareon::db::{model, Database, Model};
+use flareon::db::{model, query, Database, Model};
 use flareon::forms::Form;
 use flareon::prelude::{Body, Error, FlareonApp, FlareonProject, Response, Route, StatusCode};
 use flareon::request::Request;
@@ -72,10 +71,7 @@ async fn remove_todo(request: Request) -> Result<Response, Error> {
 
     {
         let db = DB.get().unwrap();
-        TodoItem::objects()
-            .filter(<TodoItem as Model>::Fields::id.eq(todo_id))
-            .delete(db)
-            .await?;
+        query!(TodoItem, $id == todo_id).delete(db).await?;
     }
 
     Ok(reverse!(request, "index"))

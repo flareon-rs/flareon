@@ -39,3 +39,9 @@ impl_db_field!(chrono::NaiveTime, Time);
 impl_db_field!(chrono::NaiveDateTime, DateTime);
 impl_db_field!(chrono::DateTime<chrono::FixedOffset>, TimestampWithTimeZone);
 impl_db_field!(String, Text);
+
+impl ToDbValue for &str {
+    fn as_sea_query_value(&self) -> Value {
+        (*self).to_string().into()
+    }
+}

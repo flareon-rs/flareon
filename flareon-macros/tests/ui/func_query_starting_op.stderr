@@ -1,0 +1,5 @@
+error: expected field, literal, or identifier
+  --> tests/ui/func_query_starting_op.rs:15:9
+   |
+15 |         && $name == "hello"
+   |         ^^

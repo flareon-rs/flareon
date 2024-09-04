@@ -8,7 +8,7 @@ use std::hash::Hash;
 
 use async_trait::async_trait;
 use derive_more::{Debug, Deref, Display};
-pub use flareon_macros::model;
+pub use flareon_macros::{model, query};
 use log::debug;
 use query::Query;
 use sea_query::{Iden, SchemaStatementBuilder, SimpleExpr};

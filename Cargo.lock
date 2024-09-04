@@ -796,6 +796,8 @@ version = "0.1.0"
 dependencies = [
  "convert_case",
  "darling",
+ "proc-macro2",
+ "quote",
  "syn",
 ]
 
@@ -809,6 +811,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
+ "rustversion",
  "syn",
  "trybuild",
 ]

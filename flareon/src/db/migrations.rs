@@ -1,12 +1,11 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
-use flareon_macros::model;
+use flareon_macros::{model, query};
 use log::info;
 use sea_query::ColumnDef;
 
-use crate::db::query::ExprEq;
-use crate::db::{ColumnType, Database, DbField, Identifier, Model, Result};
+use crate::db::{ColumnType, Database, DbField, Identifier, Result};
 
 #[derive(Debug)]
 pub struct MigrationEngine {
@@ -69,14 +68,12 @@ impl MigrationEngine {
         database: &Database,
         migration: &DynMigrationWrapper,
     ) -> Result<bool> {
-        AppliedMigration::objects()
-            .filter(
-                <AppliedMigration as Model>::Fields::app
-                    .eq(migration.app_name())
-                    .and(<AppliedMigration as Model>::Fields::name.eq(migration.migration_name())),
-            )
-            .exists(database)
-            .await
+        query!(
+            AppliedMigration,
+            $app == migration.app_name() && $name == migration.migration_name()
+        )
+        .exists(database)
+        .await
     }
 
     async fn mark_migration_applied(
