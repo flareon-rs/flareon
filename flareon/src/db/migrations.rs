@@ -5,8 +5,9 @@ use flareon_macros::{model, query};
 use log::info;
 use sea_query::ColumnDef;
 
-use crate::db::{ColumnType, Database, DbField, Identifier, Result};
+use crate::db::{ColumnType, Database, DatbaseField, Identifier, Result};
 
+/// A migration engine that can run migrations.
 #[derive(Debug)]
 pub struct MigrationEngine {
     migrations: Vec<DynMigrationWrapper>,
@@ -29,12 +30,56 @@ impl MigrationEngine {
     /// determines the correct order of applying migrations based on the
     /// dependencies between them.
     pub fn sort_migrations<T: DynMigration>(migrations: &mut [T]) {
-        migrations.sort_by(|a, b| {
-            (a.app_name(), a.migration_name()).cmp(&(b.app_name(), b.migration_name()))
-        });
+        migrations.sort_by(|a, b| (a.app_name(), a.name()).cmp(&(b.app_name(), b.name())));
         // TODO: Determine the correct order based on the dependencies
     }
 
+    /// Runs the migrations. If a migration is already applied, it will be
+    /// skipped.
+    ///
+    /// This method will also create the `flareon__migrations` table if it does
+    /// not exist that is used to keep track of which migrations have been
+    /// applied.
+    ///
+    /// # Errors
+    ///
+    /// Throws an error if any of the migrations fail to apply, or if there is
+    /// an error while interacting with the database, or if there is an
+    /// error while marking a migration as applied.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flareon::db::migrations::{Field, Migration, MigrationEngine, Operation};
+    /// use flareon::db::{Database, DatbaseField, Identifier};
+    /// use flareon::Result;
+    ///
+    /// struct MyMigration;
+    ///
+    /// impl Migration for MyMigration {
+    ///     const APP_NAME: &'static str = "todoapp";
+    ///     const MIGRATION_NAME: &'static str = "m_0001_initial";
+    ///     const OPERATIONS: &'static [Operation] = &[Operation::create_model()
+    ///         .table_name(Identifier::new("todoapp__my_model"))
+    ///         .fields(&[
+    ///             Field::new(Identifier::new("id"), <i32 as DatbaseField>::TYPE)
+    ///                 .primary_key()
+    ///                 .auto(),
+    ///             Field::new(Identifier::new("app"), <String as DatbaseField>::TYPE),
+    ///         ])
+    ///         .build()];
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// let migrations = vec![MyMigration];
+    ///
+    /// let engine = MigrationEngine::new(migrations);
+    /// let database = Database::new("sqlite::memory:").await?;
+    /// engine.run(&database).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn run(&self, database: &Database) -> Result<()> {
         info!("Running migrations");
 
@@ -45,7 +90,7 @@ impl MigrationEngine {
                 if Self::is_migration_applied(database, migration).await? {
                     info!(
                         "Migration {} for app {} is already applied",
-                        migration.migration_name(),
+                        migration.name(),
                         migration.app_name()
                     );
                     continue;
@@ -53,7 +98,7 @@ impl MigrationEngine {
 
                 info!(
                     "Applying migration {} for app {}",
-                    migration.migration_name(),
+                    migration.name(),
                     migration.app_name()
                 );
                 operation.forwards(database).await?;
@@ -70,7 +115,7 @@ impl MigrationEngine {
     ) -> Result<bool> {
         query!(
             AppliedMigration,
-            $app == migration.app_name() && $name == migration.migration_name()
+            $app == migration.app_name() && $name == migration.name()
         )
         .exists(database)
         .await
@@ -83,7 +128,7 @@ impl MigrationEngine {
         let mut applied_migration = AppliedMigration {
             id: 0,
             app: migration.app_name().to_string(),
-            name: migration.migration_name().to_string(),
+            name: migration.name().to_string(),
             applied: chrono::Utc::now().into(),
         };
 
@@ -114,16 +159,48 @@ pub enum Operation {
 }
 
 impl Operation {
+    /// Returns a builder for an operation that creates a model.
     #[must_use]
     pub const fn create_model() -> CreateModelBuilder {
         CreateModelBuilder::new()
     }
 
+    /// Returns a builder for an operation that adds a field to a model.
     #[must_use]
     pub const fn add_field() -> AddFieldBuilder {
         AddFieldBuilder::new()
     }
 
+    /// Runs the operation forwards.
+    ///
+    /// # Errors
+    ///
+    /// Throws an error if the operation fails to apply.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flareon::db::migrations::{Field, Migration, MigrationEngine, Operation};
+    /// use flareon::db::{Database, DatbaseField, Identifier};
+    /// use flareon::Result;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// const OPERATION: Operation = Operation::create_model()
+    ///     .table_name(Identifier::new("todoapp__my_model"))
+    ///     .fields(&[
+    ///         Field::new(Identifier::new("id"), <i32 as DatbaseField>::TYPE)
+    ///             .primary_key()
+    ///             .auto(),
+    ///         Field::new(Identifier::new("app"), <String as DatbaseField>::TYPE),
+    ///     ])
+    ///     .build();
+    ///
+    /// let database = Database::new("sqlite::memory:").await?;
+    /// OPERATION.forwards(&database).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn forwards(&self, database: &Database) -> Result<()> {
         match self {
             Self::CreateModel {
@@ -151,6 +228,38 @@ impl Operation {
         Ok(())
     }
 
+    /// Runs the operation backwards, undoing the changes made by the forwards
+    /// operation.
+    ///
+    /// # Errors
+    ///
+    /// Throws an error if the operation fails to apply.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flareon::db::migrations::{Field, Migration, MigrationEngine, Operation};
+    /// use flareon::db::{Database, DatbaseField, Identifier};
+    /// use flareon::Result;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()> {
+    /// const OPERATION: Operation = Operation::create_model()
+    ///     .table_name(Identifier::new("todoapp__my_model"))
+    ///     .fields(&[
+    ///         Field::new(Identifier::new("id"), <i32 as DatbaseField>::TYPE)
+    ///             .primary_key()
+    ///             .auto(),
+    ///         Field::new(Identifier::new("app"), <String as DatbaseField>::TYPE),
+    ///     ])
+    ///     .build();
+    ///
+    /// let database = Database::new("sqlite::memory:").await?;
+    /// OPERATION.forwards(&database).await?;
+    /// OPERATION.backwards(&database).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn backwards(&self, database: &Database) -> Result<()> {
         match self {
             Self::CreateModel {
@@ -164,7 +273,7 @@ impl Operation {
             Self::AddField { table_name, field } => {
                 let query = sea_query::Table::alter()
                     .table(*table_name)
-                    .drop_column(field.column_name)
+                    .drop_column(field.name)
                     .to_owned();
                 database.execute_schema(query).await?;
             }
@@ -175,8 +284,11 @@ impl Operation {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Field {
-    pub column_name: Identifier,
-    pub column_type: ColumnType,
+    /// The name of the field
+    pub name: Identifier,
+    /// The type of the field
+    pub ty: ColumnType,
+    /// Whether the column is a primary key
     pub primary_key: bool,
     /// Whether the column is an auto-incrementing value (usually used as a
     /// primary key)
@@ -189,8 +301,8 @@ impl Field {
     #[must_use]
     pub const fn new(name: Identifier, ty: ColumnType) -> Self {
         Self {
-            column_name: name,
-            column_type: ty,
+            name,
+            ty,
             primary_key: false,
             auto_value: false,
             null: false,
@@ -218,7 +330,7 @@ impl Field {
 
 impl From<&Field> for ColumnDef {
     fn from(column: &Field) -> Self {
-        let mut def = ColumnDef::new_with_type(column.column_name, column.column_type.into());
+        let mut def = ColumnDef::new_with_type(column.name, column.ty.into());
         if column.primary_key {
             def.primary_key();
         }
@@ -342,7 +454,7 @@ pub trait Migration {
 
 pub trait DynMigration {
     fn app_name(&self) -> &str;
-    fn migration_name(&self) -> &str;
+    fn name(&self) -> &str;
     fn operations(&self) -> &[Operation];
 }
 
@@ -351,7 +463,7 @@ impl<T: Migration> DynMigration for T {
         Self::APP_NAME
     }
 
-    fn migration_name(&self) -> &str {
+    fn name(&self) -> &str {
         Self::MIGRATION_NAME
     }
 
@@ -365,8 +477,8 @@ impl DynMigration for &dyn DynMigration {
         DynMigration::app_name(*self)
     }
 
-    fn migration_name(&self) -> &str {
-        DynMigration::migration_name(*self)
+    fn name(&self) -> &str {
+        DynMigration::name(*self)
     }
 
     fn operations(&self) -> &[Operation] {
@@ -388,8 +500,8 @@ impl DynMigration for DynMigrationWrapper {
         self.0.app_name()
     }
 
-    fn migration_name(&self) -> &str {
-        self.0.migration_name()
+    fn name(&self) -> &str {
+        self.0.name()
     }
 
     fn operations(&self) -> &[Operation] {
@@ -401,7 +513,7 @@ impl Debug for DynMigrationWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("DynMigrationWrapper")
             .field("app_name", &self.app_name())
-            .field("migration_name", &self.migration_name())
+            .field("migration_name", &self.name())
             .field("operations", &self.operations())
             .finish()
     }
@@ -443,14 +555,14 @@ struct AppliedMigration {
 const APPLIED_MIGRATION_MIGRATION: Operation = Operation::create_model()
     .table_name(Identifier::new("flareon__migrations"))
     .fields(&[
-        Field::new(Identifier::new("id"), <i32 as DbField>::TYPE)
+        Field::new(Identifier::new("id"), <i32 as DatbaseField>::TYPE)
             .primary_key()
             .auto(),
-        Field::new(Identifier::new("app"), <String as DbField>::TYPE),
-        Field::new(Identifier::new("name"), <String as DbField>::TYPE),
+        Field::new(Identifier::new("app"), <String as DatbaseField>::TYPE),
+        Field::new(Identifier::new("name"), <String as DatbaseField>::TYPE),
         Field::new(
             Identifier::new("applied"),
-            <chrono::DateTime<chrono::FixedOffset> as DbField>::TYPE,
+            <chrono::DateTime<chrono::FixedOffset> as DatbaseField>::TYPE,
         ),
     ])
     .if_not_exists()

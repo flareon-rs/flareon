@@ -15,7 +15,7 @@ extern crate self as flareon;
 pub mod db;
 mod error;
 pub mod forms;
-pub mod prelude;
+mod headers;
 #[doc(hidden)]
 pub mod private;
 pub mod request;
@@ -32,13 +32,16 @@ use bytes::Bytes;
 use derive_builder::Builder;
 use derive_more::{Deref, From};
 pub use error::Error;
+use headers::{CONTENT_TYPE_HEADER, HTML_CONTENT_TYPE, LOCATION_HEADER};
 use indexmap::IndexMap;
 use log::info;
 use request::Request;
 use router::{Route, Router};
 
+/// A type alias for a result that can return a `flareon::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// A type alias for an HTTP status code.
 pub type StatusCode = axum::http::StatusCode;
 
 #[async_trait]
@@ -100,11 +103,6 @@ pub struct Response {
     headers: HeadersMap,
     body: Body,
 }
-
-const CONTENT_TYPE_HEADER: &str = "Content-Type";
-const HTML_CONTENT_TYPE: &str = "text/html";
-const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
-const LOCATION_HEADER: &str = "Location";
 
 impl Response {
     #[must_use]
@@ -182,7 +180,6 @@ impl FlareonProjectBuilder {
         }
     }
 
-    #[must_use]
     pub fn register_app_with_views(&mut self, app: FlareonApp, url_prefix: &str) -> &mut Self {
         let new = self;
         new.urls
@@ -191,11 +188,13 @@ impl FlareonProjectBuilder {
         new
     }
 
-    pub fn build(&self) -> Result<FlareonProject> {
-        Ok(FlareonProject {
+    /// Builds the Flareon project instance.
+    #[must_use]
+    pub fn build(&self) -> FlareonProject {
+        FlareonProject {
             apps: self.apps.clone(),
             router: Router::with_urls(self.urls.clone()),
-        })
+        }
     }
 }
 
@@ -217,6 +216,14 @@ impl FlareonProject {
     }
 }
 
+/// Runs the Flareon project.
+///
+/// This function takes a Flareon project and an address string and runs the
+/// project on the given address.
+///
+/// # Errors
+///
+/// This function returns an error if the server fails to start.
 pub async fn run(mut project: FlareonProject, address_str: &str) -> Result<()> {
     for app in &mut project.apps {
         info!("Initializing app: {:?}", app);
@@ -281,6 +288,56 @@ impl Html {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn handle_response_error(_error: Error) -> axum::response::Response {
     unimplemented!("500 error handler is not implemented yet")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_flareon_app_builder() {
+        let app = FlareonApp::builder().urls([]).build().unwrap();
+        assert!(app.router.is_empty());
+    }
+
+    #[test]
+    fn test_response_new_html() {
+        let body = Body::fixed("<html></html>");
+        let response = Response::new_html(StatusCode::OK, body);
+        assert_eq!(response.status, StatusCode::OK);
+        assert_eq!(
+            response.headers.get(CONTENT_TYPE_HEADER).unwrap(),
+            HTML_CONTENT_TYPE
+        );
+    }
+
+    #[test]
+    fn test_response_new_redirect() {
+        let location = "http://example.com";
+        let response = Response::new_redirect(location);
+        assert_eq!(response.status, StatusCode::SEE_OTHER);
+        assert_eq!(response.headers.get(LOCATION_HEADER).unwrap(), location);
+    }
+
+    #[test]
+    fn test_flareon_project_builder() {
+        let app = FlareonApp::builder().urls([]).build().unwrap();
+        let mut builder = FlareonProject::builder();
+        builder.register_app_with_views(app, "/app");
+        let project = builder.build();
+        assert_eq!(project.apps.len(), 1);
+        assert!(!project.router.is_empty());
+    }
+
+    #[test]
+    fn test_flareon_project_router() {
+        let app = FlareonApp::builder().urls([]).build().unwrap();
+        let mut builder = FlareonProject::builder();
+        builder.register_app_with_views(app, "/app");
+        let project = builder.build();
+        assert_eq!(project.router().routes().len(), 1);
+    }
 }

@@ -1,6 +1,7 @@
 use convert_case::{Case, Casing};
 use darling::{FromDeriveInput, FromField, FromMeta};
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Default, FromMeta)]
 pub struct ModelArgs {
     #[darling(default)]
@@ -8,6 +9,7 @@ pub struct ModelArgs {
     pub table_name: Option<String>,
 }
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default, FromMeta)]
 pub enum ModelType {
     #[default]
@@ -16,6 +18,7 @@ pub enum ModelType {
     Internal,
 }
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, FromDeriveInput)]
 #[darling(forward_attrs(allow, doc, cfg), supports(struct_named))]
 pub struct ModelOpts {
@@ -24,6 +27,11 @@ pub struct ModelOpts {
 }
 
 impl ModelOpts {
+    /// Get the fields of the struct.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the [`ModelOpts`] was not parsed from a struct.
     #[must_use]
     pub fn fields(&self) -> Vec<&FieldOpts> {
         self.data
@@ -33,6 +41,12 @@ impl ModelOpts {
             .fields
     }
 
+    /// Convert the model options into a model.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the model name does not start with an underscore
+    /// when the model type is [`ModelType::Migration`].
     pub fn as_model(&self, args: &ModelArgs) -> Result<Model, syn::Error> {
         let fields = self.fields().iter().map(|field| field.as_field()).collect();
 
@@ -72,6 +86,12 @@ pub struct FieldOpts {
 }
 
 impl FieldOpts {
+    /// Convert the field options into a field.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the field does not have an identifier (i.e. it is a tuple
+    /// struct).
     #[must_use]
     pub fn as_field(&self) -> Field {
         let name = self.ident.as_ref().unwrap();

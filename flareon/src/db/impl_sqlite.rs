@@ -24,7 +24,7 @@ impl DatabaseSqlite {
         Ok(())
     }
 
-    pub(super) async fn fetch_one<T: SqlxBinder>(&self, statement: T) -> Result<SqliteRow> {
+    pub(super) async fn fetch_one<T: SqlxBinder>(&self, statement: &T) -> Result<SqliteRow> {
         let (sql, values) = Self::build_sql(statement);
 
         let row = sqlx::query_with(&sql, values)
@@ -35,7 +35,7 @@ impl DatabaseSqlite {
 
     pub(super) async fn fetch_option<T: SqlxBinder>(
         &self,
-        statement: T,
+        statement: &T,
     ) -> Result<Option<SqliteRow>> {
         let (sql, values) = Self::build_sql(statement);
 
@@ -45,7 +45,7 @@ impl DatabaseSqlite {
         Ok(row.map(SqliteRow::new))
     }
 
-    pub(super) async fn fetch_all<T: SqlxBinder>(&self, statement: T) -> Result<Vec<SqliteRow>> {
+    pub(super) async fn fetch_all<T: SqlxBinder>(&self, statement: &T) -> Result<Vec<SqliteRow>> {
         let (sql, values) = Self::build_sql(statement);
 
         let result = sqlx::query_with(&sql, values)
@@ -59,7 +59,7 @@ impl DatabaseSqlite {
 
     pub(super) async fn execute_statement<T: SqlxBinder>(
         &self,
-        statement: T,
+        statement: &T,
     ) -> Result<StatementResult> {
         let (sql, values) = Self::build_sql(statement);
 
@@ -92,7 +92,7 @@ impl DatabaseSqlite {
         Ok(result)
     }
 
-    fn build_sql<T>(statement: T) -> (String, SqlxValues)
+    fn build_sql<T>(statement: &T) -> (String, SqlxValues)
     where
         T: SqlxBinder,
     {

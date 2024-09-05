@@ -62,8 +62,8 @@ impl MigrationGenerator {
         let (modified_models, operations) = self.generate_operations(&models, &migration_models);
         if !operations.is_empty() {
             self.generate_migration_file(
-                migration_processor.next_migration_name()?,
-                modified_models,
+                &migration_processor.next_migration_name()?,
+                &modified_models,
                 operations,
             )?;
         }
@@ -117,7 +117,7 @@ impl MigrationGenerator {
             if let syn::Item::Struct(item) = item {
                 for attr in &item.attrs {
                     if is_model_attr(attr) {
-                        let args = Self::args_from_attr(path, &attr)?;
+                        let args = Self::args_from_attr(path, attr)?;
                         let model_in_source = ModelInSource::from_item(item, &args)?;
 
                         match args.model_type {
@@ -140,7 +140,7 @@ impl MigrationGenerator {
                 .to_string();
             app_state.migrations.push(Migration {
                 app_name: self.crate_name.clone(),
-                migration_name,
+                name: migration_name,
                 models: migration_models,
             });
         }
@@ -148,7 +148,7 @@ impl MigrationGenerator {
         Ok(())
     }
 
-    fn args_from_attr(path: &Path, attr: &&Attribute) -> Result<ModelArgs, ParsingError> {
+    fn args_from_attr(path: &Path, attr: &Attribute) -> Result<ModelArgs, ParsingError> {
         match attr.meta {
             Meta::Path(_) => {
                 // Means `#[model]` without any arguments
@@ -156,9 +156,9 @@ impl MigrationGenerator {
             }
             _ => ModelArgs::from_meta(&attr.meta).map_err(|e| {
                 ParsingError::from_darling(
-                    "couldn't parse model macro arguments".to_string(),
+                    "couldn't parse model macro arguments",
                     path.to_owned(),
-                    e,
+                    &e,
                 )
             }),
         }
@@ -193,7 +193,7 @@ impl MigrationGenerator {
 
             match (app_model, migration_model) {
                 (Some(&app_model), None) => {
-                    operations.push(self.make_create_model_operation(app_model));
+                    operations.push(Self::make_create_model_operation(app_model));
                     modified_models.push(app_model.clone());
                 }
                 (Some(&app_model), Some(&migration_model)) => {
@@ -214,7 +214,7 @@ impl MigrationGenerator {
     }
 
     #[must_use]
-    fn make_create_model_operation(&self, app_model: &ModelInSource) -> DynOperation {
+    fn make_create_model_operation(app_model: &ModelInSource) -> DynOperation {
         DynOperation::CreateModel {
             table_name: app_model.model.table_name.clone(),
             fields: app_model.model.fields.clone(),
@@ -249,7 +249,7 @@ impl MigrationGenerator {
 
             match (app_field, migration_field) {
                 (Some(app_field), None) => {
-                    operations.push(self.make_add_field_operation(app_model, app_field));
+                    operations.push(Self::make_add_field_operation(app_model, app_field));
                 }
                 (Some(app_field), Some(migration_field)) => {
                     let operation = self.make_alter_field_operation(
@@ -274,7 +274,7 @@ impl MigrationGenerator {
     }
 
     #[must_use]
-    fn make_add_field_operation(&self, app_model: &ModelInSource, field: &Field) -> DynOperation {
+    fn make_add_field_operation(app_model: &ModelInSource, field: &Field) -> DynOperation {
         DynOperation::AddField {
             table_name: app_model.model.table_name.clone(),
             field: field.clone(),
@@ -311,8 +311,8 @@ impl MigrationGenerator {
 
     fn generate_migration_file(
         &self,
-        migration_name: String,
-        modified_models: Vec<ModelInSource>,
+        migration_name: &str,
+        modified_models: &[ModelInSource],
         operations: Vec<DynOperation>,
     ) -> anyhow::Result<()> {
         let operations: Vec<_> = operations
@@ -450,21 +450,13 @@ impl MigrationProcessor {
 
         let last_migration = self.migrations.last().unwrap();
         let last_migration_number = last_migration
-            .migration_name
+            .name
             .split('_')
             .nth(1)
-            .with_context(|| {
-                format!(
-                    "migration number not found: {}",
-                    last_migration.migration_name
-                )
-            })?
+            .with_context(|| format!("migration number not found: {}", last_migration.name))?
             .parse::<u32>()
             .with_context(|| {
-                format!(
-                    "unable to parse migration number: {}",
-                    last_migration.migration_name
-                )
+                format!("unable to parse migration number: {}", last_migration.name)
             })?;
 
         let migration_number = last_migration_number + 1;
@@ -530,7 +522,7 @@ impl Repr for Field {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Migration {
     app_name: String,
-    migration_name: String,
+    name: String,
     models: Vec<ModelInSource>,
 }
 
@@ -539,8 +531,8 @@ impl DynMigration for Migration {
         &self.app_name
     }
 
-    fn migration_name(&self) -> &str {
-        &self.migration_name
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn operations(&self) -> &[flareon::db::migrations::Operation] {
@@ -600,7 +592,7 @@ struct ParsingError {
 }
 
 impl ParsingError {
-    fn from_darling(message: String, path: PathBuf, error: darling::Error) -> Self {
+    fn from_darling(message: &str, path: PathBuf, error: &darling::Error) -> Self {
         let message = format!("{message}: {error}");
         let span = error.span();
         let location = format!("{}:{}", span.start().line, span.start().column);

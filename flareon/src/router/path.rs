@@ -126,6 +126,15 @@ impl PathMatcher {
     }
 }
 
+impl Display for PathMatcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for part in &self.parts {
+            write!(f, "{}", part)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub struct ReverseParamMap {
     params: HashMap<String, String>,
@@ -145,6 +154,7 @@ impl ReverseParamMap {
         }
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn insert<K: ToString, V: ToString>(&mut self, key: K, value: V) {
         self.params.insert(key.to_string(), value.to_string());
     }
@@ -170,15 +180,6 @@ macro_rules! reverse_param_map {
 pub enum ReverseError {
     #[error("Missing parameter for reverse: `{0}`")]
     MissingParam(String),
-}
-
-impl Display for PathMatcher {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for part in &self.parts {
-            write!(f, "{part}")?;
-        }
-        Ok(())
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

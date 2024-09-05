@@ -11,6 +11,8 @@ fn test_attr_model() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui/attr_model.rs");
     t.compile_fail("tests/ui/attr_model_migration_invalid_name.rs");
+    t.compile_fail("tests/ui/attr_model_tuple.rs");
+    t.compile_fail("tests/ui/attr_model_enum.rs");
 }
 
 #[rustversion::attr(not(nightly), ignore)]

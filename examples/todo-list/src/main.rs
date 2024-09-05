@@ -6,9 +6,9 @@ use askama::Template;
 use flareon::db::migrations::MigrationEngine;
 use flareon::db::{model, query, Database, Model};
 use flareon::forms::Form;
-use flareon::prelude::{Body, Error, FlareonApp, FlareonProject, Response, Route, StatusCode};
 use flareon::request::Request;
-use flareon::reverse;
+use flareon::router::Route;
+use flareon::{reverse, Body, Error, FlareonApp, FlareonProject, Response, StatusCode};
 use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
@@ -104,8 +104,7 @@ async fn main() {
 
     let todo_project = FlareonProject::builder()
         .register_app_with_views(todo_app, "")
-        .build()
-        .unwrap();
+        .build();
 
     flareon::run(todo_project, "127.0.0.1:8080").await.unwrap();
 }

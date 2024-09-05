@@ -80,7 +80,7 @@ impl AsFormField for String {
         let value = check_required(field)?;
 
         if let Some(max_length) = field.custom_options.max_length {
-            if value.len() as u32 > max_length {
+            if value.len() > max_length as usize {
                 return Err(FormFieldValidationError::maximum_length_exceeded(
                     max_length,
                 ));
@@ -169,7 +169,7 @@ impl AsFormField for Password {
         let value = check_required(field)?;
 
         if let Some(max_length) = field.custom_options.max_length {
-            if value.len() as u32 > max_length {
+            if value.len() > max_length as usize {
                 return Err(FormFieldValidationError::maximum_length_exceeded(
                     max_length,
                 ));
@@ -310,18 +310,23 @@ pub struct BoolFieldOptions {
 
 impl Render for BoolField {
     fn render(&self) -> Html {
+        let mut bool_input = HtmlTag::input("checkbox");
+        bool_input.attr("name", self.id());
+        bool_input.attr("value", "1");
+
+        if self.custom_options.must_be_true.unwrap_or(false) {
+            bool_input.bool_attr("required");
+            return bool_input.render();
+        }
+
         // Web browsers don't send anything when a checkbox is unchecked, so we
         // need to add a hidden input to send a "false" value.
-        let mut tag = HtmlTag::input("hidden");
-        tag.attr("name", self.id());
-        tag.attr("value", "0");
-        let hidden = tag.render();
+        let mut hidden_input = HtmlTag::input("hidden");
+        hidden_input.attr("name", self.id());
+        hidden_input.attr("value", "0");
+        let hidden = hidden_input.render();
 
-        let mut tag = HtmlTag::input("checkbox");
-        tag.attr("name", self.id());
-        tag.attr("value", "1");
-        let checkbox = tag.render();
-
+        let checkbox = bool_input.render();
         format!("{}{}", hidden.as_str(), checkbox.as_str()).into()
     }
 }
@@ -433,5 +438,164 @@ impl HtmlTag {
 
         result.push_str(" />");
         result.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use super::*;
+
+    #[test]
+    fn test_string_field_render() {
+        let field = StringField::with_options(
+            FormFieldOptions {
+                id: "test".to_owned(),
+                required: true,
+            },
+            StringFieldOptions {
+                max_length: Some(10),
+            },
+        );
+        let html = field.render().to_string();
+        assert!(html.contains("type=\"text\""));
+        assert!(html.contains("required"));
+        assert!(html.contains("maxlength=\"10\""));
+    }
+
+    #[test]
+    fn test_password_field_render() {
+        let field = PasswordField::with_options(
+            FormFieldOptions {
+                id: "test".to_owned(),
+                required: true,
+            },
+            PasswordFieldOptions {
+                max_length: Some(10),
+            },
+        );
+        let html = field.render().to_string();
+        assert!(html.contains("type=\"password\""));
+        assert!(html.contains("required"));
+        assert!(html.contains("maxlength=\"10\""));
+    }
+
+    #[test]
+    fn test_integer_field_render() {
+        let field = IntegerField::<i32>::with_options(
+            FormFieldOptions {
+                id: "test".to_owned(),
+                required: true,
+            },
+            IntegerFieldOptions {
+                min: Some(1),
+                max: Some(10),
+            },
+        );
+        let html = field.render().to_string();
+        assert!(html.contains("type=\"number\""));
+        assert!(html.contains("required"));
+        assert!(html.contains("min=\"1\""));
+        assert!(html.contains("max=\"10\""));
+    }
+
+    #[test]
+    fn test_bool_field_render() {
+        let field = BoolField::with_options(
+            FormFieldOptions {
+                id: "test".to_owned(),
+                required: true,
+            },
+            BoolFieldOptions {
+                must_be_true: Some(false),
+            },
+        );
+        let html = field.render().to_string();
+        assert!(html.contains("type=\"checkbox\""));
+        assert!(html.contains("type=\"hidden\""));
+        assert!(!html.contains("required"));
+    }
+
+    #[test]
+    fn test_bool_field_render_must_be_true() {
+        let field = BoolField::with_options(
+            FormFieldOptions {
+                id: "test".to_owned(),
+                required: true,
+            },
+            BoolFieldOptions {
+                must_be_true: Some(true),
+            },
+        );
+        let html = field.render().to_string();
+        assert!(html.contains("type=\"checkbox\""));
+        assert!(!html.contains("type=\"hidden\""));
+        assert!(html.contains("required"));
+    }
+
+    #[test]
+    fn test_string_field_clean_value() {
+        let mut field = StringField::with_options(
+            FormFieldOptions {
+                id: "test".to_owned(),
+                required: true,
+            },
+            StringFieldOptions {
+                max_length: Some(10),
+            },
+        );
+        field.set_value(Cow::Borrowed("test"));
+        let value = String::clean_value(&field).unwrap();
+        assert_eq!(value, "test");
+    }
+
+    #[test]
+    fn test_password_field_clean_value() {
+        let mut field = PasswordField::with_options(
+            FormFieldOptions {
+                id: "test".to_owned(),
+                required: true,
+            },
+            PasswordFieldOptions {
+                max_length: Some(10),
+            },
+        );
+        field.set_value(Cow::Borrowed("password"));
+        let value = Password::clean_value(&field).unwrap();
+        assert_eq!(value.as_str(), "password");
+    }
+
+    #[test]
+    fn test_integer_field_clean_value() {
+        let mut field = IntegerField::<i32>::with_options(
+            FormFieldOptions {
+                id: "test".to_owned(),
+                required: true,
+            },
+            IntegerFieldOptions {
+                min: Some(1),
+                max: Some(10),
+            },
+        );
+        field.set_value(Cow::Borrowed("5"));
+        let value = i32::clean_value(&field).unwrap();
+        assert_eq!(value, 5);
+    }
+
+    #[test]
+    fn test_bool_field_clean_value() {
+        let mut field = BoolField::with_options(
+            FormFieldOptions {
+                id: "test".to_owned(),
+                required: true,
+            },
+            BoolFieldOptions {
+                must_be_true: Some(true),
+            },
+        );
+        field.set_value(Cow::Borrowed("true"));
+        let value = bool::clean_value(&field).unwrap();
+        assert!(value);
     }
 }

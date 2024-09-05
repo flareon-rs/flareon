@@ -99,8 +99,8 @@ pub enum FormErrorTarget<'a> {
 ///
 /// #[derive(Form)]
 /// struct MyForm {
-///    #[form(opt(max_length = 100))]
-///    name: String,
+///     #[form(opt(max_length = 100))]
+///     name: String,
 /// }
 /// ```
 #[async_trait]
@@ -157,6 +157,10 @@ pub trait FormContext: Sized {
         -> impl DoubleEndedIterator<Item = &dyn DynFormField> + ExactSizeIterator + '_;
 
     /// Sets the value of a form field.
+    ///
+    /// # Errors
+    ///
+    /// This method should return an error if the value is invalid.
     fn set_value(
         &mut self,
         field_id: &str,
@@ -259,8 +263,18 @@ impl<T: FormField> DynFormField for T {
 /// field. It provides a way to clean the value of the field, which is used to
 /// validate the field's value before converting to the final type.
 pub trait AsFormField {
+    /// The form field type associated with the field.
     type Type: FormField;
 
+    /// Creates a new form field with the given options and custom options.
+    ///
+    /// This method is used to create a new instance of the form field with the
+    /// given options and custom options. The options are used to set the
+    /// properties of the field, such as the ID and whether the field is
+    /// required.
+    ///
+    /// The custom options are unique to each field type and are used to set
+    /// additional properties of the field.
     fn new_field(
         options: FormFieldOptions,
         custom_options: <Self::Type as FormField>::CustomOptions,
@@ -268,6 +282,13 @@ pub trait AsFormField {
         Self::Type::with_options(options, custom_options)
     }
 
+    /// Validates the value of the field and converts it to the final type. This
+    /// method should return an error if the value is invalid.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the value fails to validate or convert to the final
+    /// type
     fn clean_value(field: &Self::Type) -> Result<Self, FormFieldValidationError>
     where
         Self: Sized;

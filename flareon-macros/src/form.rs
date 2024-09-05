@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use darling::{FromDeriveInput, FromField};
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 
 use crate::flareon_ident;
 
-pub(super) fn impl_form_for_struct(ast: syn::DeriveInput) -> TokenStream {
-    let opts = match FormOpts::from_derive_input(&ast) {
+pub(super) fn impl_form_for_struct(ast: &syn::DeriveInput) -> TokenStream {
+    let opts = match FormOpts::from_derive_input(ast) {
         Ok(val) => val,
         Err(err) => {
             return err.write_errors();
@@ -69,9 +69,9 @@ struct Field {
 
 #[derive(Debug)]
 struct FormDeriveBuilder {
-    name: Ident,
-    context_struct_name: Ident,
-    context_struct_errors_name: Ident,
+    name: syn::Ident,
+    context_struct_name: syn::Ident,
+    context_struct_errors_name: syn::Ident,
     fields_as_struct_fields: Vec<TokenStream>,
     fields_as_struct_fields_new: Vec<TokenStream>,
     fields_as_context_from_request: Vec<TokenStream>,

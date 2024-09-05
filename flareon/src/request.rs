@@ -4,7 +4,8 @@ use std::sync::Arc;
 use bytes::Bytes;
 use indexmap::IndexMap;
 
-use crate::{Error, FlareonProject, FORM_CONTENT_TYPE};
+use crate::headers::FORM_CONTENT_TYPE;
+use crate::{Error, FlareonProject};
 
 #[derive(Debug)]
 pub struct Request {
@@ -53,8 +54,22 @@ impl Request {
         self.inner.headers().get(axum::http::header::CONTENT_TYPE)
     }
 
+    /// Get the request body as bytes. If the request method is GET or HEAD, the
+    /// query string is returned. Otherwise, if the request content type is
+    /// `application/x-www-form-urlencoded`, then the body is read and returned.
+    /// Otherwise, an error is thrown.
+    ///
+    /// # Errors
+    ///
+    /// Throws an error if the request method is not GET or HEAD and the content
+    /// type is not `application/x-www-form-urlencoded`.
+    /// Throws an error if the request body could not be read.
+    ///
+    /// # Returns
+    ///
+    /// The request body as bytes.
     pub async fn form_data(&mut self) -> Result<Bytes, Error> {
-        if self.method() == axum::http::Method::GET {
+        if self.method() == axum::http::Method::GET || self.method() == axum::http::Method::HEAD {
             if let Some(query) = self.inner.uri().query() {
                 return Ok(Bytes::copy_from_slice(query.as_bytes()));
             }

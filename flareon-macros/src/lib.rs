@@ -24,7 +24,7 @@ use crate::query::{query_to_tokens, Query};
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as syn::DeriveInput);
-    let token_stream = impl_form_for_struct(ast);
+    let token_stream = impl_form_for_struct(&ast);
     token_stream.into()
 }
 
@@ -37,7 +37,7 @@ pub fn model(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
     let ast = parse_macro_input!(input as syn::DeriveInput);
-    let token_stream = impl_model_for_struct(attr_args, ast);
+    let token_stream = impl_model_for_struct(&attr_args, &ast);
     token_stream.into()
 }
 

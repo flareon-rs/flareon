@@ -187,6 +187,26 @@ impl BindingPriority<u8, u8> {
 
 type InfixBindingPriority = BindingPriority<u8, u8>;
 
+/// A parsed expression.
+///
+/// This type represents a parsed expression that can be used to generate code.
+///
+/// # Examples
+///
+/// ```
+/// use flareon_codegen::expr::Expr;
+/// use quote::quote;
+/// use syn::parse_quote;
+///
+/// let expr = Expr::parse(quote! { $field == 42 }).unwrap();
+/// assert_eq!(
+///     expr,
+///     Expr::Eq(
+///         Box::new(Expr::FieldRef(parse_quote!(field))),
+///         Box::new(Expr::Value(parse_quote!(42)))
+///     )
+/// );
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     FieldRef(syn::Ident),
@@ -207,6 +227,11 @@ pub enum Expr {
 }
 
 impl Expr {
+    /// Parse an [`Expr`] from the given token stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the input is not a valid expression.
     pub fn parse(input: TokenStream) -> syn::Result<Self> {
         syn::parse2::<Expr>(input)
     }

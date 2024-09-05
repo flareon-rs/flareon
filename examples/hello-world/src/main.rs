@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use flareon::prelude::{Body, Error, FlareonApp, FlareonProject, Response, StatusCode};
 use flareon::request::Request;
 use flareon::router::Route;
+use flareon::{Body, Error, FlareonApp, FlareonProject, Response, StatusCode};
 
 async fn return_hello(_request: Request) -> Result<Response, Error> {
     Ok(Response::new_html(
@@ -20,8 +20,7 @@ async fn main() {
 
     let flareon_project = FlareonProject::builder()
         .register_app_with_views(hello_app, "")
-        .build()
-        .unwrap();
+        .build();
 
     flareon::run(flareon_project, "127.0.0.1:8000")
         .await

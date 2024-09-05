@@ -1,5 +1,5 @@
-pub mod db_sqlite;
 mod fields;
+pub mod impl_sqlite;
 pub mod migrations;
 pub mod query;
 
@@ -16,7 +16,7 @@ use sea_query_binder::SqlxBinder;
 use sqlx::{Type, TypeInfo};
 use thiserror::Error;
 
-use crate::db::db_sqlite::{DatabaseSqlite, SqliteRow, SqliteValueRef};
+use crate::db::impl_sqlite::{DatabaseSqlite, SqliteRow, SqliteValueRef};
 
 /// An error that can occur when interacting with the database.
 #[derive(Debug, Error)]
@@ -52,8 +52,8 @@ pub type Result<T> = std::result::Result<T, DatabaseError>;
 ///
 /// #[model]
 /// struct MyModel {
-///    id: i32,
-///    name: String,
+///     id: i32,
+///     name: String,
 /// }
 /// ```
 #[async_trait]
@@ -73,6 +73,11 @@ pub trait Model: Sized + Send {
     const COLUMNS: &'static [Column];
 
     /// Creates a model instance from a database row.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the data in the row is not compatible
+    /// with the model.
     fn from_db(db_row: Row) -> Result<Self>;
 
     /// Gets the values of the model for the given columns.
@@ -85,6 +90,11 @@ pub trait Model: Sized + Send {
     }
 
     /// Saves the model to the database.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the model could not be saved to the
+    /// database.
     async fn save(&mut self, db: &Database) -> Result<()> {
         db.insert(self).await?;
         Ok(())
@@ -166,6 +176,16 @@ pub enum Row {
 }
 
 impl Row {
+    /// Gets the value at the given index and converts it to the given type.
+    /// The index is zero-based.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the value at the given index is not
+    /// compatible with the Rust type.
+    ///
+    /// This can also return an error if the index is out of bounds of the row
+    /// returned by the database.
     pub fn get<T: FromDbValue>(&self, index: usize) -> Result<T> {
         let result = match self {
             Row::Sqlite(sqlite_row) => sqlite_row
@@ -177,12 +197,18 @@ impl Row {
     }
 }
 
-pub trait DbField: FromDbValue + ToDbValue {
+pub trait DatbaseField: FromDbValue + ToDbValue {
     const TYPE: ColumnType;
 }
 
 /// A trait for converting a database value to a Rust value.
 pub trait FromDbValue: Sized {
+    /// Converts the given `SQLite` database value to a Rust value.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the value is not compatible with the
+    /// Rust type.
     fn from_sqlite(value: SqliteValueRef) -> Result<Self>;
 }
 
@@ -240,6 +266,28 @@ enum DatabaseImpl {
 }
 
 impl Database {
+    /// Creates a new database connection. The connection string should be in
+    /// the format of the database URL.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the connection to the database could
+    /// not be established.
+    ///
+    /// This method can return an error if the database URL is not supported.
+    ///
+    /// This method can return an error if the database URL is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flareon::db::Database;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let db = Database::new("sqlite::memory:").await.unwrap();
+    /// }
+    /// ```
     pub async fn new<T: Into<String>>(url: T) -> Result<Self> {
         let url = url.into();
         let db = if url.starts_with("sqlite:") {
@@ -255,12 +303,41 @@ impl Database {
         Ok(db)
     }
 
+    /// Closes the database connection.
+    ///
+    /// This method should be called when the database connection is no longer
+    /// needed. The connection is closed and the resources are released.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the connection to the database could
+    /// not be closed gracefully, for instance because the connection has
+    /// already been dropped.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flareon::db::Database;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let db = Database::new("sqlite::memory:").await.unwrap();
+    ///     db.close().await.unwrap();
+    /// }
+    /// ```
     pub async fn close(self) -> Result<()> {
         match self.inner {
             DatabaseImpl::Sqlite(inner) => inner.close().await,
         }
     }
 
+    /// Inserts a new row into the database.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the row could not be inserted into
+    /// the database, for instance because the migrations haven't been
+    /// applied, or there was a problem with the database connection.
     pub async fn insert<T: Model>(&self, data: &mut T) -> Result<()> {
         let non_auto_column_identifiers = T::COLUMNS
             .iter()
@@ -291,7 +368,7 @@ impl Database {
             .returning_col(Identifier::new("id"))
             .to_owned();
 
-        let row = self.fetch_one(insert_statement).await?;
+        let row = self.fetch_one(&insert_statement).await?;
         let id = row.get::<i64>(0)?;
 
         debug!("Inserted row with id: {}", id);
@@ -299,38 +376,72 @@ impl Database {
         Ok(())
     }
 
+    /// Executes the given query and returns the results converted to the model
+    /// type.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the query is invalid.
+    ///
+    /// This method can return an error if the data in the database is not
+    /// compatible with the model (usually meaning the migrations haven't been
+    /// generated or applied).
+    ///
+    /// Can return an error if the database connection is lost.
     pub async fn query<T: Model>(&self, query: &Query<T>) -> Result<Vec<T>> {
         let columns_to_get: Vec<_> = T::COLUMNS.iter().map(|column| column.name).collect();
         let mut select = sea_query::Query::select();
         select.columns(columns_to_get).from(T::TABLE_NAME);
         query.modify_statement(&mut select);
 
-        let rows = self.fetch_all(select).await?;
+        let rows = self.fetch_all(&select).await?;
         let result = rows.into_iter().map(T::from_db).collect::<Result<_>>()?;
 
         Ok(result)
     }
 
+    /// Returns whether a row exists that matches the given query.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the query is invalid.
+    ///
+    /// This method can return an error if the model doesn't exist in the
+    /// database (usually meaning the migrations haven't been generated or
+    /// applied).
+    ///
+    /// Can return an error if the database connection is lost.
     pub async fn exists<T: Model>(&self, query: &Query<T>) -> Result<bool> {
         let mut select = sea_query::Query::select();
         select.expr(sea_query::Expr::value(1)).from(T::TABLE_NAME);
         query.modify_statement(&mut select);
         select.limit(1);
 
-        let rows = self.fetch_option(select).await?;
+        let rows = self.fetch_option(&select).await?;
 
         Ok(rows.is_some())
     }
 
+    /// Deletes all rows that match the given query.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the query is invalid.
+    ///
+    /// This method can return an error if the model doesn't exist in the
+    /// database (usually meaning the migrations haven't been generated or
+    /// applied).
+    ///
+    /// Can return an error if the database connection is lost.
     pub async fn delete<T: Model>(&self, query: &Query<T>) -> Result<StatementResult> {
         let mut delete = sea_query::Query::delete();
         delete.from_table(T::TABLE_NAME);
         query.modify_statement(&mut delete);
 
-        self.execute_statement(delete).await
+        self.execute_statement(&delete).await
     }
 
-    async fn fetch_one<T>(&self, statement: T) -> Result<Row>
+    async fn fetch_one<T>(&self, statement: &T) -> Result<Row>
     where
         T: SqlxBinder,
     {
@@ -341,7 +452,7 @@ impl Database {
         Ok(result)
     }
 
-    async fn fetch_option<T>(&self, statement: T) -> Result<Option<Row>>
+    async fn fetch_option<T>(&self, statement: &T) -> Result<Option<Row>>
     where
         T: SqlxBinder,
     {
@@ -352,7 +463,7 @@ impl Database {
         Ok(result)
     }
 
-    async fn fetch_all<T>(&self, statement: T) -> Result<Vec<Row>>
+    async fn fetch_all<T>(&self, statement: &T) -> Result<Vec<Row>>
     where
         T: SqlxBinder,
     {
@@ -368,7 +479,7 @@ impl Database {
         Ok(result)
     }
 
-    async fn execute_statement<T>(&self, statement: T) -> Result<StatementResult>
+    async fn execute_statement<T>(&self, statement: &T) -> Result<StatementResult>
     where
         T: SqlxBinder,
     {
@@ -409,6 +520,7 @@ impl StatementResult {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deref, Display)]
 pub struct RowsNum(pub u64);
 
+/// A type that represents a column type in the database.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ColumnType {
     Boolean,

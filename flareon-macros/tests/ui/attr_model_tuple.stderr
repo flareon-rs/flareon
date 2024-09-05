@@ -1,0 +1,7 @@
+error: Unsupported shape `unnamed fields`. Expected named fields.
+ --> tests/ui/attr_model_tuple.rs:3:1
+  |
+3 | #[model]
+  | ^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `model` (in Nightly builds, run with -Z macro-backtrace for more info)

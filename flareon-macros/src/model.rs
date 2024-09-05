@@ -7,15 +7,15 @@ use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use crate::flareon_ident;
 
 #[must_use]
-pub(super) fn impl_model_for_struct(args: Vec<NestedMeta>, ast: syn::DeriveInput) -> TokenStream {
-    let args = match ModelArgs::from_list(&args) {
+pub(super) fn impl_model_for_struct(args: &[NestedMeta], ast: &syn::DeriveInput) -> TokenStream {
+    let args = match ModelArgs::from_list(args) {
         Ok(v) => v,
         Err(e) => {
             return e.write_errors();
         }
     };
 
-    let opts = match ModelOpts::from_derive_input(&ast) {
+    let opts = match ModelOpts::from_derive_input(ast) {
         Ok(val) => val,
         Err(err) => {
             return err.write_errors();

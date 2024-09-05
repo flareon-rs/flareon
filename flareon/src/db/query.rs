@@ -6,6 +6,23 @@ use sea_query::IntoColumnRef;
 use crate::db;
 use crate::db::{Database, FromDbValue, Identifier, Model, StatementResult, ToDbValue};
 
+/// A query that can be executed on a database. Can be used to filter, update,
+/// or delete rows.
+///
+/// # Example
+/// ```
+/// use flareon::db::model;
+/// use flareon::db::query::Query;
+///
+/// #[model]
+/// struct User {
+///     id: i32,
+///     name: String,
+///     age: i32,
+/// }
+///
+/// let query = Query::<User>::new();
+/// ```
 #[derive(Debug)]
 pub struct Query<T> {
     filter: Option<Expr>,
@@ -19,6 +36,22 @@ impl<T: Model> Default for Query<T> {
 }
 
 impl<T: Model> Query<T> {
+    /// Create a new query.
+    ///
+    /// # Example
+    /// ```
+    /// use flareon::db::model;
+    /// use flareon::db::query::Query;
+    ///
+    /// #[model]
+    /// struct User {
+    ///     id: i32,
+    ///     name: String,
+    ///     age: i32,
+    /// }
+    ///
+    /// let query = Query::<User>::new();
+    /// ```
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -27,19 +60,50 @@ impl<T: Model> Query<T> {
         }
     }
 
+    /// Set the filter expression for the query.
+    ///
+    /// # Example
+    /// ```
+    /// use flareon::db::model;
+    /// use flareon::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct User {
+    ///     id: i32,
+    ///     name: String,
+    ///     age: i32,
+    /// }
+    ///
+    /// let query = Query::<User>::new().filter(Expr::eq(Expr::field("name"), Expr::value("John")));
+    /// ```
     pub fn filter(&mut self, filter: Expr) -> &mut Self {
         self.filter = Some(filter);
         self
     }
 
+    /// Execute the query and return all results.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
     pub async fn all(&self, db: &Database) -> db::Result<Vec<T>> {
         db.query(self).await
     }
 
+    /// Execute the query and check if any results exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
     pub async fn exists(&self, db: &Database) -> db::Result<bool> {
         db.exists(self).await
     }
 
+    /// Delete all rows that match the query.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
     pub async fn delete(&self, db: &Database) -> db::Result<StatementResult> {
         db.delete(self).await
     }
@@ -66,54 +130,152 @@ pub enum Expr {
 }
 
 impl Expr {
+    /// Create a new field expression. This represents a reference to a column
+    /// in the database.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::db::query::Expr;
+    ///
+    /// let expr = Expr::field("name");
+    /// ```
     #[must_use]
     pub fn field<T: Into<Identifier>>(identifier: T) -> Self {
         Self::Field(identifier.into())
     }
 
+    /// Create a new value expression. This represents a literal value that gets
+    /// passed into the SQL query.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::db::query::Expr;
+    ///
+    /// let expr = Expr::value(30);
+    /// ```
     #[must_use]
     pub fn value<T: ToDbValue + 'static>(value: T) -> Self {
         Self::Value(Box::new(value))
     }
 
+    /// Create a new `AND` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::db::query::Expr;
+    ///
+    /// let expr = Expr::and(
+    ///     Expr::eq(Expr::field("name"), Expr::value("John")),
+    ///     Expr::eq(Expr::field("age"), Expr::value(30)),
+    /// );
+    /// ```
     #[must_use]
     pub fn and(lhs: Self, rhs: Self) -> Self {
         Self::And(Box::new(lhs), Box::new(rhs))
     }
 
+    /// Create a new `OR` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::db::query::Expr;
+    ///
+    /// let expr = Expr::or(
+    ///     Expr::eq(Expr::field("name"), Expr::value("John")),
+    ///     Expr::eq(Expr::field("age"), Expr::value(30)),
+    /// );
+    /// ```
     #[must_use]
     pub fn or(lhs: Self, rhs: Self) -> Self {
         Self::Or(Box::new(lhs), Box::new(rhs))
     }
 
+    /// Create a new `=` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::db::query::Expr;
+    ///
+    /// let expr = Expr::eq(Expr::field("name"), Expr::value("John"));
+    /// ```
     #[must_use]
     pub fn eq(lhs: Self, rhs: Self) -> Self {
         Self::Eq(Box::new(lhs), Box::new(rhs))
     }
 
+    /// Create a new `!=` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::db::query::Expr;
+    ///
+    /// let expr = Expr::ne(Expr::field("name"), Expr::value("John"));
+    /// ```
     #[must_use]
     pub fn ne(lhs: Self, rhs: Self) -> Self {
         Self::Ne(Box::new(lhs), Box::new(rhs))
     }
 
+    /// Create a new `+` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::db::query::Expr;
+    ///
+    /// let expr = Expr::add(Expr::field("age"), Expr::value(10));
+    /// ```
     #[allow(clippy::should_implement_trait)]
     #[must_use]
     pub fn add(lhs: Self, rhs: Self) -> Self {
         Self::Add(Box::new(lhs), Box::new(rhs))
     }
 
+    /// Create a new `-` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::db::query::Expr;
+    ///
+    /// let expr = Expr::sub(Expr::field("age"), Expr::value(10));
+    /// ```
     #[allow(clippy::should_implement_trait)]
     #[must_use]
     pub fn sub(lhs: Self, rhs: Self) -> Self {
         Self::Sub(Box::new(lhs), Box::new(rhs))
     }
 
+    /// Create a new `*` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::db::query::Expr;
+    ///
+    /// let expr = Expr::mul(Expr::field("amount"), Expr::value(5));
+    /// ```
     #[allow(clippy::should_implement_trait)]
     #[must_use]
     pub fn mul(lhs: Self, rhs: Self) -> Self {
         Self::Mul(Box::new(lhs), Box::new(rhs))
     }
 
+    /// Create a new `/` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::db::query::Expr;
+    ///
+    /// let expr = Expr::div(Expr::field("amount"), Expr::value(5));
+    /// ```
     #[allow(clippy::should_implement_trait)]
     #[must_use]
     pub fn div(lhs: Self, rhs: Self) -> Self {
@@ -137,6 +299,11 @@ impl Expr {
     }
 }
 
+/// A reference to a field in a database table.
+///
+/// This is used to create expressions that reference a specific column in a
+/// table with a specific type. This allows for type-safe creation of queries
+/// with some common operators like `=`, `!=`, `+`, `-`, `*`, and `/`.
 #[derive(Debug)]
 pub struct FieldRef<T> {
     identifier: Identifier,
@@ -144,6 +311,7 @@ pub struct FieldRef<T> {
 }
 
 impl<T: FromDbValue + ToDbValue> FieldRef<T> {
+    /// Create a new field reference.
     #[must_use]
     pub const fn new(identifier: Identifier) -> Self {
         Self {
@@ -154,12 +322,14 @@ impl<T: FromDbValue + ToDbValue> FieldRef<T> {
 }
 
 impl<T> FieldRef<T> {
+    /// Returns the field reference as an [`Expr`].
     #[must_use]
     pub fn as_expr(&self) -> Expr {
         Expr::Field(self.identifier)
     }
 }
 
+/// A trait for types that can be compared in database expressions.
 pub trait ExprEq<T> {
     fn eq<V: Into<T>>(self, other: V) -> Expr;
 
@@ -176,18 +346,22 @@ impl<T: ToDbValue + 'static> ExprEq<T> for FieldRef<T> {
     }
 }
 
+/// A trait for database types that can be added to each other.
 pub trait ExprAdd<T> {
     fn add<V: Into<T>>(self, other: V) -> Expr;
 }
 
+/// A trait for database types that can be subtracted from each other.
 pub trait ExprSub<T> {
     fn sub<V: Into<T>>(self, other: V) -> Expr;
 }
 
+/// A trait for database types that can be multiplied by each other.
 pub trait ExprMul<T> {
     fn mul<V: Into<T>>(self, other: V) -> Expr;
 }
 
+/// A trait for database types that can be divided by each other.
 pub trait ExprDiv<T> {
     fn div<V: Into<T>>(self, other: V) -> Expr;
 }
