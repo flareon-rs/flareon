@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use flareon::request::Request;
 use flareon::router::Route;
 use flareon::{Body, Error, FlareonApp, FlareonProject, Response, StatusCode};
@@ -14,7 +12,7 @@ async fn return_hello(_request: Request) -> Result<Response, Error> {
 #[tokio::main]
 async fn main() {
     let hello_app = FlareonApp::builder()
-        .urls([Route::with_handler("", Arc::new(Box::new(return_hello)))])
+        .urls([Route::with_handler("", return_hello)])
         .build()
         .unwrap();
 

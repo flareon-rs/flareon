@@ -1,7 +1,5 @@
 mod migrations;
 
-use std::sync::Arc;
-
 use askama::Template;
 use flareon::db::migrations::MigrationEngine;
 use flareon::db::{model, query, Database, Model};
@@ -91,13 +89,9 @@ async fn main() {
 
     let todo_app = FlareonApp::builder()
         .urls([
-            Route::with_handler_and_name("/", Arc::new(Box::new(index)), "index"),
-            Route::with_handler_and_name("/todos/add", Arc::new(Box::new(add_todo)), "add-todo"),
-            Route::with_handler_and_name(
-                "/todos/:todo_id/remove",
-                Arc::new(Box::new(remove_todo)),
-                "remove-todo",
-            ),
+            Route::with_handler_and_name("/", index, "index"),
+            Route::with_handler_and_name("/todos/add", add_todo, "add-todo"),
+            Route::with_handler_and_name("/todos/:todo_id/remove", remove_todo, "remove-todo"),
         ])
         .build()
         .unwrap();
