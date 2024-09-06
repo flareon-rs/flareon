@@ -138,23 +138,23 @@ pub struct Route {
 
 impl Route {
     #[must_use]
-    pub fn with_handler(url: &str, view: Arc<Box<dyn RequestHandler + Send + Sync>>) -> Self {
+    pub fn with_handler<V: RequestHandler + Send + Sync + 'static>(url: &str, view: V) -> Self {
         Self {
             url: Arc::new(PathMatcher::new(url)),
-            view: RouteInner::Handler(view),
+            view: RouteInner::Handler(Arc::new(Box::new(view))),
             name: None,
         }
     }
 
     #[must_use]
-    pub fn with_handler_and_name<T: Into<String>>(
+    pub fn with_handler_and_name<T: Into<String>, V: RequestHandler + Send + Sync + 'static>(
         url: &str,
-        view: Arc<Box<dyn RequestHandler + Send + Sync>>,
+        view: V,
         name: T,
     ) -> Self {
         Self {
             url: Arc::new(PathMatcher::new(url)),
-            view: RouteInner::Handler(view),
+            view: RouteInner::Handler(Arc::new(Box::new(view))),
             name: Some(name.into()),
         }
     }
@@ -242,14 +242,14 @@ mod tests {
 
     #[test]
     fn test_router_with_urls() {
-        let route = Route::with_handler("/test", Arc::new(Box::new(MockHandler)));
+        let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         assert_eq!(router.routes().len(), 1);
     }
 
     #[tokio::test]
     async fn test_router_route() {
-        let route = Route::with_handler("/test", Arc::new(Box::new(MockHandler)));
+        let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         let response = router.route(test_request(), "/test").await.unwrap();
         assert_eq!(response.status, StatusCode::OK);
@@ -257,7 +257,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_router_handle() {
-        let route = Route::with_handler("/test", Arc::new(Box::new(MockHandler)));
+        let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         let response = router.handle(test_request()).await.unwrap();
         assert_eq!(response.status, StatusCode::OK);
@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_router_reverse() {
-        let route = Route::with_handler_and_name("/test", Arc::new(Box::new(MockHandler)), "test");
+        let route = Route::with_handler_and_name("/test", MockHandler, "test");
         let router = Router::with_urls(vec![route.clone()]);
         let params = ReverseParamMap::new();
         let url = router.reverse("test", &params).unwrap();
@@ -274,8 +274,7 @@ mod tests {
 
     #[test]
     fn test_router_reverse_with_param() {
-        let route =
-            Route::with_handler_and_name("/test/:id", Arc::new(Box::new(MockHandler)), "test");
+        let route = Route::with_handler_and_name("/test/:id", MockHandler, "test");
         let router = Router::with_urls(vec![route.clone()]);
         let mut params = ReverseParamMap::new();
         params.insert("id", "123");
@@ -285,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_router_reverse_option() {
-        let route = Route::with_handler_and_name("/test", Arc::new(Box::new(MockHandler)), "test");
+        let route = Route::with_handler_and_name("/test", MockHandler, "test");
         let router = Router::with_urls(vec![route.clone()]);
         let params = ReverseParamMap::new();
         let url = router.reverse_option("test", &params).unwrap().unwrap();
@@ -294,7 +293,7 @@ mod tests {
 
     #[test]
     fn test_router_routes() {
-        let route = Route::with_handler("/test", Arc::new(Box::new(MockHandler)));
+        let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         assert_eq!(router.routes().len(), 1);
     }
@@ -307,26 +306,26 @@ mod tests {
 
     #[test]
     fn test_route_with_handler() {
-        let route = Route::with_handler("/test", Arc::new(Box::new(MockHandler)));
+        let route = Route::with_handler("/test", MockHandler);
         assert_eq!(route.url.to_string(), "/test");
     }
 
     #[test]
     fn test_route_with_handler_and_params() {
-        let route = Route::with_handler("/test/:id", Arc::new(Box::new(MockHandler)));
+        let route = Route::with_handler("/test/:id", MockHandler);
         assert_eq!(route.url.to_string(), "/test/:id");
     }
 
     #[test]
     fn test_route_with_handler_and_name() {
-        let route = Route::with_handler_and_name("/test", Arc::new(Box::new(MockHandler)), "test");
+        let route = Route::with_handler_and_name("/test", MockHandler, "test");
         assert_eq!(route.url.to_string(), "/test");
         assert_eq!(route.name.as_deref(), Some("test"));
     }
 
     #[test]
     fn test_route_with_router() {
-        let sub_route = Route::with_handler("/sub", Arc::new(Box::new(MockHandler)));
+        let sub_route = Route::with_handler("/sub", MockHandler);
         let sub_router = Router::with_urls(vec![sub_route]);
         let route = Route::with_router("/test", sub_router);
         assert_eq!(route.url.to_string(), "/test");
