@@ -72,9 +72,7 @@ impl MigrationEngine {
     ///
     /// # #[tokio::main]
     /// # async fn main() -> Result<()> {
-    /// let migrations = vec![MyMigration];
-    ///
-    /// let engine = MigrationEngine::new(migrations);
+    /// let engine = MigrationEngine::new([MyMigration]);
     /// let database = Database::new("sqlite::memory:").await?;
     /// engine.run(&database).await?;
     /// # Ok(())

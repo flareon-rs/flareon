@@ -167,7 +167,7 @@ impl ReverseParamMap {
 
 #[macro_export]
 macro_rules! reverse_param_map {
-    ( $($key:expr => $value:expr),* ) => {{
+    ($($key:expr => $value:expr),*) => {{
         let mut map = $crate::router::path::ReverseParamMap::new();
         $(
             map.insert($key, $value);

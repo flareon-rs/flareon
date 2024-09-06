@@ -11,7 +11,7 @@ use crate::forms::{AsFormField, FormField, FormFieldOptions, FormFieldValidation
 use crate::{Html, Render};
 
 macro_rules! impl_form_field {
-    ($field_type_name:ident, $field_options_type_name:ident, $purpose:literal $(, $generic_param:ident $(: $generic_param_bound:ident $(+ $generic_param_bound_more:ident)*)? )?) => {
+    ($field_type_name:ident, $field_options_type_name:ident, $purpose:literal $(, $generic_param:ident $(: $generic_param_bound:ident $(+ $generic_param_bound_more:ident)*)?)?) => {
         #[derive(Debug)]
         #[doc = concat!("A form field for ", $purpose, ".")]
         pub struct $field_type_name $(<$generic_param>)? {
