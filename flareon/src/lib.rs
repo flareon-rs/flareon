@@ -239,6 +239,8 @@ pub async fn run(mut project: FlareonProject, address_str: &str) -> Result<()> {
             .await
             .unwrap_or_else(handle_response_error)
     };
+
+    eprintln!("Starting the server at http://{}", address_str);
     axum::serve(listener, handler.into_make_service())
         .await
         .map_err(|e| Error::StartServer { source: e })?;
