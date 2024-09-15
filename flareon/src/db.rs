@@ -1,3 +1,8 @@
+//! Database support along with migration engine and ORM.
+//!
+//! This module contains the database connection structure, the model trait, and
+//! the error types that can occur when interacting with the database.
+
 mod fields;
 pub mod impl_sqlite;
 pub mod migrations;
