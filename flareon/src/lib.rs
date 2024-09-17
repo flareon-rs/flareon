@@ -23,8 +23,9 @@ pub mod router;
 
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
-use std::io::Read;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use axum::handler::HandlerWithoutStateExt;
@@ -32,7 +33,9 @@ use bytes::Bytes;
 use derive_builder::Builder;
 use derive_more::{Deref, From};
 pub use error::Error;
+use futures_core::Stream;
 use headers::{CONTENT_TYPE_HEADER, HTML_CONTENT_TYPE, LOCATION_HEADER};
+use http_body::{Frame, SizeHint};
 use indexmap::IndexMap;
 use log::info;
 use request::Request;
@@ -135,7 +138,7 @@ impl Response {
 
 pub enum Body {
     Fixed(Bytes),
-    Streaming(Box<dyn Read>),
+    Streaming(Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>),
 }
 
 impl Debug for Body {
@@ -156,6 +159,54 @@ impl Body {
     #[must_use]
     pub fn fixed<T: Into<Bytes>>(data: T) -> Self {
         Self::Fixed(data.into())
+    }
+
+    #[must_use]
+    pub fn streaming<T: Stream<Item = Result<Bytes>> + Send + 'static>(stream: T) -> Self {
+        Self::Streaming(Box::pin(stream))
+    }
+}
+
+impl http_body::Body for Body {
+    type Data = Bytes;
+    type Error = Error;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<std::result::Result<Frame<Self::Data>, Self::Error>>> {
+        match self.get_mut() {
+            Body::Fixed(ref mut data) => {
+                if data.is_empty() {
+                    Poll::Ready(None)
+                } else {
+                    let data = std::mem::take(data);
+                    Poll::Ready(Some(Ok(Frame::data(data))))
+                }
+            }
+            Body::Streaming(ref mut stream) => {
+                let stream = Pin::as_mut(stream);
+                match stream.poll_next(cx) {
+                    Poll::Ready(Some(result)) => Poll::Ready(Some(result.map(Frame::data))),
+                    Poll::Ready(None) => Poll::Ready(None),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        match self {
+            Body::Fixed(data) => data.is_empty(),
+            Body::Streaming(_) => false,
+        }
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        match self {
+            Body::Fixed(data) => SizeHint::with_exact(data.len() as u64),
+            Body::Streaming(_) => SizeHint::new(),
+        }
     }
 }
 
@@ -224,15 +275,33 @@ impl FlareonProject {
 /// # Errors
 ///
 /// This function returns an error if the server fails to start.
-pub async fn run(mut project: FlareonProject, address_str: &str) -> Result<()> {
+pub async fn run(project: FlareonProject, address_str: &str) -> Result<()> {
+    let listener = tokio::net::TcpListener::bind(address_str)
+        .await
+        .map_err(|e| Error::StartServer { source: e })?;
+
+    run_at(project, listener).await
+}
+
+/// Runs the Flareon project.
+///
+/// This function takes a Flareon project and a [`tokio::net::TcpListener`] and
+/// runs the project on the given listener.
+///
+/// If you need more control over the server listening socket, such as modifying
+/// the underlying buffer sizes, you can create a [`tokio::net::TcpListener`]
+/// and pass it to this function. Otherwise, [`run`] function will be more
+/// convenient.
+///
+/// # Errors
+///
+/// This function returns an error if the server fails to start.
+pub async fn run_at(mut project: FlareonProject, listener: tokio::net::TcpListener) -> Result<()> {
     for app in &mut project.apps {
         info!("Initializing app: {:?}", app);
     }
 
     let project = Arc::new(project);
-    let listener = tokio::net::TcpListener::bind(address_str)
-        .await
-        .map_err(|e| Error::StartServer { source: e })?;
 
     let handler = |request: axum::extract::Request| async move {
         pass_to_axum(&project, Request::new(request, project.clone()))
@@ -240,7 +309,12 @@ pub async fn run(mut project: FlareonProject, address_str: &str) -> Result<()> {
             .unwrap_or_else(handle_response_error)
     };
 
-    eprintln!("Starting the server at http://{address_str}");
+    eprintln!(
+        "Starting the server at http://{}",
+        listener
+            .local_addr()
+            .map_err(|e| Error::StartServer { source: e })?
+    );
     axum::serve(listener, handler.into_make_service())
         .await
         .map_err(|e| Error::StartServer { source: e })?;
@@ -258,10 +332,7 @@ async fn pass_to_axum(
     for (key, value) in response.headers {
         builder = builder.header(key, value);
     }
-    let axum_response = builder.body(match response.body {
-        Body::Fixed(data) => axum::body::Body::from(data),
-        Body::Streaming(_) => unimplemented!(),
-    });
+    let axum_response = builder.body(axum::body::Body::new(response.body));
 
     match axum_response {
         Ok(response) => Ok(response),

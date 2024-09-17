@@ -332,13 +332,12 @@ mod tests {
     }
 
     fn test_request() -> Request {
-        let request = Request::new(
+        Request::new(
             axum::http::Request::builder()
                 .uri("/test")
                 .body(axum::body::Body::empty())
                 .unwrap(),
             Arc::new(FlareonProject::builder().build()),
-        );
-        request
+        )
     }
 }
