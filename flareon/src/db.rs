@@ -202,7 +202,7 @@ impl Row {
     }
 }
 
-pub trait DatbaseField: FromDbValue + ToDbValue {
+pub trait DatabaseField: FromDbValue + ToDbValue {
     const TYPE: ColumnType;
 }
 

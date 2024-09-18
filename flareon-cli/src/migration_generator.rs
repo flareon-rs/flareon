@@ -507,7 +507,7 @@ impl Repr for Field {
         let column_name = &self.column_name;
         let ty = &self.ty;
         let mut tokens = quote! {
-            ::flareon::db::migrations::Field::new(::flareon::db::Identifier::new(#column_name), <#ty as ::flareon::db::DbField>::TYPE)
+            ::flareon::db::migrations::Field::new(::flareon::db::Identifier::new(#column_name), <#ty as ::flareon::db::DatabaseField>::TYPE)
         };
         if self.auto_value {
             tokens = quote! { #tokens.auto() }

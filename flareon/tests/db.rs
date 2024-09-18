@@ -1,7 +1,7 @@
 use fake::{Dummy, Fake, Faker};
 use flareon::db::migrations::{Field, Operation};
 use flareon::db::query::ExprEq;
-use flareon::db::{model, query, Database, DatbaseField, Identifier, Model};
+use flareon::db::{model, query, Database, DatabaseField, Identifier, Model};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -70,10 +70,10 @@ async fn migrate_test_model(db: &Database) {
 const CREATE_TEST_MODEL: Operation = Operation::create_model()
     .table_name(Identifier::new("test_model"))
     .fields(&[
-        Field::new(Identifier::new("id"), <i32 as DatbaseField>::TYPE)
+        Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
             .primary_key()
             .auto(),
-        Field::new(Identifier::new("name"), <String as DatbaseField>::TYPE),
+        Field::new(Identifier::new("name"), <String as DatabaseField>::TYPE),
     ])
     .build();
 
@@ -81,13 +81,13 @@ macro_rules! all_fields_migration_field {
     ($name:ident, $ty:ty) => {
         Field::new(
             Identifier::new(concat!("field_", stringify!($name))),
-            <$ty as DatbaseField>::TYPE,
+            <$ty as DatabaseField>::TYPE,
         )
     };
     ($ty:ty) => {
         Field::new(
             Identifier::new(concat!("field_", stringify!($ty))),
-            <$ty as DatbaseField>::TYPE,
+            <$ty as DatabaseField>::TYPE,
         )
     };
 }
@@ -125,7 +125,7 @@ async fn migrate_all_fields_model(db: &Database) {
 const CREATE_ALL_FIELDS_MODEL: Operation = Operation::create_model()
     .table_name(Identifier::new("all_fields_model"))
     .fields(&[
-        Field::new(Identifier::new("id"), <i32 as DatbaseField>::TYPE)
+        Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
             .primary_key()
             .auto(),
         all_fields_migration_field!(bool),

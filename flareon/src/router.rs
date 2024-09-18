@@ -172,7 +172,7 @@ impl Route {
 fn handle_not_found() -> Response {
     Response::new_html(
         StatusCode::NOT_FOUND,
-        Body::Fixed(Bytes::from("404 Not Found")),
+        Body::fixed(Bytes::from("404 Not Found")),
     )
 }
 
@@ -235,7 +235,7 @@ mod tests {
         async fn handle(&self, _request: Request) -> Result<Response> {
             Ok(Response::new_html(
                 StatusCode::OK,
-                Body::Fixed(Bytes::from("OK")),
+                Body::fixed(Bytes::from("OK")),
             ))
         }
     }

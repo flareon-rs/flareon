@@ -1,11 +1,11 @@
-use flareon::db::DatbaseField;
+use flareon::db::DatabaseField;
 use sea_query::Value;
 
 use crate::db::{ColumnType, FromDbValue, Result, SqliteValueRef, SqlxValueRef, ToDbValue};
 
 macro_rules! impl_db_field {
     ($ty:ty, $column_type:ident) => {
-        impl DatbaseField for $ty {
+        impl DatabaseField for $ty {
             const TYPE: ColumnType = ColumnType::$column_type;
         }
 

@@ -5,7 +5,7 @@ use flareon_macros::{model, query};
 use log::info;
 use sea_query::ColumnDef;
 
-use crate::db::{ColumnType, Database, DatbaseField, Identifier, Result};
+use crate::db::{ColumnType, Database, DatabaseField, Identifier, Result};
 
 /// A migration engine that can run migrations.
 #[derive(Debug)]
@@ -51,7 +51,7 @@ impl MigrationEngine {
     ///
     /// ```
     /// use flareon::db::migrations::{Field, Migration, MigrationEngine, Operation};
-    /// use flareon::db::{Database, DatbaseField, Identifier};
+    /// use flareon::db::{Database, DatabaseField, Identifier};
     /// use flareon::Result;
     ///
     /// struct MyMigration;
@@ -62,10 +62,10 @@ impl MigrationEngine {
     ///     const OPERATIONS: &'static [Operation] = &[Operation::create_model()
     ///         .table_name(Identifier::new("todoapp__my_model"))
     ///         .fields(&[
-    ///             Field::new(Identifier::new("id"), <i32 as DatbaseField>::TYPE)
+    ///             Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
     ///                 .primary_key()
     ///                 .auto(),
-    ///             Field::new(Identifier::new("app"), <String as DatbaseField>::TYPE),
+    ///             Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE),
     ///         ])
     ///         .build()];
     /// }
@@ -137,26 +137,41 @@ impl MigrationEngine {
 
 /// A migration operation that can be run forwards or backwards.
 ///
-/// The preferred way to create an operation is to use the
-/// `Operation::create_model`, `Operation::add_field`, etc. methods, as they
-/// provide backwards compatibility in case the `Operation` struct is changed in
-/// the future.
+/// # Examples
+///
+/// ```
+/// use flareon::db::migrations::{Field, Migration, MigrationEngine, Operation};
+/// use flareon::db::{Database, DatabaseField, Identifier};
+/// use flareon::Result;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<()> {
+/// const OPERATION: Operation = Operation::create_model()
+///     .table_name(Identifier::new("todoapp__my_model"))
+///     .fields(&[
+///         Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
+///             .primary_key()
+///             .auto(),
+///         Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE),
+///     ])
+///     .build();
+///
+/// let database = Database::new("sqlite::memory:").await?;
+/// OPERATION.forwards(&database).await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Copy, Clone)]
-pub enum Operation {
-    /// Create a new model with the given fields.
-    CreateModel {
-        table_name: Identifier,
-        fields: &'static [Field],
-        if_not_exists: bool,
-    },
-    /// Add a new field to an existing model.
-    AddField {
-        table_name: Identifier,
-        field: Field,
-    },
+pub struct Operation {
+    inner: OperationInner,
 }
 
 impl Operation {
+    #[must_use]
+    const fn new(inner: OperationInner) -> Self {
+        Self { inner }
+    }
+
     /// Returns a builder for an operation that creates a model.
     #[must_use]
     pub const fn create_model() -> CreateModelBuilder {
@@ -179,7 +194,7 @@ impl Operation {
     ///
     /// ```
     /// use flareon::db::migrations::{Field, Migration, MigrationEngine, Operation};
-    /// use flareon::db::{Database, DatbaseField, Identifier};
+    /// use flareon::db::{Database, DatabaseField, Identifier};
     /// use flareon::Result;
     ///
     /// # #[tokio::main]
@@ -187,10 +202,10 @@ impl Operation {
     /// const OPERATION: Operation = Operation::create_model()
     ///     .table_name(Identifier::new("todoapp__my_model"))
     ///     .fields(&[
-    ///         Field::new(Identifier::new("id"), <i32 as DatbaseField>::TYPE)
+    ///         Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
     ///             .primary_key()
     ///             .auto(),
-    ///         Field::new(Identifier::new("app"), <String as DatbaseField>::TYPE),
+    ///         Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE),
     ///     ])
     ///     .build();
     ///
@@ -200,8 +215,8 @@ impl Operation {
     /// # }
     /// ```
     pub async fn forwards(&self, database: &Database) -> Result<()> {
-        match self {
-            Self::CreateModel {
+        match &self.inner {
+            OperationInner::CreateModel {
                 table_name,
                 fields,
                 if_not_exists,
@@ -215,7 +230,7 @@ impl Operation {
                 }
                 database.execute_schema(query).await?;
             }
-            Self::AddField { table_name, field } => {
+            OperationInner::AddField { table_name, field } => {
                 let query = sea_query::Table::alter()
                     .table(*table_name)
                     .add_column(ColumnDef::from(field))
@@ -237,7 +252,7 @@ impl Operation {
     ///
     /// ```
     /// use flareon::db::migrations::{Field, Migration, MigrationEngine, Operation};
-    /// use flareon::db::{Database, DatbaseField, Identifier};
+    /// use flareon::db::{Database, DatabaseField, Identifier};
     /// use flareon::Result;
     ///
     /// # #[tokio::main]
@@ -245,10 +260,10 @@ impl Operation {
     /// const OPERATION: Operation = Operation::create_model()
     ///     .table_name(Identifier::new("todoapp__my_model"))
     ///     .fields(&[
-    ///         Field::new(Identifier::new("id"), <i32 as DatbaseField>::TYPE)
+    ///         Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
     ///             .primary_key()
     ///             .auto(),
-    ///         Field::new(Identifier::new("app"), <String as DatbaseField>::TYPE),
+    ///         Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE),
     ///     ])
     ///     .build();
     ///
@@ -259,8 +274,8 @@ impl Operation {
     /// # }
     /// ```
     pub async fn backwards(&self, database: &Database) -> Result<()> {
-        match self {
-            Self::CreateModel {
+        match &self.inner {
+            OperationInner::CreateModel {
                 table_name,
                 fields: _,
                 if_not_exists: _,
@@ -268,7 +283,7 @@ impl Operation {
                 let query = sea_query::Table::drop().table(*table_name).to_owned();
                 database.execute_schema(query).await?;
             }
-            Self::AddField { table_name, field } => {
+            OperationInner::AddField { table_name, field } => {
                 let query = sea_query::Table::alter()
                     .table(*table_name)
                     .drop_column(field.name)
@@ -278,6 +293,21 @@ impl Operation {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+enum OperationInner {
+    /// Create a new model with the given fields.
+    CreateModel {
+        table_name: Identifier,
+        fields: &'static [Field],
+        if_not_exists: bool,
+    },
+    /// Add a new field to an existing model.
+    AddField {
+        table_name: Identifier,
+        field: Field,
+    },
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -394,11 +424,11 @@ impl CreateModelBuilder {
 
     #[must_use]
     pub const fn build(self) -> Operation {
-        Operation::CreateModel {
+        Operation::new(OperationInner::CreateModel {
             table_name: unwrap_builder_option!(self, table_name),
             fields: unwrap_builder_option!(self, fields),
             if_not_exists: self.if_not_exists,
-        }
+        })
     }
 }
 
@@ -437,10 +467,10 @@ impl AddFieldBuilder {
 
     #[must_use]
     pub const fn build(self) -> Operation {
-        Operation::AddField {
+        Operation::new(OperationInner::AddField {
             table_name: unwrap_builder_option!(self, table_name),
             field: unwrap_builder_option!(self, field),
-        }
+        })
     }
 }
 
@@ -553,14 +583,14 @@ struct AppliedMigration {
 const APPLIED_MIGRATION_MIGRATION: Operation = Operation::create_model()
     .table_name(Identifier::new("flareon__migrations"))
     .fields(&[
-        Field::new(Identifier::new("id"), <i32 as DatbaseField>::TYPE)
+        Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
             .primary_key()
             .auto(),
-        Field::new(Identifier::new("app"), <String as DatbaseField>::TYPE),
-        Field::new(Identifier::new("name"), <String as DatbaseField>::TYPE),
+        Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE),
+        Field::new(Identifier::new("name"), <String as DatabaseField>::TYPE),
         Field::new(
             Identifier::new("applied"),
-            <chrono::DateTime<chrono::FixedOffset> as DatbaseField>::TYPE,
+            <chrono::DateTime<chrono::FixedOffset> as DatabaseField>::TYPE,
         ),
     ])
     .if_not_exists()

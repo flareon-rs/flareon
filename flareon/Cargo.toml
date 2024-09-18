@@ -27,5 +27,7 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+async-stream.workspace = true
 fake.workspace = true
+futures.workspace = true
 rand.workspace = true

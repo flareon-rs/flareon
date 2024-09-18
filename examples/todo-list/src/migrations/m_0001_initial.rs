@@ -10,13 +10,13 @@ impl ::flareon::db::migrations::Migration for Migration {
             .fields(&[
                 ::flareon::db::migrations::Field::new(
                     ::flareon::db::Identifier::new("id"),
-                    <i32 as ::flareon::db::DatbaseField>::TYPE,
+                    <i32 as ::flareon::db::DatabaseField>::TYPE,
                 )
                 .auto()
                 .primary_key(),
                 ::flareon::db::migrations::Field::new(
                     ::flareon::db::Identifier::new("title"),
-                    <String as ::flareon::db::DatbaseField>::TYPE,
+                    <String as ::flareon::db::DatabaseField>::TYPE,
                 ),
             ])
             .build()];
