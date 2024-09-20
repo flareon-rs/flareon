@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use axum::http::StatusCode;
 use bytes::Bytes;
@@ -126,6 +129,26 @@ impl Router {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.urls.is_empty()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RouterService {
+    router: Arc<Router>,
+}
+
+impl tower::Service<Request> for RouterService {
+    type Error = Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
+    type Response = Response;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<std::result::Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        let router = self.router.clone();
+        Box::pin(async move { router.handle(req).await })
     }
 }
 
@@ -333,7 +356,7 @@ mod tests {
 
     fn test_request() -> Request {
         Request::new(
-            axum::http::Request::builder()
+            http::Request::builder()
                 .uri("/test")
                 .body(axum::body::Body::empty())
                 .unwrap(),

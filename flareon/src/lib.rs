@@ -45,7 +45,7 @@ use router::{Route, Router};
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// A type alias for an HTTP status code.
-pub type StatusCode = axum::http::StatusCode;
+pub type StatusCode = http::StatusCode;
 
 #[async_trait]
 pub trait RequestHandler {
@@ -384,7 +384,7 @@ async fn pass_to_axum(
 ) -> Result<axum::response::Response> {
     let response = project.router.handle(request).await?;
 
-    let mut builder = axum::http::Response::builder().status(response.status);
+    let mut builder = http::Response::builder().status(response.status);
     for (key, value) in response.headers {
         builder = builder.header(key, value);
     }

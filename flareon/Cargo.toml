@@ -16,6 +16,7 @@ derive_more.workspace = true
 flareon_macros.workspace = true
 form_urlencoded.workspace = true
 futures-core.workspace = true
+http.workspace = true
 http-body.workspace = true
 indexmap.workspace = true
 log.workspace = true
@@ -25,6 +26,7 @@ sea-query.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tower.workspace = true
 
 [dev-dependencies]
 async-stream.workspace = true

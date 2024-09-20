@@ -35,23 +35,23 @@ impl Request {
     }
 
     #[must_use]
-    pub fn uri(&self) -> &axum::http::Uri {
+    pub fn uri(&self) -> &http::Uri {
         self.inner.uri()
     }
 
     #[must_use]
-    pub fn method(&self) -> &axum::http::Method {
+    pub fn method(&self) -> &http::Method {
         self.inner.method()
     }
 
     #[must_use]
-    pub fn headers(&self) -> &axum::http::HeaderMap {
+    pub fn headers(&self) -> &http::HeaderMap {
         self.inner.headers()
     }
 
     #[must_use]
-    pub fn content_type(&self) -> Option<&axum::http::HeaderValue> {
-        self.inner.headers().get(axum::http::header::CONTENT_TYPE)
+    pub fn content_type(&self) -> Option<&http::HeaderValue> {
+        self.inner.headers().get(http::header::CONTENT_TYPE)
     }
 
     /// Get the request body as bytes. If the request method is GET or HEAD, the
@@ -69,7 +69,7 @@ impl Request {
     ///
     /// The request body as bytes.
     pub async fn form_data(&mut self) -> Result<Bytes, Error> {
-        if self.method() == axum::http::Method::GET || self.method() == axum::http::Method::HEAD {
+        if self.method() == http::Method::GET || self.method() == http::Method::HEAD {
             if let Some(query) = self.inner.uri().query() {
                 return Ok(Bytes::copy_from_slice(query.as_bytes()));
             }
@@ -91,7 +91,7 @@ impl Request {
         let content_type = self
             .content_type()
             .map_or("".into(), |value| String::from_utf8_lossy(value.as_bytes()));
-        if self.content_type() == Some(&axum::http::HeaderValue::from_static(expected)) {
+        if self.content_type() == Some(&http::HeaderValue::from_static(expected)) {
             Ok(())
         } else {
             Err(Error::InvalidContentType {

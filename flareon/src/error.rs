@@ -21,7 +21,7 @@ pub enum Error {
     },
     /// Could not create a response object.
     #[error("Could not create a response object: {0}")]
-    ResponseBuilder(#[from] axum::http::Error),
+    ResponseBuilder(#[from] http::Error),
     /// `reverse` was called on a route that does not exist.
     #[error("Failed to reverse route `{view_name}` due to view not existing")]
     NoViewToReverse { view_name: String },
