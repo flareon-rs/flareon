@@ -6,8 +6,8 @@ use async_trait::async_trait;
 pub use flareon_macros::Form;
 use thiserror::Error;
 
-use crate::request::Request;
-use crate::{Html, Render};
+use crate::request::{Request, RequestExt};
+use crate::{request, Html, Render};
 
 /// Error occurred while processing a form.
 #[derive(Debug, Error)]
@@ -121,7 +121,7 @@ pub trait Form: Sized {
         let mut context = Self::Context::new();
         let mut has_errors = false;
 
-        for (field_id, value) in Request::query_pairs(&form_data) {
+        for (field_id, value) in request::query_pairs(&form_data) {
             let field_id = field_id.as_ref();
 
             if let Err(err) = context.set_value(field_id, value) {

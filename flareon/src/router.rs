@@ -9,9 +9,10 @@ use axum::http::StatusCode;
 use bytes::Bytes;
 use log::debug;
 
-use crate::request::Request;
+use crate::request::{Request, RequestExt};
+use crate::response::{Response, ResponseExt};
 use crate::router::path::{PathMatcher, ReverseParamMap};
-use crate::{Body, Error, RequestHandler, Response, Result};
+use crate::{Body, Error, RequestHandler, Result};
 
 pub mod path;
 
@@ -44,7 +45,7 @@ impl Router {
                 let matches_fully = matches.matches_fully();
                 for param in matches.params {
                     request
-                        .path_params
+                        .path_params_mut()
                         .insert(param.name.to_owned(), param.value);
                 }
 
@@ -217,12 +218,13 @@ impl Debug for RouteInner {
 /// Reverse a URL for a view by name and given params.
 #[macro_export]
 macro_rules! reverse_str {
-    ($request:expr, $view_name:literal $(, $($key:expr => $value:expr),*)?) => {
+    ($request:expr, $view_name:literal $(, $($key:expr => $value:expr),*)?) => {{
+        use $crate::request::RequestExt;
         $request
             .project()
             .router()
             .reverse($view_name, &$crate::reverse_param_map!($( $($key => $value),* )?))?
-    };
+    }};
 }
 
 /// Reverse a URL for a view by name and given params and return a response with
@@ -233,7 +235,7 @@ macro_rules! reverse_str {
 #[macro_export]
 macro_rules! reverse {
     ($request:expr, $view_name:literal $(, $($key:expr => $value:expr),*)?) => {
-        $crate::Response::new_redirect($crate::reverse_str!(
+        $crate::response::Response::new_redirect($crate::reverse_str!(
             $request,
             $view_name,
             $( $($key => $value),* )?
@@ -275,7 +277,7 @@ mod tests {
         let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         let response = router.route(test_request(), "/test").await.unwrap();
-        assert_eq!(response.status, StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]
@@ -283,7 +285,7 @@ mod tests {
         let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         let response = router.handle(test_request()).await.unwrap();
-        assert_eq!(response.status, StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[test]
@@ -355,12 +357,13 @@ mod tests {
     }
 
     fn test_request() -> Request {
-        Request::new(
-            http::Request::builder()
-                .uri("/test")
-                .body(axum::body::Body::empty())
-                .unwrap(),
-            Arc::new(FlareonProject::builder().build()),
-        )
+        let mut request = http::Request::builder()
+            .uri("/test")
+            .body(Body::empty())
+            .unwrap();
+        request
+            .extensions_mut()
+            .insert(Arc::new(FlareonProject::builder().build()));
+        request
     }
 }
