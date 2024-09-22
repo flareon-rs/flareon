@@ -4,9 +4,10 @@ use askama::Template;
 use flareon::db::migrations::MigrationEngine;
 use flareon::db::{model, query, Database, Model};
 use flareon::forms::Form;
-use flareon::request::Request;
+use flareon::request::{Request, RequestExt};
+use flareon::response::{Response, ResponseExt};
 use flareon::router::Route;
-use flareon::{reverse, Body, Error, FlareonApp, FlareonProject, Response, StatusCode};
+use flareon::{reverse, Body, Error, FlareonApp, FlareonProject, StatusCode};
 use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
@@ -64,7 +65,10 @@ async fn add_todo(mut request: Request) -> Result<Response, Error> {
 }
 
 async fn remove_todo(request: Request) -> Result<Response, Error> {
-    let todo_id = request.path_param("todo_id").expect("todo_id not found");
+    let todo_id = request
+        .path_params()
+        .get("todo_id")
+        .expect("todo_id not found");
     let todo_id = todo_id.parse::<i32>().expect("todo_id is not a number");
 
     {

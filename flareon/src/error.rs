@@ -11,8 +11,11 @@ pub enum Error {
     #[error("Could not retrieve request body: {source}")]
     ReadRequestBody {
         #[from]
-        source: axum::Error,
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
+    /// An error occurred while trying to convert a response.
+    #[error("Could not convert response: {source}")]
+    ResponseConversion { source: axum::Error },
     /// The request body had an invalid `Content-Type` header.
     #[error("Invalid content type; expected {expected}, found {actual}")]
     InvalidContentType {

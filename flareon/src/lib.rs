@@ -19,6 +19,7 @@ mod headers;
 #[doc(hidden)]
 pub mod private;
 pub mod request;
+pub mod response;
 pub mod router;
 
 use std::fmt::{Debug, Formatter};
@@ -34,12 +35,12 @@ use derive_builder::Builder;
 use derive_more::{Deref, From};
 pub use error::Error;
 use futures_core::Stream;
-use headers::{CONTENT_TYPE_HEADER, HTML_CONTENT_TYPE, LOCATION_HEADER};
 use http_body::{Frame, SizeHint};
-use indexmap::IndexMap;
 use log::info;
 use request::Request;
 use router::{Route, Router};
+
+use crate::response::Response;
 
 /// A type alias for a result that can return a `flareon::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -98,48 +99,10 @@ impl FlareonAppBuilder {
     }
 }
 
-type HeadersMap = IndexMap<String, String>;
-
-#[derive(Debug)]
-pub struct Response {
-    status: StatusCode,
-    headers: HeadersMap,
-    body: Body,
-}
-
-impl Response {
-    #[must_use]
-    pub fn new_html(status: StatusCode, body: Body) -> Self {
-        Self {
-            status,
-            headers: Self::html_headers(),
-            body,
-        }
-    }
-
-    #[must_use]
-    pub fn new_redirect<T: Into<String>>(location: T) -> Self {
-        let mut headers = HeadersMap::new();
-        headers.insert(LOCATION_HEADER.to_owned(), location.into());
-        Self {
-            status: StatusCode::SEE_OTHER,
-            headers,
-            body: Body::empty(),
-        }
-    }
-
-    #[must_use]
-    fn html_headers() -> HeadersMap {
-        let mut headers = HeadersMap::new();
-        headers.insert(CONTENT_TYPE_HEADER.to_owned(), HTML_CONTENT_TYPE.to_owned());
-        headers
-    }
-}
-
-/// A type that represents an HTTP response body.
+/// A type that represents an HTTP request or response body.
 ///
-/// This type is used to represent the body of an HTTP response. It can be
-/// either a fixed body (e.g., a string or a byte array) or a streaming body
+/// This type is used to represent the body of an HTTP request/response. It can
+/// be either a fixed body (e.g., a string or a byte array) or a streaming body
 /// (e.g., a large file or a database query result).
 ///
 /// # Examples
@@ -158,6 +121,7 @@ pub struct Body {
 enum BodyInner {
     Fixed(Bytes),
     Streaming(Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>),
+    Axum(axum::body::Body),
 }
 
 impl Debug for BodyInner {
@@ -165,6 +129,7 @@ impl Debug for BodyInner {
         match self {
             Self::Fixed(data) => f.debug_tuple("Fixed").field(data).finish(),
             Self::Streaming(_) => f.debug_tuple("Streaming").field(&"...").finish(),
+            Self::Axum(axum_body) => f.debug_tuple("Axum").field(axum_body).finish(),
         }
     }
 }
@@ -221,6 +186,17 @@ impl Body {
     pub fn streaming<T: Stream<Item = Result<Bytes>> + Send + 'static>(stream: T) -> Self {
         Self::new(BodyInner::Streaming(Box::pin(stream)))
     }
+
+    #[must_use]
+    fn axum(inner: axum::body::Body) -> Self {
+        Self::new(BodyInner::Axum(inner))
+    }
+}
+
+impl Default for Body {
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 impl http_body::Body for Body {
@@ -248,6 +224,13 @@ impl http_body::Body for Body {
                     Poll::Pending => Poll::Pending,
                 }
             }
+            BodyInner::Axum(ref mut axum_body) => {
+                Pin::new(axum_body)
+                    .poll_frame(cx)
+                    .map_err(|error| Error::ReadRequestBody {
+                        source: Box::new(error),
+                    })
+            }
         }
     }
 
@@ -255,6 +238,7 @@ impl http_body::Body for Body {
         match &self.inner {
             BodyInner::Fixed(data) => data.is_empty(),
             BodyInner::Streaming(_) => false,
+            BodyInner::Axum(axum_body) => axum_body.is_end_stream(),
         }
     }
 
@@ -262,6 +246,7 @@ impl http_body::Body for Body {
         match &self.inner {
             BodyInner::Fixed(data) => SizeHint::with_exact(data.len() as u64),
             BodyInner::Streaming(_) => SizeHint::new(),
+            BodyInner::Axum(axum_body) => axum_body.size_hint(),
         }
     }
 }
@@ -359,8 +344,10 @@ pub async fn run_at(mut project: FlareonProject, listener: tokio::net::TcpListen
 
     let project = Arc::new(project);
 
-    let handler = |request: axum::extract::Request| async move {
-        pass_to_axum(&project, Request::new(request, project.clone()))
+    let handler = |axum_request: axum::extract::Request| async move {
+        let request = request_axum_to_flareon(&project, axum_request);
+
+        pass_to_axum(&project, request)
             .await
             .unwrap_or_else(handle_response_error)
     };
@@ -378,22 +365,28 @@ pub async fn run_at(mut project: FlareonProject, listener: tokio::net::TcpListen
     Ok(())
 }
 
+fn request_axum_to_flareon(
+    project: &Arc<FlareonProject>,
+    axum_request: axum::extract::Request,
+) -> Request {
+    let (parts, body) = axum_request.into_parts();
+    let mut request = Request::from_parts(parts, Body::axum(body));
+    request.extensions_mut().insert(project.clone());
+
+    request
+}
+
 async fn pass_to_axum(
     project: &Arc<FlareonProject>,
     request: Request,
 ) -> Result<axum::response::Response> {
     let response = project.router.handle(request).await?;
 
-    let mut builder = http::Response::builder().status(response.status);
-    for (key, value) in response.headers {
-        builder = builder.header(key, value);
-    }
-    let axum_response = builder.body(axum::body::Body::new(response.body));
-
-    match axum_response {
-        Ok(response) => Ok(response),
-        Err(error) => Err(Error::ResponseBuilder(error)),
-    }
+    let (parts, body) = response.into_parts();
+    Ok(http::Response::from_parts(
+        parts,
+        axum::body::Body::new(body),
+    ))
 }
 
 /// A trait for types that can be used to render them as HTML.
@@ -436,25 +429,6 @@ mod tests {
     fn test_flareon_app_builder() {
         let app = FlareonApp::builder().urls([]).build().unwrap();
         assert!(app.router.is_empty());
-    }
-
-    #[test]
-    fn test_response_new_html() {
-        let body = Body::fixed("<html></html>");
-        let response = Response::new_html(StatusCode::OK, body);
-        assert_eq!(response.status, StatusCode::OK);
-        assert_eq!(
-            response.headers.get(CONTENT_TYPE_HEADER).unwrap(),
-            HTML_CONTENT_TYPE
-        );
-    }
-
-    #[test]
-    fn test_response_new_redirect() {
-        let location = "http://example.com";
-        let response = Response::new_redirect(location);
-        assert_eq!(response.status, StatusCode::SEE_OTHER);
-        assert_eq!(response.headers.get(LOCATION_HEADER).unwrap(), location);
     }
 
     #[test]

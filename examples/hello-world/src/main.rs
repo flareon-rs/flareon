@@ -1,6 +1,7 @@
 use flareon::request::Request;
+use flareon::response::{Response, ResponseExt};
 use flareon::router::Route;
-use flareon::{Body, Error, FlareonApp, FlareonProject, Response, StatusCode};
+use flareon::{Body, Error, FlareonApp, FlareonProject, StatusCode};
 
 async fn return_hello(_request: Request) -> Result<Response, Error> {
     Ok(Response::new_html(

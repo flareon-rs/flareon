@@ -18,6 +18,7 @@ form_urlencoded.workspace = true
 futures-core.workspace = true
 http.workspace = true
 http-body.workspace = true
+http-body-util.workspace = true
 indexmap.workspace = true
 log.workspace = true
 regex.workspace = true
