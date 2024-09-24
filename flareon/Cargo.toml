@@ -28,6 +28,7 @@ sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tower.workspace = true
+tower-sessions.workspace = true
 
 [dev-dependencies]
 async-stream.workspace = true

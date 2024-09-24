@@ -3,24 +3,31 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use http_body_util::BodyExt;
 use indexmap::IndexMap;
+use tower_sessions::Session;
 
 use crate::headers::FORM_CONTENT_TYPE;
-use crate::{Body, Error, FlareonProject};
+use crate::router::Router;
+use crate::{Body, Error};
 
 pub type Request = http::Request<Body>;
 
 #[async_trait]
 pub trait RequestExt {
     #[must_use]
-    fn project(&self) -> &FlareonProject;
+    fn router(&self) -> &Router;
 
     #[must_use]
     fn path_params(&self) -> &PathParams;
 
     #[must_use]
     fn path_params_mut(&mut self) -> &mut PathParams;
+
+    #[must_use]
+    fn session(&self) -> &Session;
+
+    #[must_use]
+    fn session_mut(&mut self) -> &mut Session;
 
     /// Get the request body as bytes. If the request method is GET or HEAD, the
     /// query string is returned. Otherwise, if the request content type is
@@ -46,10 +53,10 @@ pub trait RequestExt {
 
 #[async_trait]
 impl RequestExt for Request {
-    fn project(&self) -> &FlareonProject {
+    fn router(&self) -> &Router {
         self.extensions()
-            .get::<Arc<FlareonProject>>()
-            .expect("FlareonProject extension missing")
+            .get::<Arc<Router>>()
+            .expect("Router extension missing")
     }
 
     fn path_params(&self) -> &PathParams {
@@ -59,9 +66,19 @@ impl RequestExt for Request {
     }
 
     fn path_params_mut(&mut self) -> &mut PathParams {
+        self.extensions_mut().get_or_insert_default::<PathParams>()
+    }
+
+    fn session(&self) -> &Session {
+        self.extensions()
+            .get::<Session>()
+            .expect("Session extension missing")
+    }
+
+    fn session_mut(&mut self) -> &mut Session {
         self.extensions_mut()
-            .get_mut::<PathParams>()
-            .expect("PathParams extension missing")
+            .get_mut::<Session>()
+            .expect("Session extension missing")
     }
 
     async fn form_data(&mut self) -> Result<Bytes, Error> {
@@ -75,7 +92,7 @@ impl RequestExt for Request {
             self.expect_content_type(FORM_CONTENT_TYPE)?;
 
             let body = std::mem::take(self.body_mut());
-            let bytes = body_to_bytes(body, usize::MAX).await?;
+            let bytes = body.into_bytes().await?;
 
             Ok(bytes)
         }
@@ -100,7 +117,7 @@ impl RequestExt for Request {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PathParams {
     params: IndexMap<String, String>,
 }
@@ -131,12 +148,4 @@ impl PathParams {
 
 pub(crate) fn query_pairs(bytes: &Bytes) -> impl Iterator<Item = (Cow<str>, Cow<str>)> {
     form_urlencoded::parse(bytes.as_ref())
-}
-
-async fn body_to_bytes(body: Body, limit: usize) -> Result<Bytes, Error> {
-    http_body_util::Limited::new(body, limit)
-        .collect()
-        .await
-        .map(http_body_util::Collected::to_bytes)
-        .map_err(|source| Error::ReadRequestBody { source })
 }

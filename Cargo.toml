@@ -62,4 +62,5 @@ syn = { version = "2.0.74", features = ["full", "extra-traits"] }
 thiserror = "1.0.61"
 tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
 tower = "0.5.1"
+tower-sessions = "0.13.0"
 trybuild = { version = "1.0.99", features = ["diff"] }

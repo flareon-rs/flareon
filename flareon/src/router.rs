@@ -134,13 +134,20 @@ impl Router {
 }
 
 #[derive(Debug, Clone)]
-struct RouterService {
+pub struct RouterService {
     router: Arc<Router>,
+}
+
+impl RouterService {
+    #[must_use]
+    pub fn new(router: Arc<Router>) -> Self {
+        Self { router }
+    }
 }
 
 impl tower::Service<Request> for RouterService {
     type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>>>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response>> + Send>>;
     type Response = Response;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<std::result::Result<(), Self::Error>> {
@@ -221,7 +228,6 @@ macro_rules! reverse_str {
     ($request:expr, $view_name:literal $(, $($key:expr => $value:expr),*)?) => {{
         use $crate::request::RequestExt;
         $request
-            .project()
             .router()
             .reverse($view_name, &$crate::reverse_param_map!($( $($key => $value),* )?))?
     }};

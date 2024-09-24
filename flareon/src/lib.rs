@@ -21,9 +21,10 @@ pub mod private;
 pub mod request;
 pub mod response;
 pub mod router;
+pub mod test;
 
 use std::fmt::{Debug, Formatter};
-use std::future::Future;
+use std::future::{poll_fn, Future};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -34,11 +35,13 @@ use bytes::Bytes;
 use derive_builder::Builder;
 use derive_more::{Deref, From};
 pub use error::Error;
+use flareon::router::RouterService;
 use futures_core::Stream;
 use http_body::{Frame, SizeHint};
 use log::info;
 use request::Request;
 use router::{Route, Router};
+use tower::Service;
 
 use crate::response::Response;
 
@@ -94,6 +97,7 @@ impl FlareonApp {
 impl FlareonAppBuilder {
     #[allow(unused_mut)]
     pub fn urls<T: Into<Vec<Route>>>(&mut self, urls: T) -> &mut Self {
+        // TODO throw error if urls have already been set
         self.router = Some(Router::with_urls(urls.into()));
         self
     }
@@ -187,6 +191,20 @@ impl Body {
         Self::new(BodyInner::Streaming(Box::pin(stream)))
     }
 
+    pub async fn into_bytes(self) -> std::result::Result<Bytes, Error> {
+        self.into_bytes_limited(usize::MAX).await
+    }
+
+    pub async fn into_bytes_limited(self, limit: usize) -> std::result::Result<Bytes, Error> {
+        use http_body_util::BodyExt;
+
+        http_body_util::Limited::new(self, limit)
+            .collect()
+            .await
+            .map(http_body_util::Collected::to_bytes)
+            .map_err(|source| Error::ReadRequestBody { source })
+    }
+
     #[must_use]
     fn axum(inner: axum::body::Body) -> Self {
         Self::new(BodyInner::Axum(inner))
@@ -252,9 +270,11 @@ impl http_body::Body for Body {
 }
 
 #[derive(Clone, Debug)]
-pub struct FlareonProject {
+// TODO add Middleware type?
+pub struct FlareonProject<S> {
     apps: Vec<FlareonApp>,
-    router: Router,
+    router: Arc<Router>,
+    handler: S,
 }
 
 #[derive(Debug)]
@@ -280,12 +300,65 @@ impl FlareonProjectBuilder {
         new
     }
 
+    #[must_use]
+    pub fn middleware<M: tower::Layer<RouterService>>(
+        self,
+        middleware: M,
+    ) -> FlareonProjectBuilderWithMiddleware<M::Service> {
+        self.to_builder_with_middleware().middleware(middleware)
+    }
+
     /// Builds the Flareon project instance.
     #[must_use]
-    pub fn build(&self) -> FlareonProject {
+    pub fn build(&self) -> FlareonProject<RouterService> {
+        self.to_builder_with_middleware().build()
+    }
+
+    #[must_use]
+    fn to_builder_with_middleware(&self) -> FlareonProjectBuilderWithMiddleware<RouterService> {
+        let router = Arc::new(Router::with_urls(self.urls.clone()));
+        let service = RouterService::new(router.clone());
+
+        FlareonProjectBuilderWithMiddleware::new(self.apps.clone(), router, service)
+    }
+}
+
+#[derive(Debug)]
+pub struct FlareonProjectBuilderWithMiddleware<S> {
+    apps: Vec<FlareonApp>,
+    router: Arc<Router>,
+    handler: S,
+}
+
+impl<S: Service<Request>> FlareonProjectBuilderWithMiddleware<S> {
+    #[must_use]
+    fn new(apps: Vec<FlareonApp>, router: Arc<Router>, handler: S) -> Self {
+        Self {
+            apps,
+            router,
+            handler,
+        }
+    }
+
+    #[must_use]
+    pub fn middleware<M: tower::Layer<S>>(
+        self,
+        middleware: M,
+    ) -> FlareonProjectBuilderWithMiddleware<M::Service> {
+        FlareonProjectBuilderWithMiddleware {
+            apps: self.apps,
+            router: self.router,
+            handler: middleware.layer(self.handler),
+        }
+    }
+
+    /// Builds the Flareon project instance.
+    #[must_use]
+    pub fn build(self) -> FlareonProject<S> {
         FlareonProject {
-            apps: self.apps.clone(),
-            router: Router::with_urls(self.urls.clone()),
+            apps: self.apps,
+            router: self.router,
+            handler: self.handler,
         }
     }
 }
@@ -296,12 +369,17 @@ impl Default for FlareonProjectBuilder {
     }
 }
 
-impl FlareonProject {
+impl FlareonProject<()> {
     #[must_use]
     pub fn builder() -> FlareonProjectBuilder {
         FlareonProjectBuilder::default()
     }
+}
 
+impl<S> FlareonProject<S>
+where
+    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
+{
     #[must_use]
     pub fn router(&self) -> &Router {
         &self.router
@@ -316,7 +394,11 @@ impl FlareonProject {
 /// # Errors
 ///
 /// This function returns an error if the server fails to start.
-pub async fn run(project: FlareonProject, address_str: &str) -> Result<()> {
+pub async fn run<S>(project: FlareonProject<S>, address_str: &str) -> Result<()>
+where
+    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
+    S::Future: Send,
+{
     let listener = tokio::net::TcpListener::bind(address_str)
         .await
         .map_err(|e| Error::StartServer { source: e })?;
@@ -337,17 +419,28 @@ pub async fn run(project: FlareonProject, address_str: &str) -> Result<()> {
 /// # Errors
 ///
 /// This function returns an error if the server fails to start.
-pub async fn run_at(mut project: FlareonProject, listener: tokio::net::TcpListener) -> Result<()> {
+pub async fn run_at<S>(
+    mut project: FlareonProject<S>,
+    listener: tokio::net::TcpListener,
+) -> Result<()>
+where
+    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
+    S::Future: Send,
+{
     for app in &mut project.apps {
         info!("Initializing app: {:?}", app);
     }
 
-    let project = Arc::new(project);
+    let FlareonProject {
+        apps: _apps,
+        router,
+        mut handler,
+    } = project;
 
     let handler = |axum_request: axum::extract::Request| async move {
-        let request = request_axum_to_flareon(&project, axum_request);
+        let request = request_axum_to_flareon(axum_request, router.clone());
 
-        pass_to_axum(&project, request)
+        pass_to_axum(request, &mut handler)
             .await
             .unwrap_or_else(handle_response_error)
     };
@@ -365,22 +458,25 @@ pub async fn run_at(mut project: FlareonProject, listener: tokio::net::TcpListen
     Ok(())
 }
 
-fn request_axum_to_flareon(
-    project: &Arc<FlareonProject>,
-    axum_request: axum::extract::Request,
-) -> Request {
+fn request_axum_to_flareon(axum_request: axum::extract::Request, router: Arc<Router>) -> Request {
     let (parts, body) = axum_request.into_parts();
     let mut request = Request::from_parts(parts, Body::axum(body));
-    request.extensions_mut().insert(project.clone());
+    prepare_request(&mut request, router);
 
     request
 }
 
-async fn pass_to_axum(
-    project: &Arc<FlareonProject>,
-    request: Request,
-) -> Result<axum::response::Response> {
-    let response = project.router.handle(request).await?;
+pub(crate) fn prepare_request(request: &mut Request, router: Arc<Router>) {
+    request.extensions_mut().insert(router);
+}
+
+async fn pass_to_axum<S>(request: Request, handler: &mut S) -> Result<axum::response::Response>
+where
+    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
+    S::Future: Send,
+{
+    poll_fn(|cx| handler.poll_ready(cx)).await?;
+    let response = handler.call(request).await?;
 
     let (parts, body) = response.into_parts();
     Ok(http::Response::from_parts(
@@ -412,7 +508,7 @@ impl Html {
 
 #[allow(clippy::needless_pass_by_value)]
 fn handle_response_error(_error: Error) -> axum::response::Response {
-    unimplemented!("500 error handler is not implemented yet")
+    todo!("500 error handler is not implemented yet")
 }
 
 #[cfg(test)]
