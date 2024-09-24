@@ -16,8 +16,10 @@ pub mod db;
 mod error;
 pub mod forms;
 mod headers;
+// Not public API. Referenced by macro-generated code.
 #[doc(hidden)]
-pub mod private;
+#[path = "private.rs"]
+pub mod __private;
 pub mod request;
 pub mod response;
 pub mod router;

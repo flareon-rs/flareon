@@ -148,7 +148,7 @@ impl FormDeriveBuilder {
         let fields_as_from_context = &self.fields_as_from_context;
 
         quote! {
-            #[#crate_ident::private::async_trait]
+            #[#crate_ident::__private::async_trait]
             #[automatically_derived]
             impl #crate_ident::forms::Form for #name {
                 type Context = #context_struct_name;

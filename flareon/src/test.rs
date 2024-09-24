@@ -40,6 +40,6 @@ where
         prepare_request(&mut request, self.project.router.clone());
 
         poll_fn(|cx| self.project.handler.poll_ready(cx)).await?;
-        Ok(self.project.handler.call(request).await?)
+        self.project.handler.call(request).await
     }
 }
