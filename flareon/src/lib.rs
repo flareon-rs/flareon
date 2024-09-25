@@ -20,6 +20,7 @@ mod headers;
 #[doc(hidden)]
 #[path = "private.rs"]
 pub mod __private;
+pub mod middleware;
 pub mod request;
 pub mod response;
 pub mod router;
@@ -52,6 +53,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// A type alias for an HTTP status code.
 pub type StatusCode = http::StatusCode;
+
+/// A type alias for an HTTP method.
+pub type Method = http::Method;
 
 #[async_trait]
 pub trait RequestHandler {
@@ -279,7 +283,7 @@ pub struct FlareonProject<S> {
     handler: S,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FlareonProjectBuilder {
     apps: Vec<FlareonApp>,
     urls: Vec<Route>,
@@ -304,10 +308,12 @@ impl FlareonProjectBuilder {
 
     #[must_use]
     pub fn middleware<M: tower::Layer<RouterService>>(
-        self,
+        &mut self,
         middleware: M,
     ) -> FlareonProjectBuilderWithMiddleware<M::Service> {
-        self.to_builder_with_middleware().middleware(middleware)
+        self.clone()
+            .to_builder_with_middleware()
+            .middleware(middleware)
     }
 
     /// Builds the Flareon project instance.

@@ -36,10 +36,7 @@ async fn index(request: Request) -> Result<Response, Error> {
     };
     let rendered = index_template.render()?;
 
-    Ok(Response::new_html(
-        StatusCode::OK,
-        Body::fixed(rendered.as_bytes().to_vec()),
-    ))
+    Ok(Response::new_html(StatusCode::OK, Body::fixed(rendered)))
 }
 
 #[derive(Debug, Form)]

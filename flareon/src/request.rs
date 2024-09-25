@@ -106,7 +106,7 @@ impl RequestExt for Request {
         let content_type = self
             .content_type()
             .map_or("".into(), |value| String::from_utf8_lossy(value.as_bytes()));
-        if self.content_type() == Some(&http::HeaderValue::from_static(expected)) {
+        if content_type == expected {
             Ok(())
         } else {
             Err(Error::InvalidContentType {

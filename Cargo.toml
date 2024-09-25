@@ -9,6 +9,7 @@ members = [
     # Examples
     "examples/hello-world",
     "examples/todo-list",
+    "examples/sessions",
 ]
 resolver = "2"
 

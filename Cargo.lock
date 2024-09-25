@@ -752,6 +752,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-sessions"
+version = "0.1.0"
+dependencies = [
+ "askama",
+ "flareon",
+ "tokio",
+]
+
+[[package]]
 name = "example-todo-list"
 version = "0.1.0"
 dependencies = [

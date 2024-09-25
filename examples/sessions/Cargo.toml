@@ -1,0 +1,11 @@
+[package]
+name = "example-sessions"
+version = "0.1.0"
+publish = false
+description = "Sessions - Flareon example."
+edition = "2021"
+
+[dependencies]
+askama = "0.12.1"
+flareon = { path = "../../flareon" }
+tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
