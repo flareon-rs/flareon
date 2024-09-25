@@ -20,6 +20,7 @@ mod headers;
 #[doc(hidden)]
 #[path = "private.rs"]
 pub mod __private;
+mod error_page;
 pub mod middleware;
 pub mod request;
 pub mod response;
@@ -46,6 +47,7 @@ use request::Request;
 use router::{Route, Router};
 use tower::Service;
 
+use crate::error_page::FlareonDiagnostics;
 use crate::response::Response;
 
 /// A type alias for a result that can return a `flareon::Error`.
@@ -450,7 +452,10 @@ where
 
         pass_to_axum(request, &mut handler)
             .await
-            .unwrap_or_else(handle_response_error)
+            .unwrap_or_else(|error| {
+                let diagnostics = FlareonDiagnostics::new(router.clone());
+                error_page::handle_response_error(error, diagnostics)
+            })
     };
 
     eprintln!(
@@ -512,11 +517,6 @@ impl Html {
     pub fn as_str(&self) -> &str {
         &self.0
     }
-}
-
-#[allow(clippy::needless_pass_by_value)]
-fn handle_response_error(_error: Error) -> axum::response::Response {
-    todo!("500 error handler is not implemented yet")
 }
 
 #[cfg(test)]

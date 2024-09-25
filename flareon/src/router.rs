@@ -198,6 +198,32 @@ impl Route {
             name: None,
         }
     }
+
+    #[must_use]
+    pub fn url(&self) -> String {
+        self.url.to_string()
+    }
+
+    #[must_use]
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    #[must_use]
+    pub(crate) fn kind(&self) -> RouteKind {
+        match &self.view {
+            RouteInner::Handler(_) => RouteKind::Handler,
+            RouteInner::Router(_) => RouteKind::Router,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn router(&self) -> Option<&Router> {
+        match &self.view {
+            RouteInner::Router(router) => Some(router),
+            _ => None,
+        }
+    }
 }
 
 fn handle_not_found() -> Response {
@@ -205,6 +231,12 @@ fn handle_not_found() -> Response {
         StatusCode::NOT_FOUND,
         Body::fixed(Bytes::from("404 Not Found")),
     )
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum RouteKind {
+    Handler,
+    Router,
 }
 
 #[derive(Clone)]

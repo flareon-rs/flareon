@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flareon failure</title>
+
+    <style>
+        {% include "error.css" %}
+    </style>
+</head>
+<body>
+<h1>Flareon failure</h1>
+<p>An error occurred when handling a request.</p>
+
+<h2>Errors</h2>
+
+<table>
+    <thead>
+    <tr>
+        <th scope="col">#</th>
+        <th scope="col">Description</th>
+        <th scope="col">Structure</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for error in error_data %}
+    <tr>
+        <th scope="row">{{ loop.index0 }}</th>
+        <td>{{ error.description }}</td>
+        <td>
+            {% if error.is_flareon_error %}<code class="badge">flareon::Error</code>{% endif %}
+            <pre>{{ error.debug_str }}</pre>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<h2>Diagnostics</h2>
+
+<h3>Routes</h3>
+
+<table>
+    <thead>
+    <tr>
+        <th scope="col">#</th>
+        <th scope="col">URL</th>
+        <th scope="col">Type</th>
+        <th scope="col">Name</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for route in route_data %}
+    <tr>
+        <th scope="row">{{ route.index }}</th>
+        <td>{% if route.path.is_empty() %}<em>&lt;empty&gt;</em>{% else %}{{ route.path }}{% endif %}</td>
+        <td>{{ route.kind }}</td>
+        <td>{% if route.name.is_empty() %}<em>&lt;none&gt;</em>{% else %}{{ route.name }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+</body>
+</html>
