@@ -8,12 +8,13 @@
     border: 0;
     font-size: 100%;
     font: inherit;
-    font-family: "Open Sans", sans-serif;
     vertical-align: baseline;
 }
 
 body {
     line-height: 1.5;
+    font-family: "Open Sans", sans-serif;
+    font-size: small;
 }
 
 img, picture, video, canvas, svg {
@@ -34,7 +35,7 @@ em {
 }
 
 body {
-    background-color: #e8edf1;
+    background-color: #f6f6f6;
     padding: 1rem;
 }
 
@@ -43,9 +44,16 @@ h1 {
     padding: 0.5rem;
     font-size: 2rem;
     font-weight: lighter;
+}
 
-    background-color: rgb(255, 63, 79);
-    color: white;
+h1.error {
+    background-color: #ff3f4fff;
+    color: #fff;
+}
+
+h1.warning {
+    background-color: #ffdb5b;
+    color: #000;
 }
 
 h2 {
@@ -54,13 +62,24 @@ h2 {
 }
 
 h3 {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     margin-top: .5rem;
+    font-weight: bold;
+}
+
+table {
+    font-size: .9rem;
+    background-color: #fff;
+
 }
 
 table, th, td {
     border: 1px solid #d9dde1;
     border-collapse: collapse;
+}
+
+table.compact {
+    font-size: 0.75rem;
 }
 
 table > thead {
@@ -71,17 +90,32 @@ table th {
     font-weight: bold;
 }
 
-th, td {
-    padding: .5rem;
+table th.index {
+    text-align: right;
+}
+
+table th, td {
+    padding: .4rem;
     border-bottom-color: #d9dde1;
     border-bottom-width: 1px;
+}
+
+table.compact th, td {
+    padding: .1rem .25rem;
 }
 
 pre {
     white-space: pre-wrap;
     word-wrap: break-word;
 
+    font-family: "Noto Sans Mono", monospace;
+}
+
+pre.small {
     font-size: .75rem;
+}
+
+samp {
     font-family: "Noto Sans Mono", monospace;
 }
 
@@ -98,4 +132,29 @@ pre {
     text-align: center;
     white-space: nowrap;
     vertical-align: baseline;
+}
+
+.backtrace-table .frame .symbol-name {
+    font-weight: bold;
+}
+
+.backtrace-table .frame .symbol-location {
+    padding-left: 4em;
+}
+
+.backtrace-table {
+    display: table;
+}
+
+.backtrace-table .backtrace-row {
+    display: table-row;
+}
+
+.backtrace-table .backtrace-cell {
+    display: table-cell;
+}
+
+.backtrace-table .frame-index {
+    text-align: right;
+    padding-right: .5em;
 }

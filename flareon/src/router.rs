@@ -9,6 +9,7 @@ use axum::http::StatusCode;
 use bytes::Bytes;
 use log::debug;
 
+use crate::error_page::ErrorPageTrigger;
 use crate::request::{Request, RequestExt};
 use crate::response::{Response, ResponseExt};
 use crate::router::path::{PathMatcher, ReverseParamMap};
@@ -227,10 +228,12 @@ impl Route {
 }
 
 fn handle_not_found() -> Response {
-    Response::new_html(
+    let mut response = Response::new_html(
         StatusCode::NOT_FOUND,
         Body::fixed(Bytes::from("404 Not Found")),
-    )
+    );
+    response.extensions_mut().insert(ErrorPageTrigger::NotFound);
+    response
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

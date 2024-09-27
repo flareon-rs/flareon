@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="NONE,NOARCHIVE">
     <title>Flareon failure</title>
 
     <style>
@@ -10,10 +11,41 @@
     </style>
 </head>
 <body>
-<h1>Flareon failure</h1>
-<p>An error occurred when handling a request.</p>
+<h1 class="{% match kind %}{% when Kind::NotFound %}warning{% else %}error{% endmatch %}">{% match kind %}{% when Kind::NotFound %}Not found{% else %}Flareon failure{% endmatch %}</h1>
+<p>{% match kind %}{% when Kind::NotFound %}The URL requested could not be found.{% when Kind::Panic %}The request handler has panicked.{% else %}An error occurred while handling a request.{% endmatch %}</p>
 
-<h2>Errors</h2>
+{% match kind %}
+    {% when Kind::Panic %}
+<h2>Panic data</h2>
+
+{% match panic_string %}{% when Some with (panic_string) %}<pre>{{ panic_string }}</pre>{% else %}<em>Panic payload unavailable or not a string.</em>{% endmatch %}
+{% match panic_location %}{% when Some with (panic_location) %}<p>at <samp>{{ panic_location }}</samp></p>{% else %}{% endmatch %}
+    {% else %}
+{% endmatch %}
+
+{% if kind == Kind::Error || kind == Kind::Panic -%}
+    <h2>Backtrace</h2>
+
+    {% match backtrace -%}
+        {% when Some with (backtrace) %}
+            <div class="backtrace-table">
+                {% for frame in backtrace.frames() %}
+                <div class="backtrace-row">
+                    <div class="backtrace-cell frame-index"><samp>{{loop.index0}}:</samp></div>
+                    <div class="backtrace-cell frame">
+                        <div class="symbol-name"><samp>{{ frame.symbol_name() }}</samp></div>
+                        <div class="symbol-location">at <samp>{{ frame.location() }}</samp></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else -%}
+            <p><em>Backtrace unavailable.</em></p>
+    {%- endmatch %}
+{% endif %}
+
+{% if !error_data.is_empty() -%}
+<h2>Error chain</h2>
 
 <table>
     <thead>
@@ -26,16 +58,17 @@
     <tbody>
     {% for error in error_data %}
     <tr>
-        <th scope="row">{{ loop.index0 }}</th>
+        <th scope="row" class="index">{{ loop.index0 }}</th>
         <td>{{ error.description }}</td>
         <td>
             {% if error.is_flareon_error %}<code class="badge">flareon::Error</code>{% endif %}
-            <pre>{{ error.debug_str }}</pre>
+            <pre class="small">{{ error.debug_str }}</pre>
         </td>
     </tr>
     {% endfor %}
     </tbody>
 </table>
+{%- endif %}
 
 <h2>Diagnostics</h2>
 
@@ -53,7 +86,7 @@
     <tbody>
     {% for route in route_data %}
     <tr>
-        <th scope="row">{{ route.index }}</th>
+        <th scope="row" class="index">{{ route.index }}</th>
         <td>{% if route.path.is_empty() %}<em>&lt;empty&gt;</em>{% else %}{{ route.path }}{% endif %}</td>
         <td>{{ route.kind }}</td>
         <td>{% if route.name.is_empty() %}<em>&lt;none&gt;</em>{% else %}{{ route.name }}{% endif %}</td>
@@ -61,6 +94,41 @@
     {% endfor %}
     </tbody>
 </table>
+
+{% match request_data -%}
+{% when Some with (request_data) -%}
+<h2>Request</h2>
+
+<h3>Method</h3>
+<p><samp>{{ request_data.method }}</samp></p>
+
+<h3>URL</h3>
+<p><samp>{{ request_data.url }}</samp></p>
+
+<h3>Protocol version</h3>
+<p><samp>{{ request_data.protocol_version }}</samp></p>
+
+<h3>Headers</h3>
+
+<table class="compact">
+    <thead>
+    <tr>
+        <th scope="col">Header</th>
+        <th scope="col">Value</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for (header, value) in request_data.headers %}
+    <tr>
+        <td><samp>{{ header }}</samp></td>
+        <td><samp>{{ value }}</samp></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% when None -%}
+{%- endmatch %}
 
 </body>
 </html>

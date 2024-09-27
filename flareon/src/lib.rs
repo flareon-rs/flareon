@@ -20,6 +20,7 @@ mod headers;
 #[doc(hidden)]
 #[path = "private.rs"]
 pub mod __private;
+mod config;
 mod error_page;
 pub mod middleware;
 pub mod request;
@@ -29,6 +30,7 @@ pub mod test;
 
 use std::fmt::{Debug, Formatter};
 use std::future::{poll_fn, Future};
+use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -41,13 +43,15 @@ use derive_more::{Deref, From};
 pub use error::Error;
 use flareon::router::RouterService;
 use futures_core::Stream;
+use futures_util::FutureExt;
+use http::request::Parts;
 use http_body::{Frame, SizeHint};
 use log::info;
 use request::Request;
 use router::{Route, Router};
 use tower::Service;
 
-use crate::error_page::FlareonDiagnostics;
+use crate::error_page::{ErrorPageTrigger, FlareonDiagnostics};
 use crate::response::Response;
 
 /// A type alias for a result that can return a `flareon::Error`.
@@ -449,13 +453,44 @@ where
 
     let handler = |axum_request: axum::extract::Request| async move {
         let request = request_axum_to_flareon(axum_request, router.clone());
+        let (request_parts, request) = request_parts_for_diagnostics(request);
 
-        pass_to_axum(request, &mut handler)
-            .await
-            .unwrap_or_else(|error| {
-                let diagnostics = FlareonDiagnostics::new(router.clone());
-                error_page::handle_response_error(error, diagnostics)
-            })
+        let catch_unwind_response = AssertUnwindSafe(pass_to_axum(request, &mut handler))
+            .catch_unwind()
+            .await;
+
+        let show_error_page = match &catch_unwind_response {
+            Ok(response) => match response {
+                Ok(response) => response.extensions().get::<ErrorPageTrigger>().is_some(),
+                Err(_) => true,
+            },
+            Err(_) => {
+                // handler panicked
+                true
+            }
+        };
+
+        if show_error_page {
+            let diagnostics = FlareonDiagnostics::new(router.clone(), request_parts);
+
+            match catch_unwind_response {
+                Ok(response) => match response {
+                    Ok(response) => match response
+                        .extensions()
+                        .get::<ErrorPageTrigger>()
+                        .expect("ErrorPageTrigger already has been checked to be Some")
+                    {
+                        ErrorPageTrigger::NotFound => error_page::handle_not_found(diagnostics),
+                    },
+                    Err(error) => error_page::handle_response_error(error, diagnostics),
+                },
+                Err(error) => error_page::handle_response_panic(error, diagnostics),
+            }
+        } else {
+            catch_unwind_response
+                .expect("Error page should be shown if the response is not a panic")
+                .expect("Error page should be shown if the response is not an error")
+        }
     };
 
     eprintln!(
@@ -464,18 +499,33 @@ where
             .local_addr()
             .map_err(|e| Error::StartServer { source: e })?
     );
+    if config::REGISTER_PANIC_HOOK {
+        std::panic::set_hook(Box::new(error_page::error_page_panic_hook));
+    }
     axum::serve(listener, handler.into_make_service())
         .await
         .map_err(|e| Error::StartServer { source: e })?;
+    if config::REGISTER_PANIC_HOOK {
+        let _ = std::panic::take_hook();
+    }
 
     Ok(())
 }
 
-fn request_axum_to_flareon(axum_request: axum::extract::Request, router: Arc<Router>) -> Request {
-    let (parts, body) = axum_request.into_parts();
-    let mut request = Request::from_parts(parts, Body::axum(body));
-    prepare_request(&mut request, router);
+fn request_parts_for_diagnostics(request: Request) -> (Option<Parts>, Request) {
+    if config::DEBUG_MODE {
+        let (parts, body) = request.into_parts();
+        let parts_clone = parts.clone();
+        let request = Request::from_parts(parts, body);
+        (Some(parts_clone), request)
+    } else {
+        (None, request)
+    }
+}
 
+fn request_axum_to_flareon(axum_request: axum::extract::Request, router: Arc<Router>) -> Request {
+    let mut request = axum_request.map(Body::axum);
+    prepare_request(&mut request, router);
     request
 }
 
@@ -491,11 +541,7 @@ where
     poll_fn(|cx| handler.poll_ready(cx)).await?;
     let response = handler.call(request).await?;
 
-    let (parts, body) = response.into_parts();
-    Ok(http::Response::from_parts(
-        parts,
-        axum::body::Body::new(body),
-    ))
+    Ok(response.map(axum::body::Body::new))
 }
 
 /// A trait for types that can be used to render them as HTML.
