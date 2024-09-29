@@ -1,16 +1,32 @@
+pub(crate) mod backtrace;
+
 use thiserror::Error;
+
+// Need to rename Backtrace to FlareonBacktrace, because otherwise it triggers special behavior
+// in thiserror library
+use crate::error::backtrace::{Backtrace as FlareonBacktrace, __flareon_create_backtrace};
 
 /// An error that can occur while using Flareon.
 #[derive(Debug, Error)]
-#[error(transparent)]
+#[error("{inner}")]
 pub struct Error {
+    #[source]
     inner: ErrorRepr,
+    backtrace: FlareonBacktrace,
 }
 
 impl Error {
     #[must_use]
     pub(crate) fn new(inner: ErrorRepr) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            backtrace: __flareon_create_backtrace(),
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn backtrace(&self) -> &FlareonBacktrace {
+        &self.backtrace
     }
 }
 
