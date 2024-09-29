@@ -33,7 +33,7 @@ async fn hello(request: Request) -> flareon::Result<Response> {
         .expect("Invalid session value")
         .unwrap_or_default();
     if name.is_empty() {
-        return Ok(reverse!(request, "name"));
+        return Ok(reverse!(request, "xdd"));
     }
 
     let template = IndexTemplate {

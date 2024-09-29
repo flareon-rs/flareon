@@ -1,5 +1,8 @@
 pub(crate) mod backtrace;
 
+use std::fmt::Display;
+
+use derive_more::Debug;
 use thiserror::Error;
 
 // Need to rename Backtrace to FlareonBacktrace, because otherwise it triggers special behavior
@@ -7,11 +10,10 @@ use thiserror::Error;
 use crate::error::backtrace::{Backtrace as FlareonBacktrace, __flareon_create_backtrace};
 
 /// An error that can occur while using Flareon.
-#[derive(Debug, Error)]
-#[error("{inner}")]
+#[derive(Debug)]
 pub struct Error {
-    #[source]
     inner: ErrorRepr,
+    #[debug(skip)]
     backtrace: FlareonBacktrace,
 }
 
@@ -27,6 +29,18 @@ impl Error {
     #[must_use]
     pub(crate) fn backtrace(&self) -> &FlareonBacktrace {
         &self.backtrace
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.inner, f)
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.inner.source()
     }
 }
 

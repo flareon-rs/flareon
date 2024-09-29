@@ -140,7 +140,7 @@ impl ErrorPageTemplateBuilder {
         let data = ErrorData {
             description: error.to_string(),
             debug_str: format!("{error:#?}"),
-            is_flareon_error: error.is::<ErrorRepr>(),
+            is_flareon_error: error.is::<Error>(),
         };
         vec.push(data);
 

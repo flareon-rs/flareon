@@ -23,27 +23,6 @@
     {% else %}
 {% endmatch %}
 
-{% if kind == Kind::Error || kind == Kind::Panic -%}
-    <h2>Backtrace</h2>
-
-    {% match backtrace -%}
-        {% when Some with (backtrace) %}
-            <div class="backtrace-table">
-                {% for frame in backtrace.frames() %}
-                <div class="backtrace-row">
-                    <div class="backtrace-cell frame-index"><samp>{{loop.index0}}:</samp></div>
-                    <div class="backtrace-cell frame">
-                        <div class="symbol-name"><samp>{{ frame.symbol_name() }}</samp></div>
-                        <div class="symbol-location">at <samp>{{ frame.location() }}</samp></div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        {% else -%}
-            <p><em>Backtrace unavailable.</em></p>
-    {%- endmatch %}
-{% endif %}
-
 {% if !error_data.is_empty() -%}
 <h2>Error chain</h2>
 
@@ -69,6 +48,27 @@
     </tbody>
 </table>
 {%- endif %}
+
+{% if kind == Kind::Error || kind == Kind::Panic -%}
+<h2>Backtrace</h2>
+
+{% match backtrace -%}
+{% when Some with (backtrace) %}
+<div class="backtrace-table">
+    {% for frame in backtrace.frames() %}
+    <div class="backtrace-row">
+        <div class="backtrace-cell frame-index"><samp>{{loop.index0}}:</samp></div>
+        <div class="backtrace-cell frame">
+            <div class="symbol-name"><samp>{{ frame.symbol_name() }}</samp></div>
+            <div class="symbol-location">at <samp>{{ frame.location() }}</samp></div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else -%}
+<p><em>Backtrace unavailable.</em></p>
+{%- endmatch %}
+{% endif %}
 
 <h2>Diagnostics</h2>
 
