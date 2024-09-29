@@ -51,10 +51,11 @@ use request::Request;
 use router::{Route, Router};
 use tower::Service;
 
+use crate::error::ErrorRepr;
 use crate::error_page::{ErrorPageTrigger, FlareonDiagnostics};
 use crate::response::Response;
 
-/// A type alias for a result that can return a `flareon::Error`.
+/// A type alias for a result that can return a `flareon::Er    ror`.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// A type alias for an HTTP status code.
@@ -210,11 +211,11 @@ impl Body {
     pub async fn into_bytes_limited(self, limit: usize) -> std::result::Result<Bytes, Error> {
         use http_body_util::BodyExt;
 
-        http_body_util::Limited::new(self, limit)
+        Ok(http_body_util::Limited::new(self, limit)
             .collect()
             .await
             .map(http_body_util::Collected::to_bytes)
-            .map_err(|source| Error::ReadRequestBody { source })
+            .map_err(|source| ErrorRepr::ReadRequestBody { source })?)
     }
 
     #[must_use]
@@ -255,11 +256,12 @@ impl http_body::Body for Body {
                 }
             }
             BodyInner::Axum(ref mut axum_body) => {
-                Pin::new(axum_body)
-                    .poll_frame(cx)
-                    .map_err(|error| Error::ReadRequestBody {
+                Pin::new(axum_body).poll_frame(cx).map_err(|error| {
+                    ErrorRepr::ReadRequestBody {
                         source: Box::new(error),
-                    })
+                    }
+                    .into()
+                })
             }
         }
     }
@@ -415,7 +417,7 @@ where
 {
     let listener = tokio::net::TcpListener::bind(address_str)
         .await
-        .map_err(|e| Error::StartServer { source: e })?;
+        .map_err(|e| ErrorRepr::StartServer { source: e })?;
 
     run_at(project, listener).await
 }
@@ -497,14 +499,14 @@ where
         "Starting the server at http://{}",
         listener
             .local_addr()
-            .map_err(|e| Error::StartServer { source: e })?
+            .map_err(|e| ErrorRepr::StartServer { source: e })?
     );
     if config::REGISTER_PANIC_HOOK {
         std::panic::set_hook(Box::new(error_page::error_page_panic_hook));
     }
     axum::serve(listener, handler.into_make_service())
         .await
-        .map_err(|e| Error::StartServer { source: e })?;
+        .map_err(|e| ErrorRepr::StartServer { source: e })?;
     if config::REGISTER_PANIC_HOOK {
         let _ = std::panic::take_hook();
     }

@@ -4,7 +4,7 @@ use flareon::middleware::SessionMiddleware;
 use flareon::request::{Request, RequestExt};
 use flareon::response::{Response, ResponseExt};
 use flareon::router::Route;
-use flareon::{reverse, Body, Error, FlareonApp, FlareonProject, StatusCode};
+use flareon::{reverse, Body, FlareonApp, FlareonProject, StatusCode};
 
 #[derive(Debug, Template)]
 #[template(path = "index.html")]
@@ -25,7 +25,7 @@ struct NameForm {
     name: String,
 }
 
-async fn hello(request: Request) -> Result<Response, Error> {
+async fn hello(request: Request) -> flareon::Result<Response> {
     let name: String = request
         .session()
         .get("user_name")
@@ -47,7 +47,7 @@ async fn hello(request: Request) -> Result<Response, Error> {
     ))
 }
 
-async fn name(mut request: Request) -> Result<Response, Error> {
+async fn name(mut request: Request) -> flareon::Result<Response> {
     if request.method() == flareon::Method::POST {
         let name_form = NameForm::from_request(&mut request).await.unwrap();
         request

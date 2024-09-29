@@ -2,8 +2,47 @@ use thiserror::Error;
 
 /// An error that can occur while using Flareon.
 #[derive(Debug, Error)]
+#[error(transparent)]
+pub struct Error {
+    inner: ErrorRepr,
+}
+
+impl Error {
+    #[must_use]
+    pub(crate) fn new(inner: ErrorRepr) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<ErrorRepr> for Error {
+    fn from(value: ErrorRepr) -> Self {
+        Self::new(value)
+    }
+}
+
+macro_rules! impl_error_from_repr {
+    ($ty:ty) => {
+        impl From<$ty> for Error {
+            fn from(value: $ty) -> Self {
+                Error::from(ErrorRepr::from(value))
+            }
+        }
+    };
+}
+
+impl From<Error> for askama::Error {
+    fn from(value: Error) -> Self {
+        askama::Error::Custom(Box::new(value))
+    }
+}
+
+impl_error_from_repr!(askama::Error);
+impl_error_from_repr!(crate::router::path::ReverseError);
+impl_error_from_repr!(crate::db::DatabaseError);
+
+#[derive(Debug, Error)]
 #[non_exhaustive]
-pub enum Error {
+pub(crate) enum ErrorRepr {
     /// An error occurred while trying to start the server.
     #[error("Could not start server: {source}")]
     StartServer { source: std::io::Error },
@@ -13,9 +52,6 @@ pub enum Error {
         #[from]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
-    /// An error occurred while trying to convert a response.
-    #[error("Could not convert response: {source}")]
-    ResponseConversion { source: axum::Error },
     /// The request body had an invalid `Content-Type` header.
     #[error("Invalid content type; expected {expected}, found {actual}")]
     InvalidContentType {
@@ -38,10 +74,4 @@ pub enum Error {
     /// An error occurred while communicating with the database.
     #[error("Database error: {0}")]
     DatabaseError(#[from] crate::db::DatabaseError),
-}
-
-impl From<Error> for askama::Error {
-    fn from(value: Error) -> Self {
-        askama::Error::Custom(Box::new(value))
-    }
 }

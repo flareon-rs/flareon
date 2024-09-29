@@ -6,9 +6,10 @@ use bytes::Bytes;
 use indexmap::IndexMap;
 use tower_sessions::Session;
 
+use crate::error::ErrorRepr;
 use crate::headers::FORM_CONTENT_TYPE;
 use crate::router::Router;
-use crate::{Body, Error};
+use crate::{Body, Result};
 
 pub type Request = http::Request<Body>;
 
@@ -43,12 +44,12 @@ pub trait RequestExt {
     /// # Returns
     ///
     /// The request body as bytes.
-    async fn form_data(&mut self) -> Result<Bytes, Error>;
+    async fn form_data(&mut self) -> Result<Bytes>;
 
     #[must_use]
     fn content_type(&self) -> Option<&http::HeaderValue>;
 
-    fn expect_content_type(&mut self, expected: &'static str) -> Result<(), Error>;
+    fn expect_content_type(&mut self, expected: &'static str) -> Result<()>;
 }
 
 #[async_trait]
@@ -81,7 +82,7 @@ impl RequestExt for Request {
             .expect("Session extension missing")
     }
 
-    async fn form_data(&mut self) -> Result<Bytes, Error> {
+    async fn form_data(&mut self) -> Result<Bytes> {
         if self.method() == http::Method::GET || self.method() == http::Method::HEAD {
             if let Some(query) = self.uri().query() {
                 return Ok(Bytes::copy_from_slice(query.as_bytes()));
@@ -102,17 +103,18 @@ impl RequestExt for Request {
         self.headers().get(http::header::CONTENT_TYPE)
     }
 
-    fn expect_content_type(&mut self, expected: &'static str) -> Result<(), Error> {
+    fn expect_content_type(&mut self, expected: &'static str) -> Result<()> {
         let content_type = self
             .content_type()
             .map_or("".into(), |value| String::from_utf8_lossy(value.as_bytes()));
         if content_type == expected {
             Ok(())
         } else {
-            Err(Error::InvalidContentType {
+            Err(ErrorRepr::InvalidContentType {
                 expected,
                 actual: content_type.into_owned(),
-            })
+            }
+            .into())
         }
     }
 }

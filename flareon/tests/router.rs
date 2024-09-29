@@ -3,16 +3,16 @@ use flareon::request::{Request, RequestExt};
 use flareon::response::{Response, ResponseExt};
 use flareon::router::{Route, RouterService};
 use flareon::test::Client;
-use flareon::{Body, Error, FlareonApp, FlareonProject, StatusCode};
+use flareon::{Body, FlareonApp, FlareonProject, StatusCode};
 
-async fn index(_request: Request) -> Result<Response, Error> {
+async fn index(_request: Request) -> flareon::Result<Response> {
     Ok(Response::new_html(
         StatusCode::OK,
         Body::fixed("Hello world!"),
     ))
 }
 
-async fn parameterized(request: Request) -> Result<Response, Error> {
+async fn parameterized(request: Request) -> flareon::Result<Response> {
     let name = request.path_params().get("name").unwrap().to_owned();
 
     Ok(Response::new_html(StatusCode::OK, Body::fixed(name)))

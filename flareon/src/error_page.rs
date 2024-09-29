@@ -5,8 +5,9 @@ use std::sync::Arc;
 use askama::Template;
 use log::error;
 
+use crate::error::{Error, ErrorRepr};
 use crate::router::Router;
-use crate::{Error, Result, StatusCode};
+use crate::{Result, StatusCode};
 
 /// Added as a Response extension to trigger displaying the error page.
 ///
@@ -137,7 +138,7 @@ impl ErrorPageTemplateBuilder {
         let data = ErrorData {
             description: error.to_string(),
             debug_str: format!("{error:#?}"),
-            is_flareon_error: error.is::<Error>(),
+            is_flareon_error: error.is::<ErrorRepr>(),
         };
         vec.push(data);
 
@@ -174,8 +175,8 @@ impl ErrorPageTemplateBuilder {
         }
     }
 
-    fn render(&self) -> askama::Result<String> {
-        ErrorPageTemplate {
+    fn render(&self) -> Result<String> {
+        Ok(ErrorPageTemplate {
             kind: self.kind,
             panic_string: self.panic_string.clone(),
             panic_location: self.panic_location.clone(),
@@ -185,6 +186,7 @@ impl ErrorPageTemplateBuilder {
             request_data: self.request_data.clone(),
         }
         .render()
+        .map_err(ErrorRepr::from)?)
     }
 }
 
@@ -264,24 +266,24 @@ fn build_response(
 }
 
 fn build_not_found_response(diagnostics: FlareonDiagnostics) -> Result<String> {
-    Ok(ErrorPageTemplateBuilder::not_found()
+    ErrorPageTemplateBuilder::not_found()
         .diagnostics(diagnostics)
-        .render()?)
+        .render()
 }
 
 fn build_panic_response(
     panic_payload: Box<dyn Any + Send>,
     diagnostics: FlareonDiagnostics,
 ) -> Result<String> {
-    Ok(ErrorPageTemplateBuilder::panic(panic_payload)
+    ErrorPageTemplateBuilder::panic(panic_payload)
         .diagnostics(diagnostics)
-        .render()?)
+        .render()
 }
 
 fn build_error_response(error: Error, diagnostics: FlareonDiagnostics) -> Result<String> {
-    Ok(ErrorPageTemplateBuilder::error(error)
+    ErrorPageTemplateBuilder::error(error)
         .diagnostics(diagnostics)
-        .render()?)
+        .render()
 }
 
 const FAILURE_PAGE: &[u8] = include_bytes!("../templates/fail.html");

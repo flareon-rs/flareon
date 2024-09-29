@@ -9,6 +9,7 @@ use axum::http::StatusCode;
 use bytes::Bytes;
 use log::debug;
 
+use crate::error::ErrorRepr;
 use crate::error_page::ErrorPageTrigger;
 use crate::request::{Request, RequestExt};
 use crate::response::{Response, ResponseExt};
@@ -93,10 +94,11 @@ impl Router {
     /// This method returns an error if the URL cannot be generated because of
     /// missing parameters.
     pub fn reverse(&self, name: &str, params: &ReverseParamMap) -> Result<String> {
-        self.reverse_option(name, params)?
-            .ok_or_else(|| Error::NoViewToReverse {
+        Ok(self
+            .reverse_option(name, params)?
+            .ok_or_else(|| ErrorRepr::NoViewToReverse {
                 view_name: name.to_owned(),
-            })
+            })?)
     }
 
     /// Get a URL for a view by name.
@@ -110,13 +112,15 @@ impl Router {
     pub fn reverse_option(&self, name: &str, params: &ReverseParamMap) -> Result<Option<String>> {
         let url = self.names.get(name).map(|matcher| matcher.reverse(params));
         if let Some(url) = url {
-            return Ok(Some(url?));
+            return Ok(Some(url.map_err(ErrorRepr::from)?));
         }
 
         for route in &self.urls {
             if let RouteInner::Router(router) = &route.view {
                 if let Some(url) = router.reverse_option(name, params)? {
-                    return Ok(Some(route.url.reverse(params)? + &url));
+                    return Ok(Some(
+                        route.url.reverse(params).map_err(ErrorRepr::from)? + &url,
+                    ));
                 }
             }
         }

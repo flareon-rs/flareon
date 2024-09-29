@@ -7,7 +7,7 @@ use flareon::forms::Form;
 use flareon::request::{Request, RequestExt};
 use flareon::response::{Response, ResponseExt};
 use flareon::router::Route;
-use flareon::{reverse, Body, Error, FlareonApp, FlareonProject, StatusCode};
+use flareon::{reverse, Body, FlareonApp, FlareonProject, StatusCode};
 use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ struct IndexTemplate<'a> {
 
 static DB: OnceCell<Database> = OnceCell::const_new();
 
-async fn index(request: Request) -> Result<Response, Error> {
+async fn index(request: Request) -> flareon::Result<Response> {
     let db = DB.get().unwrap();
 
     let todo_items = TodoItem::objects().all(db).await?;
@@ -45,7 +45,7 @@ struct TodoForm {
     title: String,
 }
 
-async fn add_todo(mut request: Request) -> Result<Response, Error> {
+async fn add_todo(mut request: Request) -> flareon::Result<Response> {
     let todo_form = TodoForm::from_request(&mut request).await.unwrap();
 
     {
@@ -61,7 +61,7 @@ async fn add_todo(mut request: Request) -> Result<Response, Error> {
     Ok(reverse!(request, "index"))
 }
 
-async fn remove_todo(request: Request) -> Result<Response, Error> {
+async fn remove_todo(request: Request) -> flareon::Result<Response> {
     let todo_id = request
         .path_params()
         .get("todo_id")
