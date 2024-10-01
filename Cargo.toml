@@ -21,20 +21,20 @@ license = "MIT OR Apache-2.0"
 anyhow = "1.0.86"
 askama = "0.12.1"
 async-stream = "0.3.5"
-async-trait = "0.1.80"
-axum = "0.7.5"
+async-trait = "0.1.83"
+axum = "0.7.7"
 backtrace = "0.3.74"
-bytes = "1.7.1"
-cargo_toml = "0.20.4"
+bytes = "1.7.2"
+cargo_toml = "0.20.5"
 chrono = { version = "0.4.38", features = ["serde"] }
-clap = { version = "4.5.8", features = ["derive", "env"] }
-clap-verbosity-flag = "2.2.1"
+clap = { version = "4.5.18", features = ["derive", "env"] }
+clap-verbosity-flag = "2.2.2"
 convert_case = "0.6.0"
 darling = "0.20.10"
 derive_builder = "0.20.1"
 derive_more = { version = "1.0.0", features = ["full"] }
 env_logger = "0.11.3"
-fake = { version = "2.9.2", features = ["derive", "chrono"] }
+fake = { version = "2.10.0", features = ["derive", "chrono"] }
 flareon = { path = "flareon" }
 flareon_codegen = { path = "flareon-codegen" }
 flareon_macros = { path = "flareon-macros" }
@@ -54,15 +54,15 @@ proc-macro-crate = "3.2.0"
 proc-macro2 = "1.0.86"
 quote = "1.0.37"
 rand = "0.8.5"
-regex = "1.10.6"
+regex = "1.11.0"
 rustversion = "1.0.17"
 sea-query = "0.32.0-rc.1"
 sea-query-binder = { version = "0.7.0-rc.1", features = ["sqlx-sqlite", "with-chrono", "runtime-tokio"] }
-serde = "1.0.209"
+serde = "1.0.210"
 slug = "0.1.5"
 sqlx = { version = "0.8.0", default-features = false, features = ["macros", "json", "runtime-tokio", "sqlite", "chrono"] }
-syn = { version = "2.0.74", features = ["full", "extra-traits"] }
-thiserror = "1.0.61"
+syn = { version = "2.0.79", features = ["full", "extra-traits"] }
+thiserror = "1.0.64"
 tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
 tower = "0.5.1"
 tower-sessions = "0.13.0"
