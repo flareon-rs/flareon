@@ -177,7 +177,7 @@ impl Route {
     pub fn with_handler<V: RequestHandler + Send + Sync + 'static>(url: &str, view: V) -> Self {
         Self {
             url: Arc::new(PathMatcher::new(url)),
-            view: RouteInner::Handler(Arc::new(Box::new(view))),
+            view: RouteInner::Handler(Arc::new(view)),
             name: None,
         }
     }
@@ -190,7 +190,7 @@ impl Route {
     ) -> Self {
         Self {
             url: Arc::new(PathMatcher::new(url)),
-            view: RouteInner::Handler(Arc::new(Box::new(view))),
+            view: RouteInner::Handler(Arc::new(view)),
             name: Some(name.into()),
         }
     }
@@ -248,7 +248,7 @@ pub(crate) enum RouteKind {
 
 #[derive(Clone)]
 enum RouteInner {
-    Handler(Arc<Box<dyn RequestHandler + Send + Sync>>),
+    Handler(Arc<dyn RequestHandler + Send + Sync>),
     Router(Router),
 }
 

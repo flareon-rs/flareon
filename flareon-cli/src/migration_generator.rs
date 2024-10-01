@@ -18,7 +18,11 @@ use syn::{parse_quote, Attribute, ItemStruct, Meta};
 use crate::utils::find_cargo_toml;
 
 pub fn make_migrations(path: &Path) -> anyhow::Result<()> {
-    match find_cargo_toml(path) {
+    match find_cargo_toml(
+        &path
+            .canonicalize()
+            .with_context(|| "unable to canonicalize Cargo.toml path")?,
+    ) {
         Some(cargo_toml_path) => {
             let manifest = Manifest::from_path(&cargo_toml_path)
                 .with_context(|| "unable to read Cargo.toml")?;
@@ -349,6 +353,13 @@ impl MigrationGenerator {
             .join("migrations");
         let migration_file = migration_path.join(format!("{migration_name}.rs"));
         let migration_content = Self::generate_migration(migration_def, models_def);
+
+        std::fs::create_dir_all(&migration_path).with_context(|| {
+            format!(
+                "unable to create migrations directory: {}",
+                migration_path.display()
+            )
+        })?;
 
         let mut file = File::create(&migration_file).with_context(|| {
             format!(

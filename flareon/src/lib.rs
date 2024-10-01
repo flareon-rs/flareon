@@ -20,7 +20,8 @@ mod headers;
 #[doc(hidden)]
 #[path = "private.rs"]
 pub mod __private;
-mod config;
+pub mod auth;
+pub mod config;
 mod error_page;
 pub mod middleware;
 pub mod request;
@@ -49,13 +50,15 @@ use http_body::{Frame, SizeHint};
 use log::info;
 use request::Request;
 use router::{Route, Router};
+use sync_wrapper::SyncWrapper;
 use tower::Service;
 
+use crate::config::ProjectConfig;
 use crate::error::ErrorRepr;
 use crate::error_page::{ErrorPageTrigger, FlareonDiagnostics};
 use crate::response::Response;
 
-/// A type alias for a result that can return a `flareon::Er    ror`.
+/// A type alias for a result that can return a `flareon::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// A type alias for an HTTP status code.
@@ -137,8 +140,8 @@ pub struct Body {
 
 enum BodyInner {
     Fixed(Bytes),
-    Streaming(Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>),
-    Axum(axum::body::Body),
+    Streaming(SyncWrapper<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>>),
+    Axum(SyncWrapper<axum::body::Body>),
 }
 
 impl Debug for BodyInner {
@@ -201,7 +204,7 @@ impl Body {
     /// ```
     #[must_use]
     pub fn streaming<T: Stream<Item = Result<Bytes>> + Send + 'static>(stream: T) -> Self {
-        Self::new(BodyInner::Streaming(Box::pin(stream)))
+        Self::new(BodyInner::Streaming(SyncWrapper::new(Box::pin(stream))))
     }
 
     pub async fn into_bytes(self) -> std::result::Result<Bytes, Error> {
@@ -220,7 +223,7 @@ impl Body {
 
     #[must_use]
     fn axum(inner: axum::body::Body) -> Self {
-        Self::new(BodyInner::Axum(inner))
+        Self::new(BodyInner::Axum(SyncWrapper::new(inner)))
     }
 }
 
@@ -248,7 +251,7 @@ impl http_body::Body for Body {
                 }
             }
             BodyInner::Streaming(ref mut stream) => {
-                let stream = Pin::as_mut(stream);
+                let stream = Pin::as_mut(stream.get_mut());
                 match stream.poll_next(cx) {
                     Poll::Ready(Some(result)) => Poll::Ready(Some(result.map(Frame::data))),
                     Poll::Ready(None) => Poll::Ready(None),
@@ -256,6 +259,7 @@ impl http_body::Body for Body {
                 }
             }
             BodyInner::Axum(ref mut axum_body) => {
+                let axum_body = axum_body.get_mut();
                 Pin::new(axum_body).poll_frame(cx).map_err(|error| {
                     ErrorRepr::ReadRequestBody {
                         source: Box::new(error),
@@ -270,7 +274,7 @@ impl http_body::Body for Body {
         match &self.inner {
             BodyInner::Fixed(data) => data.is_empty(),
             BodyInner::Streaming(_) => false,
-            BodyInner::Axum(axum_body) => axum_body.is_end_stream(),
+            BodyInner::Axum(_) => false,
         }
     }
 
@@ -278,7 +282,7 @@ impl http_body::Body for Body {
         match &self.inner {
             BodyInner::Fixed(data) => SizeHint::with_exact(data.len() as u64),
             BodyInner::Streaming(_) => SizeHint::new(),
-            BodyInner::Axum(axum_body) => axum_body.size_hint(),
+            BodyInner::Axum(_) => SizeHint::new(),
         }
     }
 }
@@ -286,6 +290,7 @@ impl http_body::Body for Body {
 #[derive(Clone, Debug)]
 // TODO add Middleware type?
 pub struct FlareonProject<S> {
+    config: Arc<ProjectConfig>,
     apps: Vec<FlareonApp>,
     router: Arc<Router>,
     handler: S,
@@ -293,6 +298,7 @@ pub struct FlareonProject<S> {
 
 #[derive(Debug, Clone)]
 pub struct FlareonProjectBuilder {
+    config: ProjectConfig,
     apps: Vec<FlareonApp>,
     urls: Vec<Route>,
 }
@@ -301,9 +307,15 @@ impl FlareonProjectBuilder {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            config: ProjectConfig::default(),
             apps: Vec::new(),
             urls: Vec::new(),
         }
+    }
+
+    pub fn config(&mut self, config: ProjectConfig) -> &mut Self {
+        self.config = config;
+        self
     }
 
     pub fn register_app_with_views(&mut self, app: FlareonApp, url_prefix: &str) -> &mut Self {
@@ -332,15 +344,17 @@ impl FlareonProjectBuilder {
 
     #[must_use]
     fn to_builder_with_middleware(&self) -> FlareonProjectBuilderWithMiddleware<RouterService> {
+        let config = Arc::new(self.config.clone());
         let router = Arc::new(Router::with_urls(self.urls.clone()));
         let service = RouterService::new(router.clone());
 
-        FlareonProjectBuilderWithMiddleware::new(self.apps.clone(), router, service)
+        FlareonProjectBuilderWithMiddleware::new(config, self.apps.clone(), router, service)
     }
 }
 
 #[derive(Debug)]
 pub struct FlareonProjectBuilderWithMiddleware<S> {
+    config: Arc<ProjectConfig>,
     apps: Vec<FlareonApp>,
     router: Arc<Router>,
     handler: S,
@@ -348,8 +362,14 @@ pub struct FlareonProjectBuilderWithMiddleware<S> {
 
 impl<S: Service<Request>> FlareonProjectBuilderWithMiddleware<S> {
     #[must_use]
-    fn new(apps: Vec<FlareonApp>, router: Arc<Router>, handler: S) -> Self {
+    fn new(
+        config: Arc<ProjectConfig>,
+        apps: Vec<FlareonApp>,
+        router: Arc<Router>,
+        handler: S,
+    ) -> Self {
         Self {
+            config,
             apps,
             router,
             handler,
@@ -362,6 +382,7 @@ impl<S: Service<Request>> FlareonProjectBuilderWithMiddleware<S> {
         middleware: M,
     ) -> FlareonProjectBuilderWithMiddleware<M::Service> {
         FlareonProjectBuilderWithMiddleware {
+            config: self.config,
             apps: self.apps,
             router: self.router,
             handler: middleware.layer(self.handler),
@@ -372,6 +393,7 @@ impl<S: Service<Request>> FlareonProjectBuilderWithMiddleware<S> {
     #[must_use]
     pub fn build(self) -> FlareonProject<S> {
         FlareonProject {
+            config: self.config,
             apps: self.apps,
             router: self.router,
             handler: self.handler,
@@ -448,13 +470,15 @@ where
     }
 
     let FlareonProject {
+        config,
         apps: _apps,
         router,
         mut handler,
     } = project;
 
     let handler = |axum_request: axum::extract::Request| async move {
-        let request = request_axum_to_flareon(axum_request, router.clone());
+        let request =
+            request_axum_to_flareon(axum_request, Arc::clone(&config), Arc::clone(&router));
         let (request_parts, request) = request_parts_for_diagnostics(request);
 
         let catch_unwind_response = AssertUnwindSafe(pass_to_axum(request, &mut handler))
@@ -473,7 +497,7 @@ where
         };
 
         if show_error_page {
-            let diagnostics = FlareonDiagnostics::new(router.clone(), request_parts);
+            let diagnostics = FlareonDiagnostics::new(Arc::clone(&router), request_parts);
 
             match catch_unwind_response {
                 Ok(response) => match response {
@@ -525,13 +549,22 @@ fn request_parts_for_diagnostics(request: Request) -> (Option<Parts>, Request) {
     }
 }
 
-fn request_axum_to_flareon(axum_request: axum::extract::Request, router: Arc<Router>) -> Request {
+fn request_axum_to_flareon(
+    axum_request: axum::extract::Request,
+    config: Arc<ProjectConfig>,
+    router: Arc<Router>,
+) -> Request {
     let mut request = axum_request.map(Body::axum);
-    prepare_request(&mut request, router);
+    prepare_request(&mut request, config, router);
     request
 }
 
-pub(crate) fn prepare_request(request: &mut Request, router: Arc<Router>) {
+pub(crate) fn prepare_request(
+    request: &mut Request,
+    config: Arc<ProjectConfig>,
+    router: Arc<Router>,
+) {
+    request.extensions_mut().insert(config);
     request.extensions_mut().insert(router);
 }
 

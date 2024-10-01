@@ -15,6 +15,8 @@ use async_trait::async_trait;
 use derive_more::{Debug, Deref, Display};
 pub use flareon_macros::{model, query};
 use log::debug;
+#[cfg(test)]
+use mockall::automock;
 use query::Query;
 use sea_query::{Iden, SchemaStatementBuilder, SimpleExpr};
 use sea_query_binder::SqlxBinder;
@@ -36,6 +38,14 @@ pub enum DatabaseError {
     TypeMismatch { expected: String, found: String },
     #[error("Error when decoding database value: {0}")]
     ValueDecode(Box<dyn std::error::Error + 'static + Send + Sync>),
+}
+
+impl DatabaseError {
+    /// Creates a new database error from a value decode error.
+    #[must_use]
+    pub fn value_decode(error: impl std::error::Error + 'static + Send + Sync) -> Self {
+        Self::ValueDecode(Box::new(error))
+    }
 }
 
 pub type Result<T> = std::result::Result<T, DatabaseError>;
@@ -62,7 +72,7 @@ pub type Result<T> = std::result::Result<T, DatabaseError>;
 /// }
 /// ```
 #[async_trait]
-pub trait Model: Sized + Send {
+pub trait Model: Sized + Send + 'static {
     /// A helper structure for the fields of the model.
     ///
     /// This structure should a constant [`FieldRef`](query::FieldRef) instance
@@ -100,7 +110,7 @@ pub trait Model: Sized + Send {
     ///
     /// This method can return an error if the model could not be saved to the
     /// database.
-    async fn save(&mut self, db: &Database) -> Result<()> {
+    async fn save<DB: DatabaseBackend>(&mut self, db: &DB) -> Result<()> {
         db.insert(self).await?;
         Ok(())
     }
@@ -230,7 +240,7 @@ trait SqlxRowRef {
     fn get_raw(&self, index: usize) -> Result<Self::ValueRef<'_>>;
 }
 
-trait SqlxValueRef<'r>: Sized {
+pub trait SqlxValueRef<'r>: Sized {
     type DB: sqlx::Database;
 
     fn get_raw(self) -> <Self::DB as sqlx::Database>::ValueRef<'r>;
@@ -405,6 +415,34 @@ impl Database {
         Ok(result)
     }
 
+    /// Returns the first row that matches the given query. If no rows match the
+    /// query, returns `None`.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the query is invalid.
+    ///
+    /// This method can return an error if the model doesn't exist in the
+    /// database (usually meaning the migrations haven't been generated or
+    /// applied).
+    ///
+    /// Can return an error if the database connection is lost.
+    pub async fn get<T: Model>(&self, query: &Query<T>) -> Result<Option<T>> {
+        let columns_to_get: Vec<_> = T::COLUMNS.iter().map(|column| column.name).collect();
+        let mut select = sea_query::Query::select();
+        select.columns(columns_to_get).from(T::TABLE_NAME);
+        query.modify_statement(&mut select);
+        select.limit(1);
+
+        let row = self.fetch_option(&select).await?;
+
+        let result = match row {
+            Some(row) => Some(T::from_db(row)?),
+            None => None,
+        };
+        Ok(result)
+    }
+
     /// Returns whether a row exists that matches the given query.
     ///
     /// # Errors
@@ -504,6 +542,43 @@ impl Database {
         };
 
         Ok(result)
+    }
+}
+
+#[cfg_attr(test, automock)]
+#[async_trait]
+pub trait DatabaseBackend: Send + Sync {
+    async fn insert<T: Model>(&self, data: &mut T) -> Result<()>;
+
+    async fn query<T: Model>(&self, query: &Query<T>) -> Result<Vec<T>>;
+
+    async fn get<T: Model>(&self, query: &Query<T>) -> Result<Option<T>>;
+
+    async fn exists<T: Model>(&self, query: &Query<T>) -> Result<bool>;
+
+    async fn delete<T: Model>(&self, query: &Query<T>) -> Result<StatementResult>;
+}
+
+#[async_trait]
+impl DatabaseBackend for Database {
+    async fn insert<T: Model>(&self, data: &mut T) -> Result<()> {
+        Database::insert(self, data).await
+    }
+
+    async fn query<T: Model>(&self, query: &Query<T>) -> Result<Vec<T>> {
+        Database::query(self, query).await
+    }
+
+    async fn get<T: Model>(&self, query: &Query<T>) -> Result<Option<T>> {
+        Database::get(self, query).await
+    }
+
+    async fn exists<T: Model>(&self, query: &Query<T>) -> Result<bool> {
+        Database::exists(self, query).await
+    }
+
+    async fn delete<T: Model>(&self, query: &Query<T>) -> Result<StatementResult> {
+        Database::delete(self, query).await
     }
 }
 

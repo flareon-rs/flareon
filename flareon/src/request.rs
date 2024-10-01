@@ -6,6 +6,7 @@ use bytes::Bytes;
 use indexmap::IndexMap;
 use tower_sessions::Session;
 
+use crate::db::Database;
 use crate::error::ErrorRepr;
 use crate::headers::FORM_CONTENT_TYPE;
 use crate::router::Router;
@@ -16,6 +17,9 @@ pub type Request = http::Request<Body>;
 #[async_trait]
 pub trait RequestExt {
     #[must_use]
+    fn project_config(&self) -> &crate::config::ProjectConfig;
+
+    #[must_use]
     fn router(&self) -> &Router;
 
     #[must_use]
@@ -23,6 +27,9 @@ pub trait RequestExt {
 
     #[must_use]
     fn path_params_mut(&mut self) -> &mut PathParams;
+
+    #[must_use]
+    fn db(&self) -> &Database;
 
     #[must_use]
     fn session(&self) -> &Session;
@@ -54,6 +61,12 @@ pub trait RequestExt {
 
 #[async_trait]
 impl RequestExt for Request {
+    fn project_config(&self) -> &crate::config::ProjectConfig {
+        self.extensions()
+            .get::<Arc<crate::config::ProjectConfig>>()
+            .expect("ProjectConfig extension missing")
+    }
+
     fn router(&self) -> &Router {
         self.extensions()
             .get::<Arc<Router>>()
@@ -70,16 +83,22 @@ impl RequestExt for Request {
         self.extensions_mut().get_or_insert_default::<PathParams>()
     }
 
+    fn db(&self) -> &Database {
+        self.extensions()
+            .get::<Arc<Database>>()
+            .expect("Database extension missing")
+    }
+
     fn session(&self) -> &Session {
         self.extensions()
             .get::<Session>()
-            .expect("Session extension missing")
+            .expect("Session extension missing. Did you forget to add the SessionMiddleware?")
     }
 
     fn session_mut(&mut self) -> &mut Session {
         self.extensions_mut()
             .get_mut::<Session>()
-            .expect("Session extension missing")
+            .expect("Session extension missing. Did you forget to add the SessionMiddleware?")
     }
 
     async fn form_data(&mut self) -> Result<Bytes> {

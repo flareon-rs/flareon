@@ -514,11 +514,11 @@ impl DynMigration for &dyn DynMigration {
     }
 }
 
-struct DynMigrationWrapper(Box<dyn DynMigration>);
+pub(crate) struct DynMigrationWrapper(Box<dyn DynMigration>);
 
 impl DynMigrationWrapper {
     #[must_use]
-    fn new<T: DynMigration + 'static>(migration: T) -> Self {
+    pub(crate) fn new<T: DynMigration + 'static>(migration: T) -> Self {
         Self(Box::new(migration))
     }
 }

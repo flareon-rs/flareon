@@ -4,7 +4,7 @@ use derive_more::Debug;
 use sea_query::IntoColumnRef;
 
 use crate::db;
-use crate::db::{Database, FromDbValue, Identifier, Model, StatementResult, ToDbValue};
+use crate::db::{DatabaseBackend, FromDbValue, Identifier, Model, StatementResult, ToDbValue};
 
 /// A query that can be executed on a database. Can be used to filter, update,
 /// or delete rows.
@@ -26,7 +26,7 @@ use crate::db::{Database, FromDbValue, Identifier, Model, StatementResult, ToDbV
 #[derive(Debug)]
 pub struct Query<T> {
     filter: Option<Expr>,
-    phantom_data: PhantomData<T>,
+    phantom_data: PhantomData<fn() -> T>,
 }
 
 impl<T: Model> Default for Query<T> {
@@ -86,8 +86,17 @@ impl<T: Model> Query<T> {
     /// # Errors
     ///
     /// Returns an error if the query fails.
-    pub async fn all(&self, db: &Database) -> db::Result<Vec<T>> {
+    pub async fn all<DB: DatabaseBackend>(&self, db: &DB) -> db::Result<Vec<T>> {
         db.query(self).await
+    }
+
+    /// Execute the query and return the first result.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
+    pub async fn get<DB: DatabaseBackend>(&self, db: &DB) -> db::Result<Option<T>> {
+        db.get(self).await
     }
 
     /// Execute the query and check if any results exist.
@@ -95,7 +104,7 @@ impl<T: Model> Query<T> {
     /// # Errors
     ///
     /// Returns an error if the query fails.
-    pub async fn exists(&self, db: &Database) -> db::Result<bool> {
+    pub async fn exists<DB: DatabaseBackend>(&self, db: &DB) -> db::Result<bool> {
         db.exists(self).await
     }
 
@@ -104,7 +113,7 @@ impl<T: Model> Query<T> {
     /// # Errors
     ///
     /// Returns an error if the query fails.
-    pub async fn delete(&self, db: &Database) -> db::Result<StatementResult> {
+    pub async fn delete<DB: DatabaseBackend>(&self, db: &DB) -> db::Result<StatementResult> {
         db.delete(self).await
     }
 
