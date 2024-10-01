@@ -57,7 +57,7 @@ rand = "0.8.5"
 regex = "1.11.0"
 rustversion = "1.0.17"
 sea-query = "0.32.0-rc.1"
-sea-query-binder = { version = "0.7.0-rc.1", features = ["sqlx-sqlite", "with-chrono", "runtime-tokio"] }
+sea-query-binder = { version = "0.7.0-rc.2", features = ["sqlx-sqlite", "with-chrono", "runtime-tokio"] }
 serde = "1.0.210"
 slug = "0.1.5"
 sqlx = { version = "0.8.0", default-features = false, features = ["macros", "json", "runtime-tokio", "sqlite", "chrono"] }

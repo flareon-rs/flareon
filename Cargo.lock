@@ -1791,9 +1791,9 @@ dependencies = [
 
 [[package]]
 name = "sea-query-binder"
-version = "0.7.0-rc.1"
+version = "0.7.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edc3296903e60ddc7c9f4601cd6ef31a4b1584bf22480587e00b9ef743071b57"
+checksum = "643c2e6fbba4440ff0075c405d37079a7da1a46892623b1cc8f06e05233eee1b"
 dependencies = [
  "chrono",
  "sea-query",
