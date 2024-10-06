@@ -1,13 +1,13 @@
 #[rustversion::attr(not(nightly), ignore)]
 #[test]
-fn test_derive_form() {
+fn derive_form() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui/derive_form.rs");
 }
 
 #[rustversion::attr(not(nightly), ignore)]
 #[test]
-fn test_attr_model() {
+fn attr_model() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui/attr_model.rs");
     t.compile_fail("tests/ui/attr_model_migration_invalid_name.rs");
@@ -17,7 +17,7 @@ fn test_attr_model() {
 
 #[rustversion::attr(not(nightly), ignore)]
 #[test]
-fn test_func_query() {
+fn func_query() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui/func_query.rs");
     t.compile_fail("tests/ui/func_query_double_op.rs");

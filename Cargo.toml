@@ -62,7 +62,7 @@ rustversion = "1.0.17"
 sea-query = "0.32.0-rc.2"
 sea-query-binder = { version = "0.7.0-rc.2", features = ["sqlx-sqlite", "with-chrono", "runtime-tokio"] }
 serde = "1.0.210"
-sha3 = "0.11.0-pre.4"
+sha2 = "0.11.0-pre.4"
 slug = "0.1.6"
 sqlx = { version = "0.8.2", default-features = false, features = ["macros", "json", "runtime-tokio", "sqlite", "chrono"] }
 subtle = "2.6.1"

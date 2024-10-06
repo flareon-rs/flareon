@@ -311,14 +311,14 @@ mod tests {
     }
 
     #[test]
-    fn test_router_with_urls() {
+    fn router_with_urls() {
         let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         assert_eq!(router.routes().len(), 1);
     }
 
     #[tokio::test]
-    async fn test_router_route() {
+    async fn router_route() {
         let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         let response = router.route(test_request(), "/test").await.unwrap();
@@ -326,7 +326,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_router_handle() {
+    async fn router_handle() {
         let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         let response = router.handle(test_request()).await.unwrap();
@@ -334,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn test_router_reverse() {
+    fn router_reverse() {
         let route = Route::with_handler_and_name("/test", MockHandler, "test");
         let router = Router::with_urls(vec![route.clone()]);
         let params = ReverseParamMap::new();
@@ -343,7 +343,7 @@ mod tests {
     }
 
     #[test]
-    fn test_router_reverse_with_param() {
+    fn router_reverse_with_param() {
         let route = Route::with_handler_and_name("/test/:id", MockHandler, "test");
         let router = Router::with_urls(vec![route.clone()]);
         let mut params = ReverseParamMap::new();
@@ -353,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    fn test_router_reverse_option() {
+    fn router_reverse_option() {
         let route = Route::with_handler_and_name("/test", MockHandler, "test");
         let router = Router::with_urls(vec![route.clone()]);
         let params = ReverseParamMap::new();
@@ -362,39 +362,39 @@ mod tests {
     }
 
     #[test]
-    fn test_router_routes() {
+    fn router_routes() {
         let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         assert_eq!(router.routes().len(), 1);
     }
 
     #[test]
-    fn test_router_is_empty() {
+    fn router_is_empty() {
         let router = Router::with_urls(vec![]);
         assert!(router.is_empty());
     }
 
     #[test]
-    fn test_route_with_handler() {
+    fn route_with_handler() {
         let route = Route::with_handler("/test", MockHandler);
         assert_eq!(route.url.to_string(), "/test");
     }
 
     #[test]
-    fn test_route_with_handler_and_params() {
+    fn route_with_handler_and_params() {
         let route = Route::with_handler("/test/:id", MockHandler);
         assert_eq!(route.url.to_string(), "/test/:id");
     }
 
     #[test]
-    fn test_route_with_handler_and_name() {
+    fn route_with_handler_and_name() {
         let route = Route::with_handler_and_name("/test", MockHandler, "test");
         assert_eq!(route.url.to_string(), "/test");
         assert_eq!(route.name.as_deref(), Some("test"));
     }
 
     #[test]
-    fn test_route_with_router() {
+    fn route_with_router() {
         let sub_route = Route::with_handler("/sub", MockHandler);
         let sub_router = Router::with_urls(vec![sub_route]);
         let route = Route::with_router("/test", sub_router);

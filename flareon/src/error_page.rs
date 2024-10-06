@@ -315,3 +315,50 @@ pub(super) fn error_page_panic_hook(info: &PanicHookInfo<'_>) {
 
     PANIC_BACKTRACE.replace(Some(__flareon_create_backtrace()));
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::router::Router;
+    use crate::test::TestRequestBuilder;
+
+    fn create_diagnostics() -> FlareonDiagnostics {
+        let router = Arc::new(Router::with_urls(vec![]));
+        let request = TestRequestBuilder::get("/").build();
+        let (parts, _body) = request.into_parts();
+        FlareonDiagnostics::new(router, Some(parts))
+    }
+
+    #[test]
+    fn test_handle_not_found() {
+        let diagnostics = create_diagnostics();
+        let response = handle_not_found(diagnostics);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_handle_response_panic() {
+        let diagnostics = create_diagnostics();
+        let panic_payload = Box::new("panic occurred");
+        let response = handle_response_panic(panic_payload, diagnostics);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_handle_response_error() {
+        let diagnostics = create_diagnostics();
+        let error = Error::new(ErrorRepr::NoViewToReverse {
+            view_name: "error occurred".to_string(),
+        });
+        let response = handle_response_error(error, diagnostics);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_build_flareon_failure_page() {
+        let response = build_flareon_failure_page();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+}

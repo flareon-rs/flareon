@@ -8,10 +8,11 @@ use flareon::{prepare_request, FlareonProject};
 use tower::Service;
 use tower_sessions::{MemoryStore, Session};
 
+use crate::auth::db::DatabaseUserBackend;
 use crate::config::ProjectConfig;
 use crate::db::migrations::{DynMigration, DynMigrationWrapper, MigrationEngine};
 use crate::db::Database;
-use crate::request::Request;
+use crate::request::{Request, RequestExt};
 use crate::response::Response;
 use crate::{Body, Error, Result};
 
@@ -58,8 +59,9 @@ where
 pub struct TestRequestBuilder {
     method: http::Method,
     url: String,
-    has_session: bool,
+    session: Option<Session>,
     config: Option<Arc<ProjectConfig>>,
+    database: Option<Arc<Database>>,
 }
 
 impl TestRequestBuilder {
@@ -68,26 +70,50 @@ impl TestRequestBuilder {
         Self {
             method: http::Method::GET,
             url: url.to_string(),
-            has_session: false,
+            session: None,
             config: None,
+            database: None,
         }
     }
 
-    #[must_use]
-    pub fn with_session(&mut self) -> &mut Self {
-        self.has_session = true;
-        self
-    }
-
-    #[must_use]
-    pub fn with_config(&mut self, config: ProjectConfig) -> &mut Self {
+    pub fn config(&mut self, config: ProjectConfig) -> &mut Self {
         self.config = Some(Arc::new(config));
         self
     }
 
-    #[must_use]
     pub fn with_default_config(&mut self) -> &mut Self {
         self.config = Some(Arc::new(ProjectConfig::default()));
+        self
+    }
+
+    pub fn with_session(&mut self) -> &mut Self {
+        let session_store = MemoryStore::default();
+        self.session = Some(Session::new(None, Arc::new(session_store), None));
+        self
+    }
+
+    pub fn with_session_from(&mut self, request: &Request) -> &mut Self {
+        self.session = Some(request.session().clone());
+        self
+    }
+
+    pub fn session(&mut self, session: Session) -> &mut Self {
+        self.session = Some(session);
+        self
+    }
+
+    pub fn database(&mut self, database: Arc<Database>) -> &mut Self {
+        self.database = Some(database);
+        self
+    }
+
+    pub fn with_db_auth(&mut self, db: Arc<Database>) -> &mut Self {
+        let auth_backend = DatabaseUserBackend::default();
+        let config = ProjectConfig::builder().auth_backend(auth_backend).build();
+
+        self.with_session();
+        self.config(config);
+        self.database(db);
         self
     }
 
@@ -99,14 +125,16 @@ impl TestRequestBuilder {
             .body(Body::empty())
             .expect("Test request should be valid");
 
-        if self.has_session {
-            let session_store = MemoryStore::default();
-            let session = Session::new(None, Arc::new(session_store), None);
-            request.extensions_mut().insert(session);
-        }
-
         if let Some(config) = &self.config {
             request.extensions_mut().insert(config.clone());
+        }
+
+        if let Some(session) = &self.session {
+            request.extensions_mut().insert(session.clone());
+        }
+
+        if let Some(database) = &self.database {
+            request.extensions_mut().insert(database.clone());
         }
 
         request
@@ -114,19 +142,26 @@ impl TestRequestBuilder {
 }
 
 #[derive(Debug)]
-struct TestDatabaseBuilder {
+pub struct TestDatabaseBuilder {
     migrations: Vec<DynMigrationWrapper>,
+}
+
+impl Default for TestDatabaseBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TestDatabaseBuilder {
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             migrations: Vec::new(),
         }
     }
 
-    pub(crate) fn add_migrations<T: DynMigration + 'static, V: IntoIterator<Item = T>>(
+    #[must_use]
+    pub fn add_migrations<T: DynMigration + 'static, V: IntoIterator<Item = T>>(
         mut self,
         migrations: V,
     ) -> Self {
@@ -135,7 +170,13 @@ impl TestDatabaseBuilder {
         self
     }
 
-    async fn build(self) -> Database {
+    #[must_use]
+    pub fn with_auth(self) -> Self {
+        self.add_migrations(flareon::auth::db::migrations::MIGRATIONS.to_vec())
+    }
+
+    #[must_use]
+    pub async fn build(self) -> Database {
         let engine = MigrationEngine::new(self.migrations);
         let database = Database::new("sqlite::memory:").await.unwrap();
         engine.run(&database).await.unwrap();

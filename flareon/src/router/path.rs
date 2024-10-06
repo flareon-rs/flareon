@@ -239,7 +239,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_path_parser_no_params() {
+    fn path_parser_no_params() {
         let path_parser = PathMatcher::new("/users");
         assert_eq!(
             path_parser.capture("/users"),
@@ -249,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn test_path_parser_single_param() {
+    fn path_parser_single_param() {
         let path_parser = PathMatcher::new("/users/:id");
         assert_eq!(
             path_parser.capture("/users/123"),
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn test_path_parser_multiple_params() {
+    fn path_parser_multiple_params() {
         let path_parser = PathMatcher::new("/users/:id/posts/:post_id");
         assert_eq!(
             path_parser.capture("/users/123/posts/456"),

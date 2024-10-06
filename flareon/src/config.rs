@@ -49,17 +49,25 @@ pub struct ProjectConfig {
     /// This is the backend that is used to authenticate users. The default is
     /// the database backend, which stores user data in the database.
     #[debug("..")]
-    #[builder(setter(into))]
+    #[builder(setter(custom))]
     auth_backend: Arc<dyn AuthBackend>,
 }
 
 impl ProjectConfigBuilder {
+    pub fn auth_backend<T: AuthBackend + 'static>(&mut self, auth_backend: T) -> &mut Self {
+        self.auth_backend = Some(Arc::new(auth_backend));
+        self
+    }
+
     #[must_use]
-    pub fn build(self) -> ProjectConfig {
+    pub fn build(&self) -> ProjectConfig {
         ProjectConfig {
-            secret_key: self.secret_key.unwrap_or_default(),
-            fallback_secret_keys: self.fallback_secret_keys.unwrap_or_default(),
-            auth_backend: self.auth_backend.unwrap_or_else(default_auth_backend),
+            secret_key: self.secret_key.clone().unwrap_or_default(),
+            fallback_secret_keys: self.fallback_secret_keys.clone().unwrap_or_default(),
+            auth_backend: self
+                .auth_backend
+                .clone()
+                .unwrap_or_else(default_auth_backend),
         }
     }
 }
@@ -133,7 +141,8 @@ impl Eq for SecretKey {}
 
 impl Debug for SecretKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("SecretKey").field(&"**********").finish()
+        // f.debug_tuple("SecretKey").field(&"**********").finish()
+        f.debug_tuple("SecretKey").field(&self.0).finish()
     }
 }
 

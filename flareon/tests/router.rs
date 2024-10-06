@@ -31,7 +31,7 @@ async fn test_index() {
 }
 
 #[tokio::test]
-async fn test_path_params() {
+async fn path_params() {
     let mut client = Client::new(project());
 
     let response = client.get("/get/John").await.unwrap();

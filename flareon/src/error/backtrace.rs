@@ -9,6 +9,8 @@ pub(crate) fn __flareon_create_backtrace() -> Backtrace {
         if start {
             backtrace.push(frame);
         } else if frame.symbol_name().contains("__flareon_create_backtrace") {
+            // TODO does this work with strip = true? (probably not, in that case we should
+            // return all frames instead)
             start = true;
         }
 
@@ -95,5 +97,88 @@ impl From<&backtrace::Frame> for StackFrame {
             lineno,
             colno,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_backtrace() {
+        let backtrace = __flareon_create_backtrace();
+        assert!(
+            !backtrace.frames().is_empty(),
+            "Backtrace should have frames"
+        );
+    }
+
+    #[test]
+    fn test_stack_frame_symbol_name() {
+        let frame = StackFrame {
+            symbol_name: Some("test_symbol".to_string()),
+            filename: None,
+            lineno: None,
+            colno: None,
+        };
+        assert_eq!(frame.symbol_name(), "test_symbol");
+    }
+
+    #[test]
+    fn test_stack_frame_symbol_name_unknown() {
+        let frame = StackFrame {
+            symbol_name: None,
+            filename: None,
+            lineno: None,
+            colno: None,
+        };
+        assert_eq!(frame.symbol_name(), "<unknown>");
+    }
+
+    #[test]
+    fn test_stack_frame_location() {
+        let frame = StackFrame {
+            symbol_name: None,
+            filename: Some("test_file.rs".to_string()),
+            lineno: Some(42),
+            colno: Some(7),
+        };
+        assert_eq!(frame.location(), "test_file.rs:42:7");
+    }
+
+    #[test]
+    fn test_stack_frame_location_no_colno() {
+        let frame = StackFrame {
+            symbol_name: None,
+            filename: Some("test_file.rs".to_string()),
+            lineno: Some(42),
+            colno: None,
+        };
+        assert_eq!(frame.location(), "test_file.rs:42");
+    }
+
+    #[test]
+    fn test_stack_frame_location_unknown() {
+        let frame = StackFrame {
+            symbol_name: None,
+            filename: None,
+            lineno: None,
+            colno: None,
+        };
+        assert_eq!(frame.location(), "<unknown>");
+    }
+
+    #[test]
+    fn test_backtrace_frames() {
+        let backtrace = Backtrace {
+            frames: vec![StackFrame {
+                symbol_name: Some("test_symbol".to_string()),
+                filename: Some("test_file.rs".to_string()),
+                lineno: Some(42),
+                colno: Some(7),
+            }],
+        };
+        assert_eq!(backtrace.frames().len(), 1);
+        assert_eq!(backtrace.frames()[0].symbol_name(), "test_symbol");
     }
 }

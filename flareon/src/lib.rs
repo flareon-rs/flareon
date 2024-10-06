@@ -273,16 +273,14 @@ impl http_body::Body for Body {
     fn is_end_stream(&self) -> bool {
         match &self.inner {
             BodyInner::Fixed(data) => data.is_empty(),
-            BodyInner::Streaming(_) => false,
-            BodyInner::Axum(_) => false,
+            BodyInner::Streaming(_) | BodyInner::Axum(_) => false,
         }
     }
 
     fn size_hint(&self) -> SizeHint {
         match &self.inner {
             BodyInner::Fixed(data) => SizeHint::with_exact(data.len() as u64),
-            BodyInner::Streaming(_) => SizeHint::new(),
-            BodyInner::Axum(_) => SizeHint::new(),
+            BodyInner::Streaming(_) | BodyInner::Axum(_) => SizeHint::new(),
         }
     }
 }
@@ -611,13 +609,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_flareon_app_builder() {
+    fn flareon_app_builder() {
         let app = FlareonApp::builder().urls([]).build().unwrap();
         assert!(app.router.is_empty());
     }
 
     #[test]
-    fn test_flareon_project_builder() {
+    fn flareon_project_builder() {
         let app = FlareonApp::builder().urls([]).build().unwrap();
         let mut builder = FlareonProject::builder();
         builder.register_app_with_views(app, "/app");
@@ -627,7 +625,7 @@ mod tests {
     }
 
     #[test]
-    fn test_flareon_project_router() {
+    fn flareon_project_router() {
         let app = FlareonApp::builder().urls([]).build().unwrap();
         let mut builder = FlareonProject::builder();
         builder.register_app_with_views(app, "/app");
@@ -636,7 +634,7 @@ mod tests {
     }
 
     #[test]
-    fn test_body_empty() {
+    fn body_empty() {
         let body = Body::empty();
         if let BodyInner::Fixed(data) = body.inner {
             assert!(data.is_empty());
@@ -646,7 +644,7 @@ mod tests {
     }
 
     #[test]
-    fn test_body_fixed() {
+    fn body_fixed() {
         let content = "Hello, world!";
         let body = Body::fixed(content);
         if let BodyInner::Fixed(data) = body.inner {
@@ -657,7 +655,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_body_streaming() {
+    async fn body_streaming() {
         let stream = stream::once(async { Ok(Bytes::from("Hello, world!")) });
         let body = Body::streaming(stream);
         if let BodyInner::Streaming(_) = body.inner {
@@ -668,7 +666,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_http_body_poll_frame_fixed() {
+    async fn http_body_poll_frame_fixed() {
         let content = "Hello, world!";
         let mut body = Body::fixed(content);
         let mut cx = Context::from_waker(futures::task::noop_waker_ref());
@@ -687,7 +685,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_http_body_poll_frame_streaming() {
+    async fn http_body_poll_frame_streaming() {
         let content = "Hello, world!";
         let mut body = Body::streaming(stream::once(async move { Ok(Bytes::from(content)) }));
         let mut cx = Context::from_waker(futures::task::noop_waker_ref());
@@ -706,7 +704,7 @@ mod tests {
     }
 
     #[test]
-    fn test_http_body_is_end_stream() {
+    fn http_body_is_end_stream() {
         let body = Body::empty();
         assert!(body.is_end_stream());
 
@@ -715,7 +713,7 @@ mod tests {
     }
 
     #[test]
-    fn test_http_body_size_hint() {
+    fn http_body_size_hint() {
         let body = Body::empty();
         assert_eq!(body.size_hint().exact(), Some(0));
 

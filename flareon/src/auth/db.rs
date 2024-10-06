@@ -7,17 +7,18 @@ use std::any::Any;
 
 use async_trait::async_trait;
 use flareon_macros::model;
-use hmac::{KeyInit, Mac};
+use hmac::{Hmac, KeyInit, Mac};
+use sha2::Sha512;
 
 use crate::auth::{
     AuthBackend, AuthError, Password, PasswordHash, PasswordVerificationResult, Result,
-    SessionAuthHash, SessionAuthHmac, User, UserId,
+    SessionAuthHash, User, UserId,
 };
 use crate::config::SecretKey;
 use crate::db::{query, DatabaseBackend, Model};
 use crate::request::{Request, RequestExt};
 
-mod migrations;
+pub mod migrations;
 
 /// A user stored in the database.
 #[derive(Debug, Clone)]
@@ -38,6 +39,48 @@ impl DatabaseUser {
         }
     }
 
+    /// Create a new user and save it to the database.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user could not be saved to the database.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::auth::db::DatabaseUser;
+    /// use flareon::auth::Password;
+    /// use flareon::request::{Request, RequestExt};
+    /// use flareon::response::{Response, ResponseExt};
+    /// use flareon::{Body, StatusCode};
+    ///
+    /// async fn view(request: &Request) -> flareon::Result<Response> {
+    ///     let user = DatabaseUser::create_user(
+    ///         request.db(),
+    ///         "testuser".to_string(),
+    ///         &Password::new("password123"),
+    ///     )
+    ///     .await
+    ///     .unwrap();
+    ///
+    ///     Ok(Response::new_html(
+    ///         StatusCode::OK,
+    ///         Body::fixed("User created!"),
+    ///     ))
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> flareon::Result<()> {
+    /// #     use flareon::test::{TestDatabaseBuilder, TestRequestBuilder};
+    /// #     let request = TestRequestBuilder::get("/")
+    /// #         .with_db_auth(std::sync::Arc::new(
+    /// #             TestDatabaseBuilder::new().with_auth().build().await,
+    /// #         ))
+    /// #         .build();
+    /// #     view(&request).await?;
+    /// #     Ok(())
+    /// # }
+    /// ```
     pub async fn create_user<DB: DatabaseBackend>(
         db: &DB,
         username: String,
@@ -85,6 +128,7 @@ impl DatabaseUser {
             // timing attacks from being used to determine if a user exists. Additionally,
             // do something with the result to prevent the compiler from optimizing out the
             // operation.
+            // TODO: benchmark this to make sure it works as expected
             let dummy_hash = PasswordHash::from_password(credentials.password());
             if let PasswordVerificationResult::Invalid = dummy_hash.verify(credentials.password()) {
                 panic!("Password hash verification should never fail for a newly generated hash");
@@ -104,7 +148,13 @@ impl DatabaseUser {
     }
 }
 
+type SessionAuthHmac = Hmac<Sha512>;
+
 impl User for DatabaseUser {
+    fn id(&self) -> Option<UserId> {
+        Some(UserId::Int(self.id))
+    }
+
     fn username(&self) -> Option<&str> {
         Some(&self.username)
     }
@@ -127,6 +177,14 @@ impl User for DatabaseUser {
     }
 }
 
+/// Credentials for authenticating a user stored in the database.
+///
+/// This struct is used to authenticate a user stored in the database. It
+/// contains the username and password of the user.
+///
+/// Can be passed to
+/// [`AuthRequestExt::authenticate`](crate::auth::AuthRequestExt::authenticate)
+/// to authenticate a user when using the [`DatabaseUserBackend`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseUserCredentials {
     username: String,
@@ -150,6 +208,13 @@ impl DatabaseUserCredentials {
     }
 }
 
+/// The authentication backend for users stored in the database.
+///
+/// This is the default authentication backend for Flareon. It authenticates
+/// users stored in the database using the [`DatabaseUser`] model.
+///
+/// This backend supports authenticating users using the
+/// [`DatabaseUserCredentials`] struct and ignores all other credential types.
 #[derive(Debug, Copy, Clone)]
 pub struct DatabaseUserBackend {}
 
@@ -160,6 +225,17 @@ impl Default for DatabaseUserBackend {
 }
 
 impl DatabaseUserBackend {
+    /// Create a new instance of the database user authentication backend.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::auth::db::DatabaseUserBackend;
+    /// use flareon::config::ProjectConfig;
+    ///
+    /// let backend = DatabaseUserBackend::new();
+    /// let config = ProjectConfig::builder().auth_backend(backend).build();
+    /// ```
     #[must_use]
     pub fn new() -> Self {
         Self {}
@@ -202,7 +278,7 @@ mod tests {
     use crate::db::MockDatabaseBackend;
 
     #[test]
-    fn test_session_auth_hash() {
+    fn session_auth_hash() {
         let user = DatabaseUser::new(1, "testuser".to_string(), &Password::new("password123"));
         let secret_key = SecretKey::new(b"supersecretkey");
 
@@ -210,8 +286,21 @@ mod tests {
         assert!(hash.is_some());
     }
 
+    #[test]
+    fn database_user_traits() {
+        let user = DatabaseUser::new(1, "testuser".to_string(), &Password::new("password123"));
+        let user_ref: &dyn User = &user;
+        assert_eq!(user_ref.id(), Some(UserId::Int(1)));
+        assert_eq!(user_ref.username(), Some("testuser"));
+        assert_eq!(user_ref.is_active(), true);
+        assert_eq!(user_ref.is_authenticated(), true);
+        assert!(user_ref
+            .session_auth_hash(&SecretKey::new(b"supersecretkey"))
+            .is_some());
+    }
+
     #[tokio::test]
-    async fn test_create_user() {
+    async fn create_user() {
         let mut mock_db = MockDatabaseBackend::new();
         mock_db
             .expect_insert::<DatabaseUser>()
@@ -227,7 +316,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_by_id() {
+    async fn get_by_id() {
         let mut mock_db = MockDatabaseBackend::new();
         let user = DatabaseUser::new(1, "testuser".to_string(), &Password::new("password123"));
 
@@ -243,7 +332,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_authenticate() {
+    async fn authenticate() {
         let mut mock_db = MockDatabaseBackend::new();
         let user = DatabaseUser::new(1, "testuser".to_string(), &Password::new("password123"));
 
@@ -261,7 +350,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_authenticate_non_existing() {
+    async fn authenticate_non_existing() {
         let mut mock_db = MockDatabaseBackend::new();
 
         mock_db
@@ -270,6 +359,23 @@ mod tests {
 
         let credentials =
             DatabaseUserCredentials::new("testuser".to_string(), Password::new("password123"));
+        let result = DatabaseUser::authenticate(&mock_db, &credentials)
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn authenticate_invalid_password() {
+        let mut mock_db = MockDatabaseBackend::new();
+        let user = DatabaseUser::new(1, "testuser".to_string(), &Password::new("password123"));
+
+        mock_db
+            .expect_get::<DatabaseUser>()
+            .returning(move |_| Ok(Some(user.clone())));
+
+        let credentials =
+            DatabaseUserCredentials::new("testuser".to_string(), Password::new("invalid"));
         let result = DatabaseUser::authenticate(&mock_db, &credentials)
             .await
             .unwrap();

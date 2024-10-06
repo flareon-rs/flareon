@@ -14,8 +14,12 @@ use crate::{Body, Result};
 
 pub type Request = http::Request<Body>;
 
+mod private {
+    pub trait Sealed {}
+}
+
 #[async_trait]
-pub trait RequestExt {
+pub trait RequestExt: private::Sealed {
     #[must_use]
     fn project_config(&self) -> &crate::config::ProjectConfig;
 
@@ -58,6 +62,8 @@ pub trait RequestExt {
 
     fn expect_content_type(&mut self, expected: &'static str) -> Result<()>;
 }
+
+impl private::Sealed for Request {}
 
 #[async_trait]
 impl RequestExt for Request {

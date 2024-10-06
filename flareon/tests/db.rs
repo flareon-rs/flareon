@@ -6,7 +6,7 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 
 #[tokio::test]
-async fn test_model_crud() {
+async fn model_crud() {
     let db = test_sqlite_db().await;
 
     migrate_test_model(&db).await;
@@ -34,7 +34,7 @@ async fn test_model_crud() {
 }
 
 #[tokio::test]
-async fn test_model_macro_filtering() {
+async fn model_macro_filtering() {
     let db = test_sqlite_db().await;
 
     migrate_test_model(&db).await;
@@ -148,7 +148,7 @@ const CREATE_ALL_FIELDS_MODEL: Operation = Operation::create_model()
     .build();
 
 #[tokio::test]
-async fn test_all_fields_model() {
+async fn all_fields_model() {
     let db = test_sqlite_db().await;
 
     migrate_all_fields_model(&db).await;

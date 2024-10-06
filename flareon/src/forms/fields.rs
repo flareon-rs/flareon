@@ -448,7 +448,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_string_field_render() {
+    fn string_field_render() {
         let field = StringField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
@@ -465,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn test_password_field_render() {
+    fn password_field_render() {
         let field = PasswordField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
@@ -482,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn test_integer_field_render() {
+    fn integer_field_render() {
         let field = IntegerField::<i32>::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
@@ -501,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bool_field_render() {
+    fn bool_field_render() {
         let field = BoolField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
@@ -518,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bool_field_render_must_be_true() {
+    fn bool_field_render_must_be_true() {
         let field = BoolField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
@@ -535,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_field_clean_value() {
+    fn string_field_clean_value() {
         let mut field = StringField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
@@ -551,7 +551,7 @@ mod tests {
     }
 
     #[test]
-    fn test_password_field_clean_value() {
+    fn password_field_clean_value() {
         let mut field = PasswordField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
@@ -567,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn test_integer_field_clean_value() {
+    fn integer_field_clean_value() {
         let mut field = IntegerField::<i32>::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
@@ -584,7 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bool_field_clean_value() {
+    fn bool_field_clean_value() {
         let mut field = BoolField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),

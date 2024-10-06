@@ -38,7 +38,7 @@ mod tests {
     use crate::response::{Response, ResponseExt};
 
     #[test]
-    fn test_response_new_html() {
+    fn response_new_html() {
         let body = Body::fixed("<html></html>");
         let response = Response::new_html(StatusCode::OK, body);
         assert_eq!(response.status(), StatusCode::OK);
@@ -49,7 +49,7 @@ mod tests {
     }
 
     #[test]
-    fn test_response_new_redirect() {
+    fn response_new_redirect() {
         let location = "http://example.com";
         let response = Response::new_redirect(location);
         assert_eq!(response.status(), StatusCode::SEE_OTHER);

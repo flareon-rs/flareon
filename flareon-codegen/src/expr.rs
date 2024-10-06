@@ -391,7 +391,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_field_ref() {
+    fn field_ref() {
         let input = quote! { $field };
         let expected = Expr::FieldRef(syn::Ident::new("field", span()));
 
@@ -399,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn test_literal() {
+    fn literal() {
         let input = quote! { 42 };
         let expected = Expr::Value(parse_quote!(42));
 
@@ -407,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn test_field_eq() {
+    fn field_eq() {
         let input = quote! { $field == 42 };
         let expected = Expr::Eq(
             Box::new(Expr::FieldRef(syn::Ident::new("field", span()))),
@@ -418,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn test_math() {
+    fn math() {
         let input = quote! { $a + $b * $c / $d - $e };
         let expected = Expr::Sub(
             Box::new(Expr::Add(
@@ -435,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn test_field_eq_and() {
+    fn field_eq_and() {
         let input = quote! { $field == 42 && $field != 42 };
         let expected = Expr::And(
             Box::new(Expr::Eq(
@@ -452,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parenthesis_literal() {
+    fn parenthesis_literal() {
         let input = quote! { (((($a)))) };
         let expected = field("a");
 
@@ -460,7 +460,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parenthesis_math() {
+    fn parenthesis_math() {
         let input = quote! { ($a + $b) * $c };
         let expected = Expr::Mul(
             Box::new(Expr::Add(Box::new(field("a")), Box::new(field("b")))),
@@ -471,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn test_method_call() {
+    fn method_call() {
         let input = quote! { $a == foo.bar().baz() };
         let expected = Expr::Eq(
             Box::new(field("a")),
@@ -490,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokens_field_ref() {
+    fn tokens_field_ref() {
         let input = quote! { $migration.like("%this") };
         let expr = unwrap_syn(Expr::parse(input));
 
@@ -498,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tokens_method() {
+    fn tokens_method() {
         let input = quote! { string.contains("that") };
         let expr = unwrap_syn(Expr::parse(input));
 

@@ -627,13 +627,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_identifier() {
+    fn identifier() {
         let id = Identifier::new("test");
         assert_eq!(id.as_str(), "test");
     }
 
     #[test]
-    fn test_column() {
+    fn column() {
         let column = Column::new(Identifier::new("test"));
         assert_eq!(column.name.as_str(), "test");
         assert!(!column.auto_value);
