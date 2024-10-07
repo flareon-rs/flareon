@@ -12,3 +12,4 @@ target/
 # Test databases
 *.db
 *.sqlite3
+*.sqlite3-journal

@@ -20,6 +20,7 @@ mod headers;
 #[doc(hidden)]
 #[path = "private.rs"]
 pub mod __private;
+pub mod admin;
 pub mod auth;
 pub mod config;
 mod error_page;
@@ -29,7 +30,7 @@ pub mod response;
 pub mod router;
 pub mod test;
 
-use std::fmt::{Debug, Formatter};
+use std::fmt::Formatter;
 use std::future::{poll_fn, Future};
 use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
@@ -39,9 +40,9 @@ use std::task::{Context, Poll};
 use async_trait::async_trait;
 use axum::handler::HandlerWithoutStateExt;
 use bytes::Bytes;
-use derive_builder::Builder;
-use derive_more::{Deref, From};
+use derive_more::{Debug, Deref, Display, From};
 pub use error::Error;
+use flareon::config::DatabaseConfig;
 use flareon::router::RouterService;
 use futures_core::Stream;
 use futures_util::FutureExt;
@@ -53,7 +54,10 @@ use router::{Route, Router};
 use sync_wrapper::SyncWrapper;
 use tower::Service;
 
+use crate::admin::AdminModelManager;
 use crate::config::ProjectConfig;
+use crate::db::migrations::{DynMigration, MigrationEngine};
+use crate::db::Database;
 use crate::error::ErrorRepr;
 use crate::error_page::{ErrorPageTrigger, FlareonDiagnostics};
 use crate::response::Response;
@@ -97,25 +101,25 @@ where
 /// Each app can have its own set of URLs that it can handle which can be
 /// mounted on the project's router, its own set of middleware, database
 /// migrations (which can depend on other apps), etc.
-#[derive(Clone, Debug, Builder)]
-#[builder(setter(into))]
-pub struct FlareonApp {
-    router: Router,
-}
+#[async_trait]
+pub trait FlareonApp: Send + Sync {
+    fn name(&self) -> &str;
 
-impl FlareonApp {
-    #[must_use]
-    pub fn builder() -> FlareonAppBuilder {
-        FlareonAppBuilder::default()
+    #[allow(unused_variables)]
+    async fn init(&self, context: &mut AppContext) -> Result<()> {
+        Ok(())
     }
-}
 
-impl FlareonAppBuilder {
-    #[allow(unused_mut)]
-    pub fn urls<T: Into<Vec<Route>>>(&mut self, urls: T) -> &mut Self {
-        // TODO throw error if urls have already been set
-        self.router = Some(Router::with_urls(urls.into()));
-        self
+    fn router(&self) -> Router {
+        Router::empty()
+    }
+
+    fn migrations(&self) -> Vec<Box<dyn DynMigration>> {
+        vec![]
+    }
+
+    fn admin_model_managers(&self) -> Vec<Box<dyn AdminModelManager>> {
+        vec![]
     }
 }
 
@@ -285,19 +289,75 @@ impl http_body::Body for Body {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 // TODO add Middleware type?
 pub struct FlareonProject<S> {
     config: Arc<ProjectConfig>,
-    apps: Vec<FlareonApp>,
+    #[debug("...")]
+    apps: Vec<Box<dyn FlareonApp>>,
     router: Arc<Router>,
+    database: Option<Arc<Database>>,
     handler: S,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
+pub struct AppContext {
+    config: Arc<ProjectConfig>,
+    #[debug("...")]
+    apps: Vec<Box<dyn FlareonApp>>,
+    router: Arc<Router>,
+    database: Option<Arc<Database>>,
+}
+
+impl AppContext {
+    #[must_use]
+    pub(crate) fn new(
+        config: Arc<ProjectConfig>,
+        apps: Vec<Box<dyn FlareonApp>>,
+        router: Arc<Router>,
+        database: Option<Arc<Database>>,
+    ) -> Self {
+        Self {
+            config,
+            apps,
+            router,
+            database,
+        }
+    }
+
+    #[must_use]
+    pub fn config(&self) -> &ProjectConfig {
+        &self.config
+    }
+
+    #[must_use]
+    pub fn apps(&self) -> &[Box<dyn FlareonApp>] {
+        &self.apps
+    }
+
+    #[must_use]
+    pub fn router(&self) -> &Router {
+        &self.router
+    }
+
+    #[must_use]
+    pub fn try_database(&self) -> Option<&Arc<Database>> {
+        self.database.as_ref()
+    }
+
+    #[must_use]
+    pub fn database(&self) -> &Database {
+        self.try_database().expect(
+            "Database missing. Did you forget to add the database when configuring FlareonProject?",
+        )
+    }
+}
+
+#[derive(Debug)]
 pub struct FlareonProjectBuilder {
     config: ProjectConfig,
-    apps: Vec<FlareonApp>,
+    #[debug("...")]
+    apps: Vec<Box<dyn FlareonApp>>,
     urls: Vec<Route>,
 }
 
@@ -311,49 +371,55 @@ impl FlareonProjectBuilder {
         }
     }
 
-    pub fn config(&mut self, config: ProjectConfig) -> &mut Self {
+    #[must_use]
+    pub fn config(mut self, config: ProjectConfig) -> Self {
         self.config = config;
         self
     }
 
-    pub fn register_app_with_views(&mut self, app: FlareonApp, url_prefix: &str) -> &mut Self {
-        let new = self;
-        new.urls
-            .push(Route::with_router(url_prefix, app.router.clone()));
-        new.apps.push(app);
-        new
+    pub fn register_app_with_views<T: FlareonApp + 'static>(
+        mut self,
+        app: T,
+        url_prefix: &str,
+    ) -> Self {
+        self.urls.push(Route::with_router(url_prefix, app.router()));
+        self = self.register_app(app);
+        self
+    }
+
+    pub fn register_app<T: FlareonApp + 'static>(mut self, app: T) -> Self {
+        self.apps.push(Box::new(app));
+        self
     }
 
     #[must_use]
     pub fn middleware<M: tower::Layer<RouterService>>(
-        &mut self,
+        self,
         middleware: M,
     ) -> FlareonProjectBuilderWithMiddleware<M::Service> {
-        self.clone()
-            .to_builder_with_middleware()
-            .middleware(middleware)
+        self.into_builder_with_middleware().middleware(middleware)
     }
 
     /// Builds the Flareon project instance.
-    #[must_use]
-    pub fn build(&self) -> FlareonProject<RouterService> {
-        self.to_builder_with_middleware().build()
+    pub async fn build(self) -> Result<FlareonProject<RouterService>> {
+        self.into_builder_with_middleware().build().await
     }
 
     #[must_use]
-    fn to_builder_with_middleware(&self) -> FlareonProjectBuilderWithMiddleware<RouterService> {
-        let config = Arc::new(self.config.clone());
-        let router = Arc::new(Router::with_urls(self.urls.clone()));
-        let service = RouterService::new(router.clone());
+    fn into_builder_with_middleware(self) -> FlareonProjectBuilderWithMiddleware<RouterService> {
+        let config = Arc::new(self.config);
+        let router = Arc::new(Router::with_urls(self.urls));
+        let service = RouterService::new(Arc::clone(&router));
 
-        FlareonProjectBuilderWithMiddleware::new(config, self.apps.clone(), router, service)
+        FlareonProjectBuilderWithMiddleware::new(config, self.apps, router, service)
     }
 }
 
 #[derive(Debug)]
 pub struct FlareonProjectBuilderWithMiddleware<S> {
     config: Arc<ProjectConfig>,
-    apps: Vec<FlareonApp>,
+    #[debug("...")]
+    apps: Vec<Box<dyn FlareonApp>>,
     router: Arc<Router>,
     handler: S,
 }
@@ -362,7 +428,7 @@ impl<S: Service<Request>> FlareonProjectBuilderWithMiddleware<S> {
     #[must_use]
     fn new(
         config: Arc<ProjectConfig>,
-        apps: Vec<FlareonApp>,
+        apps: Vec<Box<dyn FlareonApp>>,
         router: Arc<Router>,
         handler: S,
     ) -> Self {
@@ -388,14 +454,21 @@ impl<S: Service<Request>> FlareonProjectBuilderWithMiddleware<S> {
     }
 
     /// Builds the Flareon project instance.
-    #[must_use]
-    pub fn build(self) -> FlareonProject<S> {
-        FlareonProject {
+    pub async fn build(self) -> Result<FlareonProject<S>> {
+        let database = Self::init_database(self.config.database_config()).await?;
+
+        Ok(FlareonProject {
             config: self.config,
             apps: self.apps,
             router: self.router,
             handler: self.handler,
-        }
+            database: Some(database),
+        })
+    }
+
+    async fn init_database(config: &DatabaseConfig) -> Result<Arc<Database>> {
+        let database = Database::new(config.url()).await?;
+        Ok(Arc::new(database))
     }
 }
 
@@ -419,6 +492,27 @@ where
     #[must_use]
     pub fn router(&self) -> &Router {
         &self.router
+    }
+
+    #[must_use]
+    pub fn try_database(&self) -> Option<&Arc<Database>> {
+        self.database.as_ref()
+    }
+
+    #[must_use]
+    pub fn database(&self) -> &Database {
+        self.try_database().expect("database should be Some")
+    }
+
+    #[must_use]
+    pub fn into_context(self) -> (AppContext, S) {
+        let context = AppContext {
+            config: self.config,
+            apps: self.apps,
+            router: self.router,
+            database: self.database,
+        };
+        (context, self.handler)
     }
 }
 
@@ -455,31 +549,37 @@ where
 /// # Errors
 ///
 /// This function returns an error if the server fails to start.
-pub async fn run_at<S>(
-    mut project: FlareonProject<S>,
-    listener: tokio::net::TcpListener,
-) -> Result<()>
+pub async fn run_at<S>(project: FlareonProject<S>, listener: tokio::net::TcpListener) -> Result<()>
 where
     S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
     S::Future: Send,
 {
-    for app in &mut project.apps {
-        info!("Initializing app: {:?}", app);
+    let (mut context, mut project_handler) = project.into_context();
+
+    if let Some(database) = &context.database {
+        let mut migrations: Vec<Box<dyn DynMigration>> = Vec::new();
+        for app in &context.apps {
+            migrations.extend(app.migrations());
+        }
+        let migration_engine = MigrationEngine::new(migrations);
+        migration_engine.run(database).await?;
     }
 
-    let FlareonProject {
-        config,
-        apps: _apps,
-        router,
-        mut handler,
-    } = project;
+    let mut apps = std::mem::take(&mut context.apps);
+    for app in &mut apps {
+        info!("Initializing app: {}", app.name());
+
+        app.init(&mut context).await?;
+    }
+    context.apps = apps;
+
+    let context = Arc::new(context);
 
     let handler = |axum_request: axum::extract::Request| async move {
-        let request =
-            request_axum_to_flareon(axum_request, Arc::clone(&config), Arc::clone(&router));
+        let request = request_axum_to_flareon(axum_request, Arc::clone(&context));
         let (request_parts, request) = request_parts_for_diagnostics(request);
 
-        let catch_unwind_response = AssertUnwindSafe(pass_to_axum(request, &mut handler))
+        let catch_unwind_response = AssertUnwindSafe(pass_to_axum(request, &mut project_handler))
             .catch_unwind()
             .await;
 
@@ -495,7 +595,7 @@ where
         };
 
         if show_error_page {
-            let diagnostics = FlareonDiagnostics::new(Arc::clone(&router), request_parts);
+            let diagnostics = FlareonDiagnostics::new(Arc::clone(&context.router), request_parts);
 
             match catch_unwind_response {
                 Ok(response) => match response {
@@ -549,21 +649,15 @@ fn request_parts_for_diagnostics(request: Request) -> (Option<Parts>, Request) {
 
 fn request_axum_to_flareon(
     axum_request: axum::extract::Request,
-    config: Arc<ProjectConfig>,
-    router: Arc<Router>,
+    context: Arc<AppContext>,
 ) -> Request {
     let mut request = axum_request.map(Body::axum);
-    prepare_request(&mut request, config, router);
+    prepare_request(&mut request, context);
     request
 }
 
-pub(crate) fn prepare_request(
-    request: &mut Request,
-    config: Arc<ProjectConfig>,
-    router: Arc<Router>,
-) {
-    request.extensions_mut().insert(config);
-    request.extensions_mut().insert(router);
+pub(crate) fn prepare_request(request: &mut Request, context: Arc<AppContext>) {
+    request.extensions_mut().insert(context);
 }
 
 async fn pass_to_axum<S>(request: Request, handler: &mut S) -> Result<axum::response::Response>
@@ -583,7 +677,7 @@ pub trait Render {
     fn render(&self) -> Html;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Deref, From)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Deref, From, Display)]
 pub struct Html(String);
 
 impl Html {
@@ -608,28 +702,40 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn flareon_app_builder() {
-        let app = FlareonApp::builder().urls([]).build().unwrap();
-        assert!(app.router.is_empty());
+    struct MockFlareonApp;
+
+    impl FlareonApp for MockFlareonApp {
+        fn name(&self) -> &str {
+            "mock"
+        }
     }
 
-    #[test]
-    fn flareon_project_builder() {
-        let app = FlareonApp::builder().urls([]).build().unwrap();
-        let mut builder = FlareonProject::builder();
-        builder.register_app_with_views(app, "/app");
-        let project = builder.build();
+    #[tokio::test]
+    async fn flareon_app_default_impl() {
+        let app = MockFlareonApp {};
+        assert_eq!(app.name(), "mock");
+        assert_eq!(app.router().routes().len(), 0);
+        assert_eq!(app.migrations().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn flareon_project_builder() {
+        let project = FlareonProject::builder()
+            .register_app_with_views(MockFlareonApp {}, "/app")
+            .build()
+            .await
+            .unwrap();
         assert_eq!(project.apps.len(), 1);
         assert!(!project.router.is_empty());
     }
 
-    #[test]
-    fn flareon_project_router() {
-        let app = FlareonApp::builder().urls([]).build().unwrap();
-        let mut builder = FlareonProject::builder();
-        builder.register_app_with_views(app, "/app");
-        let project = builder.build();
+    #[tokio::test]
+    async fn flareon_project_router() {
+        let project = FlareonProject::builder()
+            .register_app_with_views(MockFlareonApp {}, "/app")
+            .build()
+            .await
+            .unwrap();
         assert_eq!(project.router().routes().len(), 1);
     }
 

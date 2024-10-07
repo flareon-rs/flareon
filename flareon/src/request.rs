@@ -21,6 +21,9 @@ mod private {
 #[async_trait]
 pub trait RequestExt: private::Sealed {
     #[must_use]
+    fn context(&self) -> &crate::AppContext;
+
+    #[must_use]
     fn project_config(&self) -> &crate::config::ProjectConfig;
 
     #[must_use]
@@ -67,16 +70,18 @@ impl private::Sealed for Request {}
 
 #[async_trait]
 impl RequestExt for Request {
-    fn project_config(&self) -> &crate::config::ProjectConfig {
+    fn context(&self) -> &crate::AppContext {
         self.extensions()
-            .get::<Arc<crate::config::ProjectConfig>>()
-            .expect("ProjectConfig extension missing")
+            .get::<Arc<crate::AppContext>>()
+            .expect("AppContext extension missing")
+    }
+
+    fn project_config(&self) -> &crate::config::ProjectConfig {
+        self.context().config()
     }
 
     fn router(&self) -> &Router {
-        self.extensions()
-            .get::<Arc<Router>>()
-            .expect("Router extension missing")
+        self.context().router()
     }
 
     fn path_params(&self) -> &PathParams {
@@ -90,9 +95,7 @@ impl RequestExt for Request {
     }
 
     fn db(&self) -> &Database {
-        self.extensions()
-            .get::<Arc<Database>>()
-            .expect("Database extension missing")
+        self.context().database()
     }
 
     fn session(&self) -> &Session {

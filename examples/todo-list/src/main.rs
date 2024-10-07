@@ -6,7 +6,7 @@ use flareon::db::{model, query, Database, Model};
 use flareon::forms::Form;
 use flareon::request::{Request, RequestExt};
 use flareon::response::{Response, ResponseExt};
-use flareon::router::Route;
+use flareon::router::{Route, Router};
 use flareon::{reverse, Body, FlareonApp, FlareonProject, StatusCode};
 use tokio::sync::OnceCell;
 
@@ -46,7 +46,7 @@ struct TodoForm {
 }
 
 async fn add_todo(mut request: Request) -> flareon::Result<Response> {
-    let todo_form = TodoForm::from_request(&mut request).await.unwrap();
+    let todo_form = TodoForm::from_request(&mut request).await?.unwrap();
 
     {
         let db = DB.get().unwrap();
@@ -76,6 +76,22 @@ async fn remove_todo(request: Request) -> flareon::Result<Response> {
     Ok(reverse!(request, "index"))
 }
 
+struct TodoApp;
+
+impl FlareonApp for TodoApp {
+    fn name(&self) -> &str {
+        "todo-app"
+    }
+
+    fn router(&self) -> Router {
+        Router::with_urls([
+            Route::with_handler_and_name("/", index, "index"),
+            Route::with_handler_and_name("/todos/add", add_todo, "add-todo"),
+            Route::with_handler_and_name("/todos/:todo_id/remove", remove_todo, "remove-todo"),
+        ])
+    }
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -83,23 +99,16 @@ async fn main() {
     let db = DB
         .get_or_init(|| async { Database::new("sqlite::memory:").await.unwrap() })
         .await;
-    MigrationEngine::new(migrations::MIGRATIONS)
+    MigrationEngine::new(migrations::MIGRATIONS.iter().copied())
         .run(db)
         .await
         .unwrap();
 
-    let todo_app = FlareonApp::builder()
-        .urls([
-            Route::with_handler_and_name("/", index, "index"),
-            Route::with_handler_and_name("/todos/add", add_todo, "add-todo"),
-            Route::with_handler_and_name("/todos/:todo_id/remove", remove_todo, "remove-todo"),
-        ])
-        .build()
-        .unwrap();
-
     let todo_project = FlareonProject::builder()
-        .register_app_with_views(todo_app, "")
-        .build();
+        .register_app_with_views(TodoApp, "")
+        .build()
+        .await
+        .unwrap();
 
     flareon::run(todo_project, "127.0.0.1:8080").await.unwrap();
 }

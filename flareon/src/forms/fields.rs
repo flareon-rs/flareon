@@ -63,6 +63,7 @@ impl Render for StringField {
     fn render(&self) -> Html {
         let mut tag = HtmlTag::input("text");
         tag.attr("name", self.id());
+        tag.attr("id", self.id());
         if self.options.required {
             tag.bool_attr("required");
         }
@@ -152,6 +153,7 @@ impl Render for PasswordField {
     fn render(&self) -> Html {
         let mut tag = HtmlTag::input("password");
         tag.attr("name", self.id());
+        tag.attr("id", self.id());
         if self.options.required {
             tag.bool_attr("required");
         }
@@ -202,6 +204,7 @@ impl<T: Integer> Render for IntegerField<T> {
     fn render(&self) -> Html {
         let mut tag = HtmlTag::input("number");
         tag.attr("name", self.id());
+        tag.attr("id", self.id());
         if self.options.required {
             tag.bool_attr("required");
         }
@@ -261,13 +264,11 @@ macro_rules! impl_integer_as_form_field {
             type Type = IntegerField<$type>;
 
             fn clean_value(field: &Self::Type) -> Result<Self, FormFieldValidationError> {
-                if let Some(value) = &field.value {
-                    Ok(value
-                        .parse()
-                        .map_err(|_| FormFieldValidationError::invalid_value(value))?)
-                } else {
-                    Err(FormFieldValidationError::Required)
-                }
+                let value = check_required(field)?;
+
+                value
+                    .parse()
+                    .map_err(|_| FormFieldValidationError::invalid_value(value))
             }
         }
     };
@@ -311,6 +312,7 @@ impl Render for BoolField {
     fn render(&self) -> Html {
         let mut bool_input = HtmlTag::input("checkbox");
         bool_input.attr("name", self.id());
+        bool_input.attr("id", self.id());
         bool_input.attr("value", "1");
 
         if self.custom_options.must_be_true.unwrap_or(false) {
@@ -379,7 +381,11 @@ impl<T: AsFormField> AsFormField for Option<T> {
 
 fn check_required<T: FormField>(field: &T) -> Result<&str, FormFieldValidationError> {
     if let Some(value) = field.value() {
-        Ok(value)
+        if value.is_empty() {
+            Err(FormFieldValidationError::Required)
+        } else {
+            Ok(value)
+        }
     } else {
         Err(FormFieldValidationError::Required)
     }
@@ -547,6 +553,22 @@ mod tests {
         field.set_value(Cow::Borrowed("test"));
         let value = String::clean_value(&field).unwrap();
         assert_eq!(value, "test");
+    }
+
+    #[test]
+    fn string_field_clean_required() {
+        let mut field = StringField::with_options(
+            FormFieldOptions {
+                id: "test".to_owned(),
+                required: true,
+            },
+            StringFieldOptions {
+                max_length: Some(10),
+            },
+        );
+        field.set_value(Cow::Borrowed(""));
+        let value = String::clean_value(&field);
+        assert_eq!(value, Err(FormFieldValidationError::Required));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use flareon::request::{Request, RequestExt};
 use flareon::response::{Response, ResponseExt};
-use flareon::router::{Route, RouterService};
+use flareon::router::{Route, Router, RouterService};
 use flareon::test::Client;
 use flareon::{Body, FlareonApp, FlareonProject, StatusCode};
 
@@ -20,7 +20,7 @@ async fn parameterized(request: Request) -> flareon::Result<Response> {
 
 #[tokio::test]
 async fn test_index() {
-    let mut client = Client::new(project());
+    let mut client = Client::new(project().await);
 
     let response = client.get("/").await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
@@ -32,7 +32,7 @@ async fn test_index() {
 
 #[tokio::test]
 async fn path_params() {
-    let mut client = Client::new(project());
+    let mut client = Client::new(project().await);
 
     let response = client.get("/get/John").await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
@@ -43,16 +43,24 @@ async fn path_params() {
 }
 
 #[must_use]
-fn project() -> FlareonProject<RouterService> {
-    let app = FlareonApp::builder()
-        .urls([
-            Route::with_handler_and_name("/", index, "index"),
-            Route::with_handler_and_name("/get/:name", parameterized, "parameterized"),
-        ])
-        .build()
-        .unwrap();
+async fn project() -> FlareonProject<RouterService> {
+    struct RouterApp;
+    impl FlareonApp for RouterApp {
+        fn name(&self) -> &str {
+            "router-app"
+        }
+
+        fn router(&self) -> Router {
+            Router::with_urls([
+                Route::with_handler_and_name("/", index, "index"),
+                Route::with_handler_and_name("/get/:name", parameterized, "parameterized"),
+            ])
+        }
+    }
 
     FlareonProject::builder()
-        .register_app_with_views(app, "")
+        .register_app_with_views(RouterApp, "")
         .build()
+        .await
+        .unwrap()
 }

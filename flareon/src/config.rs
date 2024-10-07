@@ -51,6 +51,7 @@ pub struct ProjectConfig {
     #[debug("..")]
     #[builder(setter(custom))]
     auth_backend: Arc<dyn AuthBackend>,
+    database_config: DatabaseConfig,
 }
 
 impl ProjectConfigBuilder {
@@ -68,6 +69,33 @@ impl ProjectConfigBuilder {
                 .auth_backend
                 .clone()
                 .unwrap_or_else(default_auth_backend),
+            database_config: self.database_config.clone().unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Builder)]
+pub struct DatabaseConfig {
+    #[builder(setter(into))]
+    url: String,
+}
+
+impl DatabaseConfig {
+    #[must_use]
+    pub fn builder() -> DatabaseConfigBuilder {
+        DatabaseConfigBuilder::default()
+    }
+
+    #[must_use]
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            url: "sqlite::memory:".to_string(),
         }
     }
 }
@@ -101,6 +129,11 @@ impl ProjectConfig {
     #[must_use]
     pub fn auth_backend(&self) -> &dyn AuthBackend {
         &*self.auth_backend
+    }
+
+    #[must_use]
+    pub fn database_config(&self) -> &DatabaseConfig {
+        &self.database_config
     }
 }
 

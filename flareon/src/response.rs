@@ -5,13 +5,19 @@ const RESPONSE_BUILD_FAILURE: &str = "Failed to build response";
 
 pub type Response = http::Response<Body>;
 
-pub trait ResponseExt {
+mod private {
+    pub trait Sealed {}
+}
+
+pub trait ResponseExt: private::Sealed {
     #[must_use]
     fn new_html(status: StatusCode, body: Body) -> Self;
 
     #[must_use]
     fn new_redirect<T: Into<String>>(location: T) -> Self;
 }
+
+impl private::Sealed for Response {}
 
 impl ResponseExt for Response {
     fn new_html(status: StatusCode, body: Body) -> Self {

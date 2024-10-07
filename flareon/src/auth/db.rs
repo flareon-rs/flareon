@@ -10,6 +10,7 @@ use flareon_macros::model;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha512;
 
+use crate::admin::{AdminModel, AdminModelManager, DefaultAdminModelManager};
 use crate::auth::{
     AuthBackend, AuthError, Password, PasswordHash, PasswordVerificationResult, Result,
     SessionAuthHash, User, UserId,
@@ -17,6 +18,7 @@ use crate::auth::{
 use crate::config::SecretKey;
 use crate::db::{query, DatabaseBackend, Model};
 use crate::request::{Request, RequestExt};
+use crate::FlareonApp;
 
 pub mod migrations;
 
@@ -60,8 +62,7 @@ impl DatabaseUser {
     ///         "testuser".to_string(),
     ///         &Password::new("password123"),
     ///     )
-    ///     .await
-    ///     .unwrap();
+    ///     .await?;
     ///
     ///     Ok(Response::new_html(
     ///         StatusCode::OK,
@@ -81,12 +82,12 @@ impl DatabaseUser {
     /// #     Ok(())
     /// # }
     /// ```
-    pub async fn create_user<DB: DatabaseBackend>(
+    pub async fn create_user<DB: DatabaseBackend, T: Into<String>, U: Into<Password>>(
         db: &DB,
-        username: String,
-        password: &Password,
+        username: T,
+        password: U,
     ) -> Result<Self> {
-        let mut user = Self::new(0, username, password);
+        let mut user = Self::new(0, username.into(), &password.into());
         user.save(db).await.map_err(AuthError::backend_error)?;
 
         Ok(user)
@@ -177,6 +178,28 @@ impl User for DatabaseUser {
     }
 }
 
+#[async_trait]
+impl AdminModel for DatabaseUser {
+    async fn get_objects(request: &Request) -> crate::Result<Vec<Self>> {
+        Ok(DatabaseUser::objects()
+            .all(request.db())
+            .await
+            .map_err(AuthError::backend_error)?)
+    }
+
+    fn name() -> &'static str {
+        "DatabaseUser"
+    }
+
+    fn url_name() -> &'static str {
+        "database_user"
+    }
+
+    fn display(&self) -> String {
+        format!("{self:?}")
+    }
+}
+
 /// Credentials for authenticating a user stored in the database.
 ///
 /// This struct is used to authenticate a user stored in the database. It
@@ -216,7 +239,7 @@ impl DatabaseUserCredentials {
 /// This backend supports authenticating users using the
 /// [`DatabaseUserCredentials`] struct and ignores all other credential types.
 #[derive(Debug, Copy, Clone)]
-pub struct DatabaseUserBackend {}
+pub struct DatabaseUserBackend;
 
 impl Default for DatabaseUserBackend {
     fn default() -> Self {
@@ -250,7 +273,7 @@ impl AuthBackend for DatabaseUserBackend {
         credentials: &(dyn Any + Send + Sync),
     ) -> Result<Option<Box<dyn User + Send + Sync>>> {
         if let Some(credentials) = credentials.downcast_ref::<DatabaseUserCredentials>() {
-            #[allow(trivial_casts)] // Downcast to the correct Box type
+            #[allow(trivial_casts)] // Upcast to the correct Box type
             Ok(DatabaseUser::authenticate(request.db(), credentials)
                 .await
                 .map(|user| user.map(|user| Box::new(user) as Box<dyn User + Send + Sync>))?)
@@ -264,10 +287,36 @@ impl AuthBackend for DatabaseUserBackend {
         request: &Request,
         id: UserId,
     ) -> Result<Option<Box<dyn User + Send + Sync>>> {
-        #[allow(trivial_casts)] // Downcast to the correct Box type
+        #[allow(trivial_casts)] // Upcast to the correct Box type
         Ok(DatabaseUser::get_by_id(request.db(), id)
             .await?
             .map(|user| Box::new(user) as Box<dyn User + Send + Sync>))
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct DatabaseUserApp;
+
+impl Default for DatabaseUserApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DatabaseUserApp {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl FlareonApp for DatabaseUserApp {
+    fn name(&self) -> &str {
+        "flareon_db_user"
+    }
+
+    fn admin_model_managers(&self) -> Vec<Box<dyn AdminModelManager>> {
+        vec![Box::new(DefaultAdminModelManager::<DatabaseUser>::new())]
     }
 }
 
@@ -292,8 +341,8 @@ mod tests {
         let user_ref: &dyn User = &user;
         assert_eq!(user_ref.id(), Some(UserId::Int(1)));
         assert_eq!(user_ref.username(), Some("testuser"));
-        assert_eq!(user_ref.is_active(), true);
-        assert_eq!(user_ref.is_authenticated(), true);
+        assert!(user_ref.is_active());
+        assert!(user_ref.is_authenticated());
         assert!(user_ref
             .session_auth_hash(&SecretKey::new(b"supersecretkey"))
             .is_some());

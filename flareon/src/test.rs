@@ -10,18 +10,20 @@ use tower_sessions::{MemoryStore, Session};
 
 use crate::auth::db::DatabaseUserBackend;
 use crate::config::ProjectConfig;
-use crate::db::migrations::{DynMigration, DynMigrationWrapper, MigrationEngine};
+use crate::db::migrations::{DynMigration, MigrationEngine, MigrationWrapper};
 use crate::db::Database;
 use crate::request::{Request, RequestExt};
 use crate::response::Response;
-use crate::{Body, Error, Result};
+use crate::router::Router;
+use crate::{AppContext, Body, Error, Result};
 
 /// A test client for making requests to a Flareon project.
 ///
 /// Useful for End-to-End testing Flareon projects.
 #[derive(Debug)]
 pub struct Client<S> {
-    project: FlareonProject<S>,
+    context: Arc<AppContext>,
+    handler: S,
 }
 
 impl<S> Client<S>
@@ -31,7 +33,11 @@ where
 {
     #[must_use]
     pub fn new(project: FlareonProject<S>) -> Self {
-        Self { project }
+        let (context, handler) = project.into_context();
+        Self {
+            context: Arc::new(context),
+            handler,
+        }
     }
 
     pub async fn get(&mut self, path: &str) -> Result<Response> {
@@ -44,24 +50,21 @@ where
     }
 
     pub async fn request(&mut self, mut request: Request) -> Result<Response> {
-        prepare_request(
-            &mut request,
-            self.project.config.clone(),
-            self.project.router.clone(),
-        );
+        prepare_request(&mut request, self.context.clone());
 
-        poll_fn(|cx| self.project.handler.poll_ready(cx)).await?;
-        self.project.handler.call(request).await
+        poll_fn(|cx| self.handler.poll_ready(cx)).await?;
+        self.handler.call(request).await
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TestRequestBuilder {
     method: http::Method,
     url: String,
     session: Option<Session>,
     config: Option<Arc<ProjectConfig>>,
     database: Option<Arc<Database>>,
+    form_data: Option<Vec<(String, String)>>,
 }
 
 impl TestRequestBuilder {
@@ -70,9 +73,16 @@ impl TestRequestBuilder {
         Self {
             method: http::Method::GET,
             url: url.to_string(),
-            session: None,
-            config: None,
-            database: None,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn post(url: &str) -> Self {
+        Self {
+            method: http::Method::POST,
+            url: url.to_string(),
+            ..Self::default()
         }
     }
 
@@ -108,12 +118,22 @@ impl TestRequestBuilder {
     }
 
     pub fn with_db_auth(&mut self, db: Arc<Database>) -> &mut Self {
-        let auth_backend = DatabaseUserBackend::default();
+        let auth_backend = DatabaseUserBackend;
         let config = ProjectConfig::builder().auth_backend(auth_backend).build();
 
         self.with_session();
         self.config(config);
         self.database(db);
+        self
+    }
+
+    pub fn form_data<T: ToString>(&mut self, form_data: &[(T, T)]) -> &mut Self {
+        self.form_data = Some(
+            form_data
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        );
         self
     }
 
@@ -125,16 +145,33 @@ impl TestRequestBuilder {
             .body(Body::empty())
             .expect("Test request should be valid");
 
-        if let Some(config) = &self.config {
-            request.extensions_mut().insert(config.clone());
-        }
+        let app_context = AppContext::new(
+            self.config.clone().unwrap_or_default(),
+            Vec::new(),
+            Arc::new(Router::empty()),
+            self.database.clone(),
+        );
+        prepare_request(&mut request, Arc::new(app_context));
 
         if let Some(session) = &self.session {
             request.extensions_mut().insert(session.clone());
         }
 
-        if let Some(database) = &self.database {
-            request.extensions_mut().insert(database.clone());
+        if let Some(form_data) = &self.form_data {
+            if self.method != http::Method::POST {
+                todo!("Form data can currently only be used with POST requests");
+            }
+
+            let mut data = form_urlencoded::Serializer::new(String::new());
+            for (key, value) in form_data {
+                data.append_pair(key, value);
+            }
+
+            *request.body_mut() = Body::fixed(data.finish());
+            request.headers_mut().insert(
+                http::header::CONTENT_TYPE,
+                http::HeaderValue::from_static("application/x-www-form-urlencoded"),
+            );
         }
 
         request
@@ -143,7 +180,7 @@ impl TestRequestBuilder {
 
 #[derive(Debug)]
 pub struct TestDatabaseBuilder {
-    migrations: Vec<DynMigrationWrapper>,
+    migrations: Vec<MigrationWrapper>,
 }
 
 impl Default for TestDatabaseBuilder {
@@ -166,7 +203,7 @@ impl TestDatabaseBuilder {
         migrations: V,
     ) -> Self {
         self.migrations
-            .extend(migrations.into_iter().map(DynMigrationWrapper::new));
+            .extend(migrations.into_iter().map(MigrationWrapper::new));
         self
     }
 

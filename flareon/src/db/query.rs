@@ -96,6 +96,7 @@ impl<T: Model> Query<T> {
     ///
     /// Returns an error if the query fails.
     pub async fn get<DB: DatabaseBackend>(&self, db: &DB) -> db::Result<Option<T>> {
+        // TODO panic/error if more than one result
         db.get(self).await
     }
 

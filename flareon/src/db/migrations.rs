@@ -10,18 +10,19 @@ use crate::db::{ColumnType, Database, DatabaseField, Identifier, Result};
 /// A migration engine that can run migrations.
 #[derive(Debug)]
 pub struct MigrationEngine {
-    migrations: Vec<DynMigrationWrapper>,
+    migrations: Vec<MigrationWrapper>,
 }
 
 impl MigrationEngine {
     #[must_use]
-    pub fn new<T: DynMigration + 'static, V: Into<Vec<T>>>(migrations: V) -> Self {
-        let mut migrations = migrations.into();
+    pub fn new<T: DynMigration + 'static, V: IntoIterator<Item = T>>(migrations: V) -> Self {
+        let migrations = migrations.into_iter().map(MigrationWrapper::new).collect();
+        Self::from_wrapper(migrations)
+    }
+
+    #[must_use]
+    pub fn from_wrapper(mut migrations: Vec<MigrationWrapper>) -> Self {
         Self::sort_migrations(&mut migrations);
-        let migrations = migrations
-            .into_iter()
-            .map(DynMigrationWrapper::new)
-            .collect();
         Self { migrations }
     }
 
@@ -111,7 +112,7 @@ impl MigrationEngine {
 
     async fn is_migration_applied(
         database: &Database,
-        migration: &DynMigrationWrapper,
+        migration: &MigrationWrapper,
     ) -> Result<bool> {
         query!(
             AppliedMigration,
@@ -123,7 +124,7 @@ impl MigrationEngine {
 
     async fn mark_migration_applied(
         database: &Database,
-        migration: &DynMigrationWrapper,
+        migration: &MigrationWrapper,
     ) -> Result<()> {
         let mut applied_migration = AppliedMigration {
             id: 0,
@@ -488,7 +489,7 @@ pub trait DynMigration {
     fn operations(&self) -> &[Operation];
 }
 
-impl<T: Migration> DynMigration for T {
+impl<T: Migration + Send + Sync + 'static> DynMigration for T {
     fn app_name(&self) -> &str {
         Self::APP_NAME
     }
@@ -516,16 +517,30 @@ impl DynMigration for &dyn DynMigration {
     }
 }
 
-pub(crate) struct DynMigrationWrapper(Box<dyn DynMigration>);
+impl DynMigration for Box<dyn DynMigration> {
+    fn app_name(&self) -> &str {
+        DynMigration::app_name(&**self)
+    }
 
-impl DynMigrationWrapper {
+    fn name(&self) -> &str {
+        DynMigration::name(&**self)
+    }
+
+    fn operations(&self) -> &[Operation] {
+        DynMigration::operations(&**self)
+    }
+}
+
+pub struct MigrationWrapper(Box<dyn DynMigration>);
+
+impl MigrationWrapper {
     #[must_use]
     pub(crate) fn new<T: DynMigration + 'static>(migration: T) -> Self {
         Self(Box::new(migration))
     }
 }
 
-impl DynMigration for DynMigrationWrapper {
+impl DynMigration for MigrationWrapper {
     fn app_name(&self) -> &str {
         self.0.app_name()
     }
@@ -539,7 +554,7 @@ impl DynMigration for DynMigrationWrapper {
     }
 }
 
-impl Debug for DynMigrationWrapper {
+impl Debug for MigrationWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("DynMigrationWrapper")
             .field("app_name", &self.app_name())

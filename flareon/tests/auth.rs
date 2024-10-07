@@ -13,7 +13,7 @@ async fn database_user() {
     // Anonymous user
     let mut request = request_builder.clone().with_session().build();
     let user = request.user().await.unwrap();
-    assert_eq!(user.is_authenticated(), false);
+    assert!(!user.is_authenticated());
 
     // Authenticated user
     DatabaseUser::create_user(&*db, "testuser".to_string(), &Password::new("password123"))
@@ -28,13 +28,13 @@ async fn database_user() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(user.is_authenticated(), true);
+    assert!(user.is_authenticated());
     assert_eq!(user.username(), Some("testuser"));
 
     // Log in
     request.login(user).await.unwrap();
     let user = request.user().await.unwrap();
-    assert_eq!(user.is_authenticated(), true);
+    assert!(user.is_authenticated());
     assert_eq!(user.username(), Some("testuser"));
 
     // Invalid credentials
@@ -50,11 +50,11 @@ async fn database_user() {
     // User persists between requests
     let mut request = request_builder.clone().with_session_from(&request).build();
     let user = request.user().await.unwrap();
-    assert_eq!(user.is_authenticated(), true);
+    assert!(user.is_authenticated());
     assert_eq!(user.username(), Some("testuser"));
 
     // Log out
     request.logout().await.unwrap();
     let user = request.user().await.unwrap();
-    assert_eq!(user.is_authenticated(), false);
+    assert!(!user.is_authenticated());
 }

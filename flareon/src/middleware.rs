@@ -1,7 +1,7 @@
 use tower_sessions::{MemoryStore, SessionManagerLayer};
 
 #[derive(Debug, Copy, Clone)]
-pub struct SessionMiddleware {}
+pub struct SessionMiddleware;
 
 impl SessionMiddleware {
     #[must_use]

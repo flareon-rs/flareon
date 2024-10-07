@@ -33,7 +33,7 @@ pub enum AuthError {
     #[error("Error while accessing the session object")]
     SessionsError(#[from] tower_sessions::session::Error),
     #[error("Error while accessing the user object")]
-    UserBackendError(Box<dyn std::error::Error + Send + Sync + 'static>),
+    UserBackendError(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
 impl AuthError {
@@ -465,6 +465,24 @@ impl Password {
     }
 }
 
+impl From<&Password> for Password {
+    fn from(password: &Password) -> Self {
+        password.clone()
+    }
+}
+
+impl From<&str> for Password {
+    fn from(password: &str) -> Self {
+        Self::new(password)
+    }
+}
+
+impl From<String> for Password {
+    fn from(password: String) -> Self {
+        Self::new(password)
+    }
+}
+
 mod private {
     pub trait Sealed {}
 }
@@ -688,7 +706,7 @@ mod tests {
     use crate::config::ProjectConfig;
     use crate::test::TestRequestBuilder;
 
-    struct NoUserAuthBackend {}
+    struct NoUserAuthBackend;
 
     #[async_trait]
     impl AuthBackend for NoUserAuthBackend {
@@ -751,12 +769,22 @@ mod tests {
             .build()
     }
 
+    fn test_request_with_config_and_session(
+        config: ProjectConfig,
+        session_source: &Request,
+    ) -> Request {
+        TestRequestBuilder::get("/")
+            .with_session_from(session_source)
+            .config(config)
+            .build()
+    }
+
     fn test_project_config<T: AuthBackend + 'static>(
         auth_backend: T,
         secret_key: SecretKey,
         fallback_keys: Vec<SecretKey>,
     ) -> ProjectConfig {
-        #[allow(trivial_casts)] // Downcast to the correct Arc type
+        #[allow(trivial_casts)] // Upcast to the correct Arc type
         ProjectConfig::builder()
             .auth_backend(auth_backend)
             .secret_key(secret_key)
@@ -770,8 +798,8 @@ mod tests {
         let anonymous_user = AnonymousUser();
         assert_eq!(anonymous_user.id(), None);
         assert_eq!(anonymous_user.username(), None);
-        assert_eq!(anonymous_user.is_active(), false);
-        assert_eq!(anonymous_user.is_authenticated(), false);
+        assert!(!anonymous_user.is_active());
+        assert!(!anonymous_user.is_authenticated());
         assert_eq!(anonymous_user.last_login(), None);
         assert_eq!(anonymous_user.joined(), None);
         assert_eq!(
@@ -796,13 +824,13 @@ mod tests {
     #[test]
     fn session_auth_hash_debug() {
         let hash = SessionAuthHash::from([1, 2, 3].as_ref());
-        assert_eq!(format!("{:?}", hash), "SessionAuthHash(\"**********\")");
+        assert_eq!(format!("{hash:?}"), "SessionAuthHash(\"**********\")");
     }
 
     #[test]
     fn password_debug() {
         let password = Password::new("password");
-        assert_eq!(format!("{:?}", password), "Password(\"**********\")");
+        assert_eq!(format!("{password:?}"), "Password(\"**********\")");
     }
 
     #[test]
@@ -818,7 +846,7 @@ mod tests {
     fn password_hash_debug() {
         let hash = PasswordHash::new(TEST_PASSWORD_HASH).unwrap();
         assert_eq!(
-            format!("{:?}", hash),
+            format!("{hash:?}"),
             "PasswordHash(\"$argon2id$**********\")"
         );
     }
@@ -855,8 +883,8 @@ mod tests {
         let mut request = test_request_with_auth_backend(NoUserAuthBackend {});
 
         let user = request.user().await.unwrap();
-        assert_eq!(user.is_authenticated(), false);
-        assert_eq!(user.is_active(), false);
+        assert!(!user.is_authenticated());
+        assert!(!user.is_active());
     }
 
     #[tokio::test]
@@ -923,7 +951,7 @@ mod tests {
 
         let user = request.user().await.unwrap();
         assert_eq!(user.username(), None);
-        assert_eq!(user.is_authenticated(), false);
+        assert!(!user.is_authenticated());
     }
 
     #[tokio::test]
@@ -956,7 +984,7 @@ mod tests {
         request.extensions_mut().remove::<UserExtension>();
         *session_auth_hash.lock().unwrap() = SessionAuthHash::new(&[4, 5, 6]);
         let user = request.user().await.unwrap();
-        assert_eq!(user.is_authenticated(), false);
+        assert!(!user.is_authenticated());
         assert_eq!(user.username(), None);
     }
 
@@ -981,14 +1009,13 @@ mod tests {
             mock_user
         };
 
-        let mut request = test_request(create_user.clone());
+        let mut request = test_request(create_user);
 
         request.login(Box::new(create_user())).await.unwrap();
         let user = request.user().await.unwrap();
         assert_eq!(user.username(), Some("mockuser"));
 
         let replace_keys = move |request: &mut Request, secret_key, fallback_keys| {
-            request.extensions_mut().remove::<UserExtension>();
             let new_config = test_project_config(
                 MockAuthBackend {
                     return_user: create_user,
@@ -996,7 +1023,7 @@ mod tests {
                 secret_key,
                 fallback_keys,
             );
-            request.extensions_mut().insert(Arc::new(new_config));
+            *request = test_request_with_config_and_session(new_config, request);
         };
 
         // Change the secret key and verify the user is still logged in with the
@@ -1018,6 +1045,6 @@ mod tests {
         replace_keys(&mut request, SecretKey::new(TEST_KEY_3), vec![]);
         let user = request.user().await.unwrap();
         assert_eq!(user.username(), None);
-        assert_eq!(user.is_authenticated(), false);
+        assert!(!user.is_authenticated());
     }
 }

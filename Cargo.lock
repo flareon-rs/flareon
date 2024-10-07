@@ -806,6 +806,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-admin"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "flareon",
+ "tokio",
+]
+
+[[package]]
 name = "example-hello-world"
 version = "0.1.0"
 dependencies = [

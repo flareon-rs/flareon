@@ -326,6 +326,7 @@ impl MigrationGenerator {
 
         let app_name = &self.crate_name;
         let migration_def = quote! {
+            #[derive(Debug, Copy, Clone)]
             pub(super) struct Migration;
 
             impl ::flareon::db::migrations::Migration for Migration {

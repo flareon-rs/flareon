@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block title %}Model{% endblock %}
+
+{% block content %}
+{% for object in objects %}
+    <pre>{{ object.display() }}</pre>
+{% endfor %}
+{% endblock %}

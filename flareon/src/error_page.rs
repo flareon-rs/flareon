@@ -112,7 +112,7 @@ impl ErrorPageTemplateBuilder {
         for (index, route) in router.routes().iter().enumerate() {
             route_data.push(RouteData {
                 index: format!("{index_prefix}{index}"),
-                path: route.url(),
+                path: format!("{url_prefix}{}", route.url()),
                 kind: match route.kind() {
                     crate::router::RouteKind::Router => if route_data.is_empty() {
                         "Root Router"
@@ -207,7 +207,7 @@ struct ErrorData {
     is_flareon_error: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct RouteData {
     index: String,
     path: String,
@@ -310,6 +310,7 @@ thread_local! {
 }
 
 pub(super) fn error_page_panic_hook(info: &PanicHookInfo<'_>) {
+    // TODO print out the panic as well
     let location = info.location().map(|location| format!("{location}"));
     PANIC_LOCATION.replace(location);
 
@@ -321,20 +322,23 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::router::Router;
+    use crate::router::{Route, Router};
     use crate::test::TestRequestBuilder;
 
     fn create_diagnostics() -> FlareonDiagnostics {
         let router = Arc::new(Router::with_urls(vec![]));
         let request = TestRequestBuilder::get("/").build();
         let (parts, _body) = request.into_parts();
+
         FlareonDiagnostics::new(router, Some(parts))
     }
 
     #[test]
     fn test_handle_not_found() {
         let diagnostics = create_diagnostics();
+
         let response = handle_not_found(diagnostics);
+
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
@@ -342,7 +346,9 @@ mod tests {
     fn test_handle_response_panic() {
         let diagnostics = create_diagnostics();
         let panic_payload = Box::new("panic occurred");
+
         let response = handle_response_panic(panic_payload, diagnostics);
+
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -352,8 +358,38 @@ mod tests {
         let error = Error::new(ErrorRepr::NoViewToReverse {
             view_name: "error occurred".to_string(),
         });
+
         let response = handle_response_error(error, diagnostics);
+
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn build_route_data() {
+        let mut route_data = Vec::new();
+        let sub_sub_router = Router::with_urls(vec![]);
+        let sub_router = Router::with_urls(vec![Route::with_router("/bar", sub_sub_router)]);
+        let router = Router::with_urls(vec![Route::with_router("/foo", sub_router)]);
+
+        ErrorPageTemplateBuilder::build_route_data(&mut route_data, &router, "", "");
+
+        assert_eq!(
+            route_data,
+            vec![
+                RouteData {
+                    index: "0".to_string(),
+                    path: "/foo".to_string(),
+                    kind: "Root Router".to_string(),
+                    name: String::new()
+                },
+                RouteData {
+                    index: "0.0".to_string(),
+                    path: "/foo/bar".to_string(),
+                    kind: "Router".to_string(),
+                    name: String::new()
+                }
+            ]
+        );
     }
 
     #[test]

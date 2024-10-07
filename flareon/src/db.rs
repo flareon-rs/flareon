@@ -217,14 +217,16 @@ pub trait DatabaseField: FromDbValue + ToDbValue {
 }
 
 /// A trait for converting a database value to a Rust value.
-pub trait FromDbValue: Sized {
+pub trait FromDbValue {
     /// Converts the given `SQLite` database value to a Rust value.
     ///
     /// # Errors
     ///
     /// This method can return an error if the value is not compatible with the
     /// Rust type.
-    fn from_sqlite(value: SqliteValueRef) -> Result<Self>;
+    fn from_sqlite(value: SqliteValueRef) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 /// A trait for converting a Rust value to a database value.

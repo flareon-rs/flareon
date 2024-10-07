@@ -2,6 +2,7 @@
 
 use crate::auth::PasswordHash;
 
+#[derive(Debug, Copy, Clone)]
 pub(super) struct Migration;
 impl ::flareon::db::migrations::Migration for Migration {
     const APP_NAME: &'static str = "flareon_auth";

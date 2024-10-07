@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Formatter;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -7,13 +7,15 @@ use std::task::{Context, Poll};
 
 use axum::http::StatusCode;
 use bytes::Bytes;
+use derive_more::Debug;
+use flareon::request::PathParams;
 use log::debug;
 
 use crate::error::ErrorRepr;
 use crate::error_page::ErrorPageTrigger;
-use crate::request::{Request, RequestExt};
+use crate::request::Request;
 use crate::response::{Response, ResponseExt};
-use crate::router::path::{PathMatcher, ReverseParamMap};
+use crate::router::path::{CaptureResult, PathMatcher, ReverseParamMap};
 use crate::{Body, Error, RequestHandler, Result};
 
 pub mod path;
@@ -25,6 +27,11 @@ pub struct Router {
 }
 
 impl Router {
+    #[must_use]
+    pub fn empty() -> Self {
+        Self::with_urls(&[])
+    }
+
     #[must_use]
     pub fn with_urls<T: Into<Vec<Route>>>(urls: T) -> Self {
         let urls = urls.into();
@@ -42,30 +49,58 @@ impl Router {
     async fn route(&self, mut request: Request, request_path: &str) -> Result<Response> {
         debug!("Routing request to {}", request_path);
 
+        if let Some(result) = self.get_handler(request_path) {
+            let mut path_params = PathParams::new();
+            for (key, value) in result.params.iter().rev() {
+                path_params.insert(key.clone(), value.clone());
+            }
+            request.extensions_mut().insert(path_params);
+            result.handler.handle(request).await
+        } else {
+            debug!("Not found: {}", request_path);
+            Ok(handle_not_found())
+        }
+    }
+
+    fn get_handler(&self, request_path: &str) -> Option<HandlerFound> {
         for route in &self.urls {
             if let Some(matches) = route.url.capture(request_path) {
                 let matches_fully = matches.matches_fully();
-                for param in matches.params {
-                    request
-                        .path_params_mut()
-                        .insert(param.name.to_owned(), param.value);
-                }
 
                 match &route.view {
                     RouteInner::Handler(handler) => {
                         if matches_fully {
-                            return handler.handle(request).await;
+                            return Some(HandlerFound {
+                                handler: &**handler,
+                                params: Self::matches_to_path_params(&matches, Vec::new()),
+                            });
                         }
                     }
                     RouteInner::Router(router) => {
-                        return Box::pin(router.route(request, matches.remaining_path)).await
+                        if let Some(result) = router.get_handler(matches.remaining_path) {
+                            return Some(HandlerFound {
+                                handler: result.handler,
+                                params: Self::matches_to_path_params(&matches, result.params),
+                            });
+                        }
                     }
                 }
             }
         }
 
-        debug!("Not found: {}", request_path);
-        Ok(handle_not_found())
+        None
+    }
+
+    fn matches_to_path_params(
+        matches: &CaptureResult,
+        mut path_params: Vec<(String, String)>,
+    ) -> Vec<(String, String)> {
+        // Adding in reverse order, since we're doing this from the bottom up (we're
+        // going to reverse the order before running the handler)
+        for param in matches.params.iter().rev() {
+            path_params.push((param.name.to_owned(), param.value.clone()));
+        }
+        path_params
     }
 
     /// Handle a request.
@@ -136,6 +171,19 @@ impl Router {
     pub fn is_empty(&self) -> bool {
         self.urls.is_empty()
     }
+}
+
+impl Default for Router {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+#[derive(Debug)]
+struct HandlerFound<'a> {
+    #[debug("handler(...)")]
+    handler: &'a (dyn RequestHandler + Send + Sync),
+    params: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -290,12 +338,9 @@ macro_rules! reverse {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use flareon::FlareonProject;
-
     use super::*;
     use crate::request::Request;
+    use crate::test::TestRequestBuilder;
     use crate::Response;
 
     struct MockHandler;
@@ -330,6 +375,24 @@ mod tests {
         let route = Route::with_handler("/test", MockHandler);
         let router = Router::with_urls(vec![route.clone()]);
         let response = router.handle(test_request()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn sub_router_handle() {
+        let route_1 = Route::with_handler("/test", MockHandler);
+        let sub_router_1 = Router::with_urls(vec![route_1.clone()]);
+        let route_2 = Route::with_handler("/test", MockHandler);
+        let sub_router_2 = Router::with_urls(vec![route_2.clone()]);
+
+        let router = Router::with_urls(vec![
+            Route::with_router("/", sub_router_1),
+            Route::with_router("/sub", sub_router_2),
+        ]);
+        let response = router
+            .handle(TestRequestBuilder::get("/sub/test").build())
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
     }
 
@@ -402,13 +465,6 @@ mod tests {
     }
 
     fn test_request() -> Request {
-        let mut request = http::Request::builder()
-            .uri("/test")
-            .body(Body::empty())
-            .unwrap();
-        request
-            .extensions_mut()
-            .insert(Arc::new(FlareonProject::builder().build()));
-        request
+        TestRequestBuilder::get("/test").build()
     }
 }
