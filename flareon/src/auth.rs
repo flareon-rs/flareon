@@ -412,7 +412,7 @@ impl ToDbValue for PasswordHash {
 /// A password.
 ///
 /// It is always recommended to store passwords in memory using this newtype
-/// instead of a raw String, as it has a [`Debug`]   implementation that hides
+/// instead of a raw String, as it has a [`Debug`] implementation that hides
 /// the password value.
 ///
 /// For persisting passwords in the database, use [`PasswordHash`].
@@ -430,7 +430,7 @@ impl ToDbValue for PasswordHash {
 /// let password = Password::new("pass");
 /// assert_eq!(&format!("{:?}", password), "Password(\"**********\")");
 /// ```
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct Password(String);
 
 impl Debug for Password {

@@ -303,8 +303,7 @@ impl_form_field!(BoolField, BoolFieldOptions, "a boolean");
 /// Custom options for a `BoolField`.
 #[derive(Debug, Default, Copy, Clone)]
 pub struct BoolFieldOptions {
-    /// The maximum length of the field. Used to set the `maxlength` attribute
-    /// in the HTML input element.
+    /// If `true`, the field must be checked to be considered valid.
     pub must_be_true: Option<bool>,
 }
 
@@ -391,7 +390,7 @@ fn check_required<T: FormField>(field: &T) -> Result<&str, FormFieldValidationEr
 struct HtmlTag {
     tag: String,
     attributes: Vec<(String, String)>,
-    bool_attributes: Vec<String>,
+    boolean_attributes: Vec<String>,
 }
 
 impl HtmlTag {
@@ -400,7 +399,7 @@ impl HtmlTag {
         Self {
             tag: tag.to_string(),
             attributes: Vec::new(),
-            bool_attributes: Vec::new(),
+            boolean_attributes: Vec::new(),
         }
     }
 
@@ -421,7 +420,7 @@ impl HtmlTag {
     }
 
     fn bool_attr(&mut self, key: &str) -> &mut Self {
-        self.bool_attributes.push(key.to_string());
+        self.boolean_attributes.push(key.to_string());
         self
     }
 
@@ -432,7 +431,7 @@ impl HtmlTag {
         for (key, value) in &self.attributes {
             result.push_str(&format!(" {key}=\"{value}\""));
         }
-        for key in &self.bool_attributes {
+        for key in &self.boolean_attributes {
             result.push_str(&format!(" {key}"));
         }
 

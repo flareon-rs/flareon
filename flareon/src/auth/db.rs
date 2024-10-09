@@ -185,7 +185,7 @@ impl User for DatabaseUser {
 /// Can be passed to
 /// [`AuthRequestExt::authenticate`](crate::auth::AuthRequestExt::authenticate)
 /// to authenticate a user when using the [`DatabaseUserBackend`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct DatabaseUserCredentials {
     username: String,
     password: Password,

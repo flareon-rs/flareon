@@ -407,7 +407,7 @@ impl Database {
         let columns_to_get: Vec<_> = T::COLUMNS.iter().map(|column| column.name).collect();
         let mut select = sea_query::Query::select();
         select.columns(columns_to_get).from(T::TABLE_NAME);
-        query.modify_statement(&mut select);
+        query.add_filter_to_statement(&mut select);
 
         let rows = self.fetch_all(&select).await?;
         let result = rows.into_iter().map(T::from_db).collect::<Result<_>>()?;
@@ -431,7 +431,7 @@ impl Database {
         let columns_to_get: Vec<_> = T::COLUMNS.iter().map(|column| column.name).collect();
         let mut select = sea_query::Query::select();
         select.columns(columns_to_get).from(T::TABLE_NAME);
-        query.modify_statement(&mut select);
+        query.add_filter_to_statement(&mut select);
         select.limit(1);
 
         let row = self.fetch_option(&select).await?;
@@ -457,7 +457,7 @@ impl Database {
     pub async fn exists<T: Model>(&self, query: &Query<T>) -> Result<bool> {
         let mut select = sea_query::Query::select();
         select.expr(sea_query::Expr::value(1)).from(T::TABLE_NAME);
-        query.modify_statement(&mut select);
+        query.add_filter_to_statement(&mut select);
         select.limit(1);
 
         let rows = self.fetch_option(&select).await?;
@@ -479,7 +479,7 @@ impl Database {
     pub async fn delete<T: Model>(&self, query: &Query<T>) -> Result<StatementResult> {
         let mut delete = sea_query::Query::delete();
         delete.from_table(T::TABLE_NAME);
-        query.modify_statement(&mut delete);
+        query.add_filter_to_statement(&mut delete);
 
         self.execute_statement(&delete).await
     }

@@ -117,7 +117,10 @@ impl<T: Model> Query<T> {
         db.delete(self).await
     }
 
-    pub(super) fn modify_statement<S: sea_query::ConditionalStatement>(&self, statement: &mut S) {
+    pub(super) fn add_filter_to_statement<S: sea_query::ConditionalStatement>(
+        &self,
+        statement: &mut S,
+    ) {
         if let Some(filter) = &self.filter {
             statement.and_where(filter.as_sea_query_expr());
         }

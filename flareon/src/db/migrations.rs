@@ -81,7 +81,9 @@ impl MigrationEngine {
     pub async fn run(&self, database: &Database) -> Result<()> {
         info!("Running migrations");
 
-        APPLIED_MIGRATION_MIGRATION.forwards(database).await?;
+        CREATE_APPLIED_MIGRATIONS_MIGRATION
+            .forwards(database)
+            .await?;
 
         for migration in &self.migrations {
             for operation in migration.operations() {
@@ -580,7 +582,7 @@ struct AppliedMigration {
     applied: chrono::DateTime<chrono::FixedOffset>,
 }
 
-const APPLIED_MIGRATION_MIGRATION: Operation = Operation::create_model()
+const CREATE_APPLIED_MIGRATIONS_MIGRATION: Operation = Operation::create_model()
     .table_name(Identifier::new("flareon__migrations"))
     .fields(&[
         Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
