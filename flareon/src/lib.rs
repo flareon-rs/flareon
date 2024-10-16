@@ -353,21 +353,29 @@ impl AppContext {
     }
 }
 
+#[doc(hidden)]
+#[derive(Debug, Copy, Clone)]
+pub struct Uninitialized;
+
 #[derive(Debug)]
-pub struct FlareonProjectBuilder {
+pub struct FlareonProjectBuilder<S> {
     config: ProjectConfig,
     #[debug("...")]
     apps: Vec<Box<dyn FlareonApp>>,
     urls: Vec<Route>,
+    router: Arc<Router>,
+    handler: S,
 }
 
-impl FlareonProjectBuilder {
+impl FlareonProjectBuilder<Uninitialized> {
     #[must_use]
     pub fn new() -> Self {
         Self {
             config: ProjectConfig::default(),
             apps: Vec::new(),
             urls: Vec::new(),
+            router: Arc::new(Router::empty()),
+            handler: Uninitialized,
         }
     }
 
@@ -396,58 +404,39 @@ impl FlareonProjectBuilder {
     pub fn middleware<M: tower::Layer<RouterService>>(
         self,
         middleware: M,
-    ) -> FlareonProjectBuilderWithMiddleware<M::Service> {
-        self.into_builder_with_middleware().middleware(middleware)
+    ) -> FlareonProjectBuilder<M::Service> {
+        self.into_builder_with_service().middleware(middleware)
     }
 
     /// Builds the Flareon project instance.
     pub async fn build(self) -> Result<FlareonProject<RouterService>> {
-        self.into_builder_with_middleware().build().await
+        self.into_builder_with_service().build().await
     }
 
     #[must_use]
-    fn into_builder_with_middleware(self) -> FlareonProjectBuilderWithMiddleware<RouterService> {
-        let config = Arc::new(self.config);
+    fn into_builder_with_service(self) -> FlareonProjectBuilder<RouterService> {
         let router = Arc::new(Router::with_urls(self.urls));
-        let service = RouterService::new(Arc::clone(&router));
 
-        FlareonProjectBuilderWithMiddleware::new(config, self.apps, router, service)
-    }
-}
-
-#[derive(Debug)]
-pub struct FlareonProjectBuilderWithMiddleware<S> {
-    config: Arc<ProjectConfig>,
-    #[debug("...")]
-    apps: Vec<Box<dyn FlareonApp>>,
-    router: Arc<Router>,
-    handler: S,
-}
-
-impl<S: Service<Request>> FlareonProjectBuilderWithMiddleware<S> {
-    #[must_use]
-    fn new(
-        config: Arc<ProjectConfig>,
-        apps: Vec<Box<dyn FlareonApp>>,
-        router: Arc<Router>,
-        handler: S,
-    ) -> Self {
-        Self {
-            config,
-            apps,
-            router,
-            handler,
+        FlareonProjectBuilder {
+            config: self.config,
+            apps: self.apps,
+            urls: vec![],
+            router: Arc::clone(&router),
+            handler: RouterService::new(router),
         }
     }
+}
 
+impl<S: Service<Request>> FlareonProjectBuilder<S> {
     #[must_use]
     pub fn middleware<M: tower::Layer<S>>(
         self,
         middleware: M,
-    ) -> FlareonProjectBuilderWithMiddleware<M::Service> {
-        FlareonProjectBuilderWithMiddleware {
+    ) -> FlareonProjectBuilder<M::Service> {
+        FlareonProjectBuilder {
             config: self.config,
             apps: self.apps,
+            urls: vec![],
             router: self.router,
             handler: middleware.layer(self.handler),
         }
@@ -458,7 +447,7 @@ impl<S: Service<Request>> FlareonProjectBuilderWithMiddleware<S> {
         let database = Self::init_database(self.config.database_config()).await?;
 
         Ok(FlareonProject {
-            config: self.config,
+            config: Arc::new(self.config),
             apps: self.apps,
             router: self.router,
             handler: self.handler,
@@ -472,7 +461,7 @@ impl<S: Service<Request>> FlareonProjectBuilderWithMiddleware<S> {
     }
 }
 
-impl Default for FlareonProjectBuilder {
+impl Default for FlareonProjectBuilder<Uninitialized> {
     fn default() -> Self {
         Self::new()
     }
@@ -480,7 +469,7 @@ impl Default for FlareonProjectBuilder {
 
 impl FlareonProject<()> {
     #[must_use]
-    pub fn builder() -> FlareonProjectBuilder {
+    pub fn builder() -> FlareonProjectBuilder<Uninitialized> {
         FlareonProjectBuilder::default()
     }
 }
