@@ -591,6 +591,11 @@ pub struct StatementResult {
 }
 
 impl StatementResult {
+    #[must_use]
+    pub(crate) fn new(rows_affected: RowsNum) -> Self {
+        Self { rows_affected }
+    }
+
     /// Returns the number of rows affected by the query.
     #[must_use]
     pub fn rows_affected(&self) -> RowsNum {

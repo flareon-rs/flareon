@@ -408,3 +408,128 @@ impl_num_expr!(u32);
 impl_num_expr!(u64);
 impl_num_expr!(f32);
 impl_num_expr!(f64);
+
+#[cfg(test)]
+mod tests {
+    use flareon_macros::model;
+
+    use super::*;
+    use crate::db::{MockDatabaseBackend, RowsNum};
+
+    #[model]
+    #[derive(std::fmt::Debug, PartialEq, Eq)]
+    struct MockModel {
+        id: i32,
+    }
+
+    #[test]
+    fn test_new_query() {
+        let query: Query<MockModel> = Query::new();
+
+        assert!(query.filter.is_none());
+    }
+
+    #[test]
+    fn test_default_query() {
+        let query: Query<MockModel> = Query::default();
+
+        assert!(query.filter.is_none());
+    }
+
+    #[test]
+    fn test_query_filter() {
+        let mut query: Query<MockModel> = Query::new();
+
+        query.filter(Expr::eq(Expr::field("name"), Expr::value("John")));
+
+        assert!(query.filter.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_query_all() {
+        let mut db = MockDatabaseBackend::new();
+        db.expect_query().returning(|_| Ok(Vec::<MockModel>::new()));
+        let query: Query<MockModel> = Query::new();
+
+        let result = query.all(&db).await;
+
+        assert_eq!(result.unwrap(), Vec::<MockModel>::new());
+    }
+
+    #[tokio::test]
+    async fn test_query_get() {
+        let mut db = MockDatabaseBackend::new();
+        db.expect_get().returning(|_| Ok(Option::<MockModel>::None));
+        let query: Query<MockModel> = Query::new();
+
+        let result = query.get(&db).await;
+
+        assert_eq!(result.unwrap(), Option::<MockModel>::None);
+    }
+
+    #[tokio::test]
+    async fn test_query_exists() {
+        let mut db = MockDatabaseBackend::new();
+        db.expect_exists()
+            .returning(|_: &Query<MockModel>| Ok(false));
+
+        let query: Query<MockModel> = Query::new();
+
+        let result = query.exists(&db).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_query_delete() {
+        let mut db = MockDatabaseBackend::new();
+        db.expect_delete()
+            .returning(|_: &Query<MockModel>| Ok(StatementResult::new(RowsNum(0))));
+        let query: Query<MockModel> = Query::new();
+
+        let result = query.delete(&db).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_expr_field() {
+        let expr = Expr::field("name");
+        if let Expr::Field(identifier) = expr {
+            assert_eq!(identifier.to_string(), "name");
+        } else {
+            panic!("Expected Expr::Field");
+        }
+    }
+
+    #[test]
+    fn test_expr_value() {
+        let expr = Expr::value(30);
+        if let Expr::Value(value) = expr {
+            assert_eq!(value.as_sea_query_value().to_string(), "30");
+        } else {
+            panic!("Expected Expr::Value");
+        }
+    }
+
+    #[test]
+    fn test_expr_and() {
+        let expr = Expr::and(Expr::field("name"), Expr::value("John"));
+        if let Expr::And(lhs, rhs) = expr {
+            assert!(matches!(*lhs, Expr::Field(_)));
+            assert!(matches!(*rhs, Expr::Value(_)));
+        } else {
+            panic!("Expected Expr::And");
+        }
+    }
+
+    #[test]
+    fn test_expr_eq() {
+        let expr = Expr::eq(Expr::field("name"), Expr::value("John"));
+        if let Expr::Eq(lhs, rhs) = expr {
+            assert!(matches!(*lhs, Expr::Field(_)));
+            assert!(matches!(*rhs, Expr::Value(_)));
+        } else {
+            panic!("Expected Expr::Eq");
+        }
+    }
+}

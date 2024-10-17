@@ -500,9 +500,73 @@ mod tests {
     #[test]
     fn tokens_method() {
         let input = quote! { string.contains("that") };
-        let expr = unwrap_syn(Expr::parse(input));
+        let expr = unwrap_syn(Expr::parse(input.clone()));
 
-        assert!(expr.as_tokens().is_some());
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_eq() {
+        let input = quote! { x == 42 };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_ne() {
+        let input = quote! { x != 42 };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_and() {
+        let input = quote! { x && y };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_or() {
+        let input = quote! { x || y };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_add() {
+        let input = quote! { x + y };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_sub() {
+        let input = quote! { x - y };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_mul() {
+        let input = quote! { x * y };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_div() {
+        let input = quote! { x / y };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
     }
 
     #[must_use]
