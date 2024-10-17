@@ -165,6 +165,7 @@ impl ReverseParamMap {
     }
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! reverse_param_map {
     ($($key:expr => $value:expr),*) => {{

@@ -1,3 +1,17 @@
+//! HTTP response type and helper methods.
+//!
+//! Flareon uses the [`Response`](http::Response) type from the [`http`] crate
+//! to represent outgoing HTTP responses. However, it also provides a
+//! [`ResponseExt`] trait that contain various helper methods for working with
+//! HTTP responses. These methods are used to create new responses with HTML
+//! content types, redirects, and more. You probably want to have a `use`
+//! statement for [`ResponseExt`] in your code most of the time to be able to
+//! use these functions:
+//!
+//! ```
+//! use flareon::response::ResponseExt;
+//! ```
+
 use crate::headers::HTML_CONTENT_TYPE;
 use crate::{Body, StatusCode};
 

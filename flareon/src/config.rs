@@ -1,3 +1,15 @@
+//! Configuration data for the project.
+//!
+//! This module contains the configuration data for the project. This includes
+//! stuff such as the secret key used for signing cookies, database connection
+//! settings, whether the debug mode is enabled, and other project-specific
+//! configuration data.
+//!
+//! The main struct in this module is [`ProjectConfig`], which contains all the
+//! configuration data for the project. After creating an instance using
+//! [`ProjectConfigBuilder`], it can be passed to the
+//! [`FlareonProject`](crate::FlareonProject).
+
 use std::sync::Arc;
 
 use derive_builder::Builder;

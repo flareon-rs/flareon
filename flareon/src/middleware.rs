@@ -1,3 +1,9 @@
+//! Middlewares for modifying requests and responses.
+//!
+//! Middlewares are used to modify requests and responses in a pipeline. They
+//! are used to add functionality to the request/response cycle, such as
+//! session management, adding security headers, and more.
+
 use tower_sessions::{MemoryStore, SessionManagerLayer};
 
 #[derive(Debug, Copy, Clone)]

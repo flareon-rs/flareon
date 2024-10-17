@@ -1,3 +1,17 @@
+//! HTTP request type and helper methods.
+//!
+//! Flareon uses the [`Request`](http::Request) type from the [`http`] crate
+//! to represent incoming HTTP requests. However, it also provides a
+//! [`RequestExt`] trait that contain various helper methods for working with
+//! HTTP requests. These methods are used to access the application context,
+//! project configuration, path parameters, and more. You probably want to have
+//! a `use` statement for [`RequestExt`] in your code most of the time to be
+//! able to use these functions:
+//!
+//! ```
+//! use flareon::request::RequestExt;
+//! ```
+
 use std::borrow::Cow;
 use std::sync::Arc;
 

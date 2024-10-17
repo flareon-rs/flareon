@@ -1,3 +1,35 @@
+//! Flareon is an easy to use, modern, and fast web framework for Rust. It has
+//! been designed to be familiar if you've ever used
+//! [Django](https://www.djangoproject.com/), and easy to learn if you haven't.
+//! It's a batteries-included framework built on top of
+//! [axum](https://github.com/tokio-rs/axum).
+//!
+//! ## Features
+//!
+//! * **Easy to use API** — in many ways modeled after Django, Flareon's API is
+//!   designed to be easy to use and intuitive. Sensible defaults make it for
+//!   easy rapid development, while the API is still empowering you when needed.
+//!   The documentation is a first-class citizen in Flareon, making it easy to
+//!   find what you're looking for.
+//! * **ORM integration** — Flareon comes with its own ORM, allowing you to
+//!   interact with your database in a way that feels Rusty and intuitive. Rust
+//!   types are the source of truth, and the ORM takes care of translating them
+//!   to and from the database, as well as creating the migrations
+//!   automatically.
+//! * **Type safe** — wherever possible, Flareon uses Rust's type system to
+//!   prevent common mistakes and bugs. Not only views are taking advantage of
+//!   the Rust's type system, but also the ORM, the admin panel, and even the
+//!   templates. All that to catch errors as early as possible.
+//! * **Admin panel** — Flareon comes with an admin panel out of the box,
+//!   allowing you to manage your app's data with ease. Adding new models to the
+//!   admin panel is stupidly simple, making it a great tool not only for rapid
+//!   development and debugging, but with its customization options, also for
+//!   production use.
+//! * **Secure by default** — security should be opt-out, not opt-in. Flareon
+//!   takes care of making your web apps secure by default, defending it against
+//!   common modern web vulnerabilities. You can focus on building your app, not
+//!   securing it.
+
 #![warn(
     missing_debug_implementations,
     missing_copy_implementations,
@@ -71,6 +103,12 @@ pub type StatusCode = http::StatusCode;
 /// A type alias for an HTTP method.
 pub type Method = http::Method;
 
+/// A function that takes a request and returns a response.
+///
+/// This is the main building block of a Flareon app. You shouldn't
+/// usually need to implement this directly, as it is already
+/// implemented for closures and functions that take a [`Request`]
+/// and return a [`Result<Response>`].
 #[async_trait]
 pub trait RequestHandler {
     async fn handle(&self, request: Request) -> Result<Response>;
@@ -289,6 +327,7 @@ impl http_body::Body for Body {
     }
 }
 
+/// A Flareon project, ready to be run.
 #[derive(Debug)]
 // TODO add Middleware type?
 pub struct FlareonProject<S> {
@@ -300,6 +339,8 @@ pub struct FlareonProject<S> {
     handler: S,
 }
 
+/// A part of [`FlareonProject`] that contains the shared context and configs
+/// for all apps.
 #[derive(Debug)]
 pub struct AppContext {
     config: Arc<ProjectConfig>,
@@ -357,6 +398,7 @@ impl AppContext {
 #[derive(Debug, Copy, Clone)]
 pub struct Uninitialized;
 
+/// The builder for the [`FlareonProject`].
 #[derive(Debug)]
 pub struct FlareonProjectBuilder<S> {
     config: ProjectConfig,
@@ -505,7 +547,7 @@ where
     }
 }
 
-/// Runs the Flareon project.
+/// Runs the Flareon project on the given address.
 ///
 /// This function takes a Flareon project and an address string and runs the
 /// project on the given address.
@@ -525,7 +567,7 @@ where
     run_at(project, listener).await
 }
 
-/// Runs the Flareon project.
+/// Runs the Flareon project on the given listener.
 ///
 /// This function takes a Flareon project and a [`tokio::net::TcpListener`] and
 /// runs the project on the given listener.
@@ -666,6 +708,7 @@ pub trait Render {
     fn render(&self) -> Html;
 }
 
+/// A type that represents HTML content as a string.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Deref, From, Display)]
 pub struct Html(String);
 

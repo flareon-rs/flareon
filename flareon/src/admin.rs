@@ -1,3 +1,8 @@
+//! Administration panel.
+//!
+//! This module provides a administration panel for managing models
+//! registered in the application, straight from the web interface.
+
 use std::marker::PhantomData;
 
 use askama::Template;
