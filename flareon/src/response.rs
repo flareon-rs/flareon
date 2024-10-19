@@ -17,12 +17,20 @@ use crate::{Body, StatusCode};
 
 const RESPONSE_BUILD_FAILURE: &str = "Failed to build response";
 
+/// HTTP response type.
 pub type Response = http::Response<Body>;
 
 mod private {
     pub trait Sealed {}
 }
 
+/// Extension trait for [`http::Response`] that provides helper methods for
+/// working with HTTP response.
+///
+/// # Sealed
+///
+/// This trait is sealed since it doesn't make sense to be implemented for types
+/// outside the context of Flareon.
 pub trait ResponseExt: private::Sealed {
     #[must_use]
     fn new_html(status: StatusCode, body: Body) -> Self;

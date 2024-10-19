@@ -113,3 +113,51 @@ pub(crate) enum ErrorRepr {
     #[error("Failed to authenticate user: {0}")]
     AuthenticationError(#[from] crate::auth::AuthError),
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::*;
+
+    #[test]
+    fn test_error_new() {
+        let inner = ErrorRepr::StartServer {
+            source: io::Error::new(io::ErrorKind::Other, "server error"),
+        };
+
+        let error = Error::new(inner);
+
+        assert!(std::error::Error::source(&error).is_some());
+    }
+
+    #[test]
+    fn test_error_display() {
+        let inner = ErrorRepr::InvalidContentType {
+            expected: "application/json",
+            actual: "text/html".to_string(),
+        };
+        let error = Error::new(inner);
+
+        let display = format!("{}", error);
+
+        assert_eq!(
+            display,
+            "Invalid content type; expected application/json, found text/html"
+        );
+    }
+
+    #[test]
+    fn test_error_from_repr() {
+        let inner = ErrorRepr::NoViewToReverse {
+            view_name: "home".to_string(),
+        };
+
+        let error: Error = inner.into();
+
+        assert_eq!(
+            format!("{}", error),
+            "Failed to reverse route `home` due to view not existing"
+        );
+    }
+}

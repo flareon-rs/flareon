@@ -371,6 +371,7 @@ impl TryFrom<String> for PasswordHash {
     }
 }
 
+/// The result returned by [`PasswordHash::verify()`].
 #[derive(Debug, Clone)]
 #[must_use]
 pub enum PasswordVerificationResult {

@@ -26,12 +26,20 @@ use crate::headers::FORM_CONTENT_TYPE;
 use crate::router::Router;
 use crate::{Body, Result};
 
+/// HTTP request type.
 pub type Request = http::Request<Body>;
 
 mod private {
     pub trait Sealed {}
 }
 
+/// Extension trait for [`http::Request`] that provides helper methods for
+/// working with HTTP requests.
+///
+/// # Sealed
+///
+/// This trait is sealed since it doesn't make sense to be implemented for types
+/// outside the context of Flareon.
 #[async_trait]
 pub trait RequestExt: private::Sealed {
     #[must_use]

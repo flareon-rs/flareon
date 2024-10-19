@@ -612,3 +612,104 @@ const CREATE_APPLIED_MIGRATIONS_MIGRATION: Operation = Operation::create_model()
     ])
     .if_not_exists()
     .build();
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{ColumnType, Database, DatabaseField, Identifier};
+
+    struct TestMigration;
+
+    impl Migration for TestMigration {
+        const APP_NAME: &'static str = "testapp";
+        const MIGRATION_NAME: &'static str = "m_0001_initial";
+        const OPERATIONS: &'static [Operation] = &[Operation::create_model()
+            .table_name(Identifier::new("testapp__test_model"))
+            .fields(&[
+                Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
+                    .primary_key()
+                    .auto(),
+                Field::new(Identifier::new("name"), <String as DatabaseField>::TYPE),
+            ])
+            .build()];
+    }
+
+    #[tokio::test]
+    async fn test_migration_engine_run() {
+        let engine = MigrationEngine::new([TestMigration]);
+        let database = Database::new("sqlite::memory:").await.unwrap();
+
+        let result = engine.run(&database).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_operation_create_model() {
+        const OPERATION_CREATE_MODEL_FIELDS: &[Field; 2] = &[
+            Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
+                .primary_key()
+                .auto(),
+            Field::new(Identifier::new("name"), <String as DatabaseField>::TYPE),
+        ];
+
+        let operation = Operation::create_model()
+            .table_name(Identifier::new("testapp__test_model"))
+            .fields(OPERATION_CREATE_MODEL_FIELDS)
+            .build();
+
+        if let OperationInner::CreateModel {
+            table_name,
+            fields,
+            if_not_exists,
+        } = operation.inner
+        {
+            assert_eq!(table_name.to_string(), "testapp__test_model");
+            assert_eq!(fields.len(), 2);
+            assert!(!if_not_exists);
+        } else {
+            panic!("Expected OperationInner::CreateModel");
+        }
+    }
+
+    #[test]
+    fn test_operation_add_field() {
+        let operation = Operation::add_field()
+            .table_name(Identifier::new("testapp__test_model"))
+            .field(Field::new(
+                Identifier::new("age"),
+                <i32 as DatabaseField>::TYPE,
+            ))
+            .build();
+
+        if let OperationInner::AddField { table_name, field } = operation.inner {
+            assert_eq!(table_name.to_string(), "testapp__test_model");
+            assert_eq!(field.name.to_string(), "age");
+        } else {
+            panic!("Expected OperationInner::AddField");
+        }
+    }
+
+    #[test]
+    fn test_field_new() {
+        let field = Field::new(Identifier::new("id"), ColumnType::Integer)
+            .primary_key()
+            .auto()
+            .null();
+
+        assert_eq!(field.name.to_string(), "id");
+        assert_eq!(field.ty, ColumnType::Integer);
+        assert!(field.primary_key);
+        assert!(field.auto_value);
+        assert!(field.null);
+    }
+
+    #[test]
+    fn test_migration_wrapper() {
+        let migration = MigrationWrapper::new(TestMigration);
+
+        assert_eq!(migration.app_name(), "testapp");
+        assert_eq!(migration.name(), "m_0001_initial");
+        assert_eq!(migration.operations().len(), 1);
+    }
+}
