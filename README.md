@@ -35,5 +35,5 @@ Flareon is licensed under either of the following, at your option:
 * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or https://www.apache.org/licenses/LICENSE-2.0)
 * MIT License ([LICENSE-MIT](LICENSE-MIT) or https://opensource.org/licenses/MIT)
 
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in Rocket by you shall be
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in Flareon by you shall be
 dual licensed under the MIT License and Apache License, Version 2.0, without any additional terms or conditions.
