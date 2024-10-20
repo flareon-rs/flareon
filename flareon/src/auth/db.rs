@@ -16,6 +16,7 @@ use crate::auth::{
     SessionAuthHash, User, UserId,
 };
 use crate::config::SecretKey;
+use crate::db::migrations::DynMigration;
 use crate::db::{query, DatabaseBackend, Model};
 use crate::request::{Request, RequestExt};
 use crate::FlareonApp;
@@ -317,6 +318,16 @@ impl FlareonApp for DatabaseUserApp {
 
     fn admin_model_managers(&self) -> Vec<Box<dyn AdminModelManager>> {
         vec![Box::new(DefaultAdminModelManager::<DatabaseUser>::new())]
+    }
+
+    fn migrations(&self) -> Vec<Box<dyn DynMigration>> {
+        // TODO: this is way too complicated for the user-facing API
+        #[allow(trivial_casts)]
+        migrations::MIGRATIONS
+            .iter()
+            .copied()
+            .map(|x| Box::new(x) as Box<dyn DynMigration>)
+            .collect()
     }
 }
 
