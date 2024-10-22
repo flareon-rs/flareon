@@ -79,7 +79,7 @@ async fn remove_todo(request: Request) -> flareon::Result<Response> {
 struct TodoApp;
 
 impl FlareonApp for TodoApp {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "todo-app"
     }
 

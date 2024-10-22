@@ -7,6 +7,7 @@ use std::marker::PhantomData;
 
 use askama::Template;
 use async_trait::async_trait;
+use bytes::Bytes;
 use derive_more::Debug;
 
 use crate::auth::db::DatabaseUserCredentials;
@@ -18,7 +19,7 @@ use crate::forms::{
 use crate::request::{Request, RequestExt};
 use crate::response::{Response, ResponseExt};
 use crate::router::Router;
-use crate::{reverse, Body, FlareonApp, Render, StatusCode};
+use crate::{reverse, static_files, Body, FlareonApp, Render, StatusCode};
 
 #[derive(Debug, Form)]
 struct LoginForm {
@@ -233,7 +234,7 @@ impl AdminApp {
 }
 
 impl FlareonApp for AdminApp {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "flareon_admin"
     }
 
@@ -243,5 +244,9 @@ impl FlareonApp for AdminApp {
             crate::Route::with_handler_and_name("/login", login, "login"),
             crate::Route::with_handler_and_name("/:model_name", view_model, "view_model"),
         ])
+    }
+
+    fn static_files(&self) -> Vec<(String, Bytes)> {
+        static_files!("admin/admin.css")
     }
 }

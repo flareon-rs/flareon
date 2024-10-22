@@ -4,4 +4,6 @@
 //! the macros.
 //!
 //! This is not a public API and should not be used directly.
+
 pub use async_trait::async_trait;
+pub use bytes::Bytes;

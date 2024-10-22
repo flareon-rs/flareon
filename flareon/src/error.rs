@@ -139,7 +139,7 @@ mod tests {
         };
         let error = Error::new(inner);
 
-        let display = format!("{}", error);
+        let display = format!("{error}");
 
         assert_eq!(
             display,
@@ -156,7 +156,7 @@ mod tests {
         let error: Error = inner.into();
 
         assert_eq!(
-            format!("{}", error),
+            format!("{error}"),
             "Failed to reverse route `home` due to view not existing"
         );
     }

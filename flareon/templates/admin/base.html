@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="NONE,NOARCHIVE">
     <title>{% block title %}{% endblock %} | Flareon Admin</title>
+    <link rel="stylesheet" href="/static/admin/admin.css">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
 {% block content %}{% endblock %}
 </body>
 </html>

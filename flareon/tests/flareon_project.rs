@@ -12,7 +12,7 @@ async fn hello(_request: Request) -> flareon::Result<Response> {
 async fn flareon_project_router_sub_path() {
     struct App1;
     impl FlareonApp for App1 {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "app1"
         }
 
@@ -23,7 +23,7 @@ async fn flareon_project_router_sub_path() {
 
     struct App2;
     impl FlareonApp for App2 {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "app2"
         }
 

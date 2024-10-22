@@ -46,7 +46,7 @@ async fn path_params() {
 async fn project() -> FlareonProject<RouterService> {
     struct RouterApp;
     impl FlareonApp for RouterApp {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "router-app"
         }
 

@@ -2,32 +2,36 @@
 
 {% block title %}Sign in{% endblock %}
 
+{% block body_class %}login{% endblock %}
+
 {% block content %}
-<form action="" method="post">
-    {% if form.has_errors() %}
-    <div class="form-errors">
-        {% for error in form.errors_for(FormErrorTarget::Form) %}
-        {{ error }}
-        {% endfor %}
-    </div>
-    {% endif %}
+<div class="container">
+    <form action="" method="post">
+        {% if form.has_errors() %}
+        <div class="form-errors">
+            {% for error in form.errors_for(FormErrorTarget::Form) %}
+            {{ error }}
+            {% endfor %}
+        </div>
+        {% endif %}
 
-    <div class="form-row">
-        <label for="{{ form.username.id() }}">Username:</label>
-        {{ form.username.render()|safe }}
-        {% for error in form.errors_for(FormErrorTarget::Field("username")) %}
-        {{ error }}
-        {% endfor %}
-    </div>
+        <div class="form-row">
+            <label for="{{ form.username.id() }}">Username:</label>
+            {{ form.username.render()|safe }}
+            {% for error in form.errors_for(FormErrorTarget::Field("username")) %}
+            {{ error }}
+            {% endfor %}
+        </div>
 
-    <div class="form-row">
-        <label for="{{ form.password.id() }}">Password:</label>
-        {{ form.password.render()|safe }}
-        {% for error in form.errors_for(FormErrorTarget::Field("password")) %}
-        {{ error }}
-        {% endfor %}
-    </div>
+        <div class="form-row">
+            <label for="{{ form.password.id() }}">Password:</label>
+            {{ form.password.render()|safe }}
+            {% for error in form.errors_for(FormErrorTarget::Field("password")) %}
+            {{ error }}
+            {% endfor %}
+        </div>
 
-    <button type="submit">Sign in</button>
-</form>
+        <button type="submit">Sign in</button>
+    </form>
+</div>
 {% endblock %}

@@ -312,7 +312,7 @@ impl DatabaseUserApp {
 }
 
 impl FlareonApp for DatabaseUserApp {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "flareon_db_user"
     }
 

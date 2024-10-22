@@ -60,6 +60,7 @@ pub mod middleware;
 pub mod request;
 pub mod response;
 pub mod router;
+pub mod static_files;
 pub mod test;
 
 use std::fmt::Formatter;
@@ -157,6 +158,10 @@ pub trait FlareonApp: Send + Sync {
     }
 
     fn admin_model_managers(&self) -> Vec<Box<dyn AdminModelManager>> {
+        vec![]
+    }
+
+    fn static_files(&self) -> Vec<(String, Bytes)> {
         vec![]
     }
 }
@@ -331,11 +336,7 @@ impl http_body::Body for Body {
 #[derive(Debug)]
 // TODO add Middleware type?
 pub struct FlareonProject<S> {
-    config: Arc<ProjectConfig>,
-    #[debug("...")]
-    apps: Vec<Box<dyn FlareonApp>>,
-    router: Arc<Router>,
-    database: Option<Arc<Database>>,
+    context: AppContext,
     handler: S,
 }
 
@@ -401,11 +402,8 @@ pub struct Uninitialized;
 /// The builder for the [`FlareonProject`].
 #[derive(Debug)]
 pub struct FlareonProjectBuilder<S> {
-    config: ProjectConfig,
-    #[debug("...")]
-    apps: Vec<Box<dyn FlareonApp>>,
+    context: AppContext,
     urls: Vec<Route>,
-    router: Arc<Router>,
     handler: S,
 }
 
@@ -413,17 +411,20 @@ impl FlareonProjectBuilder<Uninitialized> {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            config: ProjectConfig::default(),
-            apps: Vec::new(),
+            context: AppContext {
+                config: Arc::new(ProjectConfig::default()),
+                apps: vec![],
+                router: Arc::new(Router::default()),
+                database: None,
+            },
             urls: Vec::new(),
-            router: Arc::new(Router::empty()),
             handler: Uninitialized,
         }
     }
 
     #[must_use]
     pub fn config(mut self, config: ProjectConfig) -> Self {
-        self.config = config;
+        self.context.config = Arc::new(config);
         self
     }
 
@@ -438,7 +439,7 @@ impl FlareonProjectBuilder<Uninitialized> {
     }
 
     pub fn register_app<T: FlareonApp + 'static>(mut self, app: T) -> Self {
-        self.apps.push(Box::new(app));
+        self.context.apps.push(Box::new(app));
         self
     }
 
@@ -450,20 +451,32 @@ impl FlareonProjectBuilder<Uninitialized> {
         self.into_builder_with_service().middleware(middleware)
     }
 
+    #[must_use]
+    pub fn middleware_with_context<M, F>(
+        self,
+        get_middleware: F,
+    ) -> FlareonProjectBuilder<M::Service>
+    where
+        M: tower::Layer<RouterService>,
+        F: FnOnce(&AppContext) -> M,
+    {
+        self.into_builder_with_service()
+            .middleware_with_context(get_middleware)
+    }
+
     /// Builds the Flareon project instance.
     pub async fn build(self) -> Result<FlareonProject<RouterService>> {
         self.into_builder_with_service().build().await
     }
 
     #[must_use]
-    fn into_builder_with_service(self) -> FlareonProjectBuilder<RouterService> {
+    fn into_builder_with_service(mut self) -> FlareonProjectBuilder<RouterService> {
         let router = Arc::new(Router::with_urls(self.urls));
+        self.context.router = Arc::clone(&router);
 
         FlareonProjectBuilder {
-            config: self.config,
-            apps: self.apps,
+            context: self.context,
             urls: vec![],
-            router: Arc::clone(&router),
             handler: RouterService::new(router),
         }
     }
@@ -476,24 +489,33 @@ impl<S: Service<Request>> FlareonProjectBuilder<S> {
         middleware: M,
     ) -> FlareonProjectBuilder<M::Service> {
         FlareonProjectBuilder {
-            config: self.config,
-            apps: self.apps,
+            context: self.context,
             urls: vec![],
-            router: self.router,
             handler: middleware.layer(self.handler),
         }
     }
 
+    #[must_use]
+    pub fn middleware_with_context<M, F>(
+        self,
+        get_middleware: F,
+    ) -> FlareonProjectBuilder<M::Service>
+    where
+        M: tower::Layer<S>,
+        F: FnOnce(&AppContext) -> M,
+    {
+        let middleware = get_middleware(&self.context);
+        self.middleware(middleware)
+    }
+
     /// Builds the Flareon project instance.
-    pub async fn build(self) -> Result<FlareonProject<S>> {
-        let database = Self::init_database(self.config.database_config()).await?;
+    pub async fn build(mut self) -> Result<FlareonProject<S>> {
+        let database = Self::init_database(self.context.config.database_config()).await?;
+        self.context.database = Some(database);
 
         Ok(FlareonProject {
-            config: Arc::new(self.config),
-            apps: self.apps,
-            router: self.router,
+            context: self.context,
             handler: self.handler,
-            database: Some(database),
         })
     }
 
@@ -521,29 +543,8 @@ where
     S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
 {
     #[must_use]
-    pub fn router(&self) -> &Router {
-        &self.router
-    }
-
-    #[must_use]
-    pub fn try_database(&self) -> Option<&Arc<Database>> {
-        self.database.as_ref()
-    }
-
-    #[must_use]
-    pub fn database(&self) -> &Database {
-        self.try_database().expect("database should be Some")
-    }
-
-    #[must_use]
     pub fn into_context(self) -> (AppContext, S) {
-        let context = AppContext {
-            config: self.config,
-            apps: self.apps,
-            router: self.router,
-            database: self.database,
-        };
-        (context, self.handler)
+        (self.context, self.handler)
     }
 }
 
@@ -737,7 +738,7 @@ mod tests {
     struct MockFlareonApp;
 
     impl FlareonApp for MockFlareonApp {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "mock"
         }
     }
@@ -757,8 +758,8 @@ mod tests {
             .build()
             .await
             .unwrap();
-        assert_eq!(project.apps.len(), 1);
-        assert!(!project.router.is_empty());
+        assert_eq!(project.context.apps.len(), 1);
+        assert!(!project.context.router.is_empty());
     }
 
     #[tokio::test]
@@ -768,7 +769,7 @@ mod tests {
             .build()
             .await
             .unwrap();
-        assert_eq!(project.router().routes().len(), 1);
+        assert_eq!(project.context.router.routes().len(), 1);
     }
 
     #[test]

@@ -33,6 +33,9 @@ mod private {
 /// outside the context of Flareon.
 pub trait ResponseExt: private::Sealed {
     #[must_use]
+    fn builder() -> http::response::Builder;
+
+    #[must_use]
     fn new_html(status: StatusCode, body: Body) -> Self;
 
     #[must_use]
@@ -42,6 +45,12 @@ pub trait ResponseExt: private::Sealed {
 impl private::Sealed for Response {}
 
 impl ResponseExt for Response {
+    #[must_use]
+    fn builder() -> http::response::Builder {
+        http::Response::builder()
+    }
+
+    #[must_use]
     fn new_html(status: StatusCode, body: Body) -> Self {
         http::Response::builder()
             .status(status)
@@ -50,6 +59,7 @@ impl ResponseExt for Response {
             .expect(RESPONSE_BUILD_FAILURE)
     }
 
+    #[must_use]
     fn new_redirect<T: Into<String>>(location: T) -> Self {
         http::Response::builder()
             .status(StatusCode::SEE_OTHER)

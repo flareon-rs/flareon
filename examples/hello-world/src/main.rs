@@ -13,7 +13,7 @@ async fn return_hello(_request: Request) -> flareon::Result<Response> {
 struct HelloApp;
 
 impl FlareonApp for HelloApp {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         env!("CARGO_PKG_NAME")
     }
 

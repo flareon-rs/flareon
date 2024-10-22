@@ -6,6 +6,7 @@ use flareon::middleware::SessionMiddleware;
 use flareon::request::Request;
 use flareon::response::{Response, ResponseExt};
 use flareon::router::{Route, Router};
+use flareon::static_files::StaticFilesMiddleware;
 use flareon::{AppContext, Body, FlareonApp, FlareonProject, StatusCode};
 
 async fn hello(_request: Request) -> flareon::Result<Response> {
@@ -16,7 +17,7 @@ struct HelloApp;
 
 #[async_trait]
 impl FlareonApp for HelloApp {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         env!("CARGO_PKG_NAME")
     }
 
@@ -48,6 +49,7 @@ async fn main() {
         .register_app(DatabaseUserApp::new())
         .register_app_with_views(AdminApp::new(), "/admin")
         .register_app_with_views(HelloApp, "")
+        .middleware_with_context(StaticFilesMiddleware::from_app_context)
         .middleware(SessionMiddleware::new())
         .build()
         .await
