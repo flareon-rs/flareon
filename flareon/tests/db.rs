@@ -116,6 +116,7 @@ struct AllFieldsModel {
     field_datetime: chrono::NaiveDateTime,
     field_datetime_timezone: chrono::DateTime<chrono::FixedOffset>,
     field_string: String,
+    field_blob: Vec<u8>,
 }
 
 async fn migrate_all_fields_model(db: &Database) {
@@ -144,6 +145,7 @@ const CREATE_ALL_FIELDS_MODEL: Operation = Operation::create_model()
         all_fields_migration_field!(datetime, chrono::NaiveDateTime),
         all_fields_migration_field!(datetime_timezone, chrono::DateTime<chrono::FixedOffset>),
         all_fields_migration_field!(string, String),
+        all_fields_migration_field!(blob, Vec<u8>),
     ])
     .build();
 

@@ -29,13 +29,17 @@ use crate::db::impl_sqlite::{DatabaseSqlite, SqliteRow, SqliteValueRef};
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum DatabaseError {
+    /// Database engine error.
     #[error("Database engine error: {0}")]
     DatabaseEngineError(#[from] sqlx::Error),
+    /// Error when building query.
     #[error("Error when building query: {0}")]
     QueryBuildingError(#[from] sea_query::error::Error),
+    /// Type mismatch in database value.
     #[error("Type mismatch in database value: expected `{expected}`, found `{found}`. Perhaps migration is needed."
     )]
     TypeMismatch { expected: String, found: String },
+    /// Error when decoding database value.
     #[error("Error when decoding database value: {0}")]
     ValueDecode(Box<dyn std::error::Error + 'static + Send + Sync>),
 }
@@ -161,6 +165,7 @@ pub struct Column {
 }
 
 impl Column {
+    /// Creates a new column with the given name.
     #[must_use]
     pub const fn new(name: Identifier) -> Self {
         Self {
@@ -170,12 +175,14 @@ impl Column {
         }
     }
 
+    /// Marks the column as auto-increment.
     #[must_use]
     pub const fn auto(mut self) -> Self {
         self.auto_value = true;
         self
     }
 
+    /// Marks the column as nullable.
     #[must_use]
     pub const fn null(mut self) -> Self {
         self.null = true;
@@ -231,7 +238,11 @@ pub trait FromDbValue {
 
 /// A trait for converting a Rust value to a database value.
 pub trait ToDbValue: Send + Sync {
-    fn as_sea_query_value(&self) -> sea_query::Value;
+    /// Converts the Rust value to a `sea_query` value.
+    ///
+    /// This method is used to convert the Rust value to a value that can be
+    /// used in a query.
+    fn to_sea_query_value(&self) -> sea_query::Value;
 }
 
 trait SqlxRowRef {
@@ -379,7 +390,7 @@ impl Database {
             .values(
                 values
                     .into_iter()
-                    .map(|value| SimpleExpr::Value(value.as_sea_query_value()))
+                    .map(|value| SimpleExpr::Value(value.to_sea_query_value()))
                     .collect::<Vec<_>>(),
             )?
             .returning_col(Identifier::new("id"))
@@ -591,6 +602,7 @@ pub struct StatementResult {
 }
 
 impl StatementResult {
+    /// Creates a new statement result with the given number of rows affected.
     #[must_use]
     pub(crate) fn new(rows_affected: RowsNum) -> Self {
         Self { rows_affected }
@@ -627,6 +639,7 @@ pub enum ColumnType {
     Timestamp,
     TimestampWithTimeZone,
     Text,
+    Blob,
 }
 
 #[cfg(test)]

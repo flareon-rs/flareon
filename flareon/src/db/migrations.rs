@@ -584,6 +584,7 @@ impl From<ColumnType> for sea_query::ColumnType {
             ColumnType::Timestamp => Self::Timestamp,
             ColumnType::TimestampWithTimeZone => Self::TimestampWithTimeZone,
             ColumnType::Text => Self::Text,
+            ColumnType::Blob => Self::Blob,
         }
     }
 }
