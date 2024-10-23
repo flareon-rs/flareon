@@ -168,3 +168,34 @@ jobs:
 
       - name: Run cargo-machete
         uses: bnjbvr/cargo-machete@v0.7.0
+
+  minimal-versions:
+    if: github.event_name == 'push' || github.event_name == 'schedule' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+
+    name: Minimal dependency versions build
+    runs-on: ubuntu-latest
+    needs: ["build"]
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+
+      - name: Cache Cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run cargo check with minimal versions
+        run: |
+          # Remove dev-dependencies from Cargo.toml to prevent the next `cargo update`
+          # from determining minimal versions based on dev-dependencies.
+          cargo hack --remove-dev-deps --workspace
+          # Update Cargo.lock to minimal version dependencies.
+          cargo update -Z minimal-versions
+          cargo hack check --all-features --ignore-private

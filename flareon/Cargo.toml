@@ -7,6 +7,8 @@ description = "Modern web framework focused on speed and ease of use."
 
 [dependencies]
 askama.workspace = true
+askama_derive.workspace = true
+askama_parser.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 backtrace.workspace = true
@@ -37,6 +39,7 @@ sqlx.workspace = true
 subtle.workspace = true
 sync_wrapper.workspace = true
 thiserror.workspace = true
+time.workspace = true
 tokio.workspace = true
 tower.workspace = true
 tower-sessions.workspace = true
@@ -46,3 +49,13 @@ async-stream.workspace = true
 fake.workspace = true
 futures.workspace = true
 rand.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = [
+    # askama doesn't seem to be working with minimal versions of its dependencies at the moment,
+    # so we're manually setting the required versions in the main crate.
+    "askama_derive",
+    "askama_parser",
+    # time requires version 0.3.35 to work with the latest versions of Rust, but we don't use it directly
+    "time",
+]
