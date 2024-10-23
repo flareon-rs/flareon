@@ -405,7 +405,7 @@ impl FromDbValue for PasswordHash {
 }
 
 impl ToDbValue for PasswordHash {
-    fn as_sea_query_value(&self) -> sea_query::Value {
+    fn to_sea_query_value(&self) -> sea_query::Value {
         self.0.clone().into()
     }
 }

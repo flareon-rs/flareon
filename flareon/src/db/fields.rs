@@ -16,7 +16,7 @@ macro_rules! impl_db_field {
         }
 
         impl ToDbValue for $ty {
-            fn as_sea_query_value(&self) -> Value {
+            fn to_sea_query_value(&self) -> Value {
                 self.clone().into()
             }
         }
@@ -39,9 +39,10 @@ impl_db_field!(chrono::NaiveTime, Time);
 impl_db_field!(chrono::NaiveDateTime, DateTime);
 impl_db_field!(chrono::DateTime<chrono::FixedOffset>, TimestampWithTimeZone);
 impl_db_field!(String, Text);
+impl_db_field!(Vec<u8>, Blob);
 
 impl ToDbValue for &str {
-    fn as_sea_query_value(&self) -> Value {
+    fn to_sea_query_value(&self) -> Value {
         (*self).to_string().into()
     }
 }

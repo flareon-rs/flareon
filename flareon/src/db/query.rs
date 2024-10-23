@@ -131,7 +131,7 @@ impl<T: Model> Query<T> {
 #[derive(Debug)]
 pub enum Expr {
     Field(Identifier),
-    Value(#[debug("{}", _0.as_sea_query_value())] Box<dyn ToDbValue>),
+    Value(#[debug("{}", _0.to_sea_query_value())] Box<dyn ToDbValue>),
     And(Box<Expr>, Box<Expr>),
     Or(Box<Expr>, Box<Expr>),
     Eq(Box<Expr>, Box<Expr>),
@@ -299,7 +299,7 @@ impl Expr {
     pub fn as_sea_query_expr(&self) -> sea_query::SimpleExpr {
         match self {
             Self::Field(identifier) => (*identifier).into_column_ref().into(),
-            Self::Value(value) => value.as_sea_query_value().into(),
+            Self::Value(value) => value.to_sea_query_value().into(),
             Self::And(lhs, rhs) => lhs.as_sea_query_expr().and(rhs.as_sea_query_expr()),
             Self::Or(lhs, rhs) => lhs.as_sea_query_expr().or(rhs.as_sea_query_expr()),
             Self::Eq(lhs, rhs) => lhs.as_sea_query_expr().eq(rhs.as_sea_query_expr()),
@@ -505,7 +505,7 @@ mod tests {
     fn test_expr_value() {
         let expr = Expr::value(30);
         if let Expr::Value(value) = expr {
-            assert_eq!(value.as_sea_query_value().to_string(), "30");
+            assert_eq!(value.to_sea_query_value().to_string(), "30");
         } else {
             panic!("Expected Expr::Value");
         }
