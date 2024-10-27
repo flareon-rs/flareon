@@ -442,7 +442,13 @@ impl MigrationProcessor {
     }
 
     /// Returns the latest (in the order of applying migrations) versions of the
-    /// models that are marked as migration models.
+    /// models that are marked as migration models, that means the latest
+    /// version of each migration model.
+    ///
+    /// This is useful for generating migrations - we can compare the latest
+    /// version of the model in the source code with the latest version of the
+    /// model in the migrations (returned by this method) and generate the
+    /// necessary operations.
     #[must_use]
     fn latest_models(&self) -> Vec<ModelInSource> {
         let mut migration_models: HashMap<String, &ModelInSource> = HashMap::new();

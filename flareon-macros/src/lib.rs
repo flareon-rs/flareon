@@ -28,6 +28,71 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
     token_stream.into()
 }
 
+/// Implement the [`Model`] trait for a struct.
+///
+/// This macro will generate an implementation of the [`Model`] trait for the
+/// given named struct. Note that all the fields of the struct **must**
+/// implement the [`DatabaseField`] trait.
+///
+/// # Model types
+///
+/// The model type can be specified using the `model_type` parameter. The model
+/// type can be one of the following:
+///
+/// * `application` (default): The model represents an actual table in a
+///   normally running instance of the application.
+/// ```
+/// use flareon::db::model;
+///
+/// #[model(model_type = "application")]
+/// // This is equivalent to:
+/// // #[model]
+/// struct User {
+///     id: i32,
+///     username: String,
+/// }
+/// ```
+/// * `migration`: The model represents a table that is used for migrations. The
+///   model name must be prefixed with an underscore. You shouldn't ever need to
+///   use this type; the migration engine will generate the migration model
+///   types for you.
+///
+///   Migration models have two major uses. The first is so that the migration
+///   engine uses knows what was the state of model at the time the last
+///   migration was generated. This allows the engine to automatically detect
+///   the changes and generate the necessary migration code. The second use is
+///   to allow custom code in the migrations: you might want the migration to
+///   fill in some data, for instance. You can't use the actual model for this
+///   because the model might have changed since the migration was generated.
+///   You can, however, use the migration model, which will always represent
+///   the state of the model at the time the migration runs.
+/// ```
+/// // In a migration file
+/// use flareon::db::model;
+///
+/// #[model(model_type = "migration")]
+/// struct _User {
+///     id: i32,
+///     username: String,
+/// }
+/// ```
+/// * `internal`: The model represents a table that is used internally by
+///   Flareon (e.g. the `flareon__migrations` table, storing which migrations
+///   have been applied). They are ignored by the migration generator and should
+///   never be used outside Flareon code.
+/// ```
+/// use flareon::db::model;
+///
+/// #[model(model_type = "internal")]
+/// struct FlareonMigrations {
+///     id: i32,
+///     app: String,
+///     name: String,
+/// }
+/// ```
+///
+/// [`Model`]: trait.Model.html
+/// [`DatabaseField`]: trait.DatabaseField.html
 #[proc_macro_attribute]
 pub fn model(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = match NestedMeta::parse_meta_list(args.into()) {
