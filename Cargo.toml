@@ -1,8 +1,6 @@
 [workspace]
 members = [
     "flareon",
-    "flareon-admin",
-    "flareon-auth",
     "flareon-cli",
     "flareon-codegen",
     "flareon-macros",

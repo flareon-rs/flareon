@@ -907,14 +907,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flareon-admin"
-version = "0.1.0"
-
-[[package]]
-name = "flareon-auth"
-version = "0.1.0"
-
-[[package]]
 name = "flareon-cli"
 version = "0.1.0"
 dependencies = [

@@ -16,7 +16,7 @@ use pin_project_lite::pin_project;
 use tower::Service;
 
 use crate::response::{Response, ResponseExt};
-use crate::{AppContext, Body, FlareonApp};
+use crate::{AppContext, Body};
 
 /// Macro to define static files by specifying their paths.
 ///
@@ -24,7 +24,8 @@ use crate::{AppContext, Body, FlareonApp};
 /// The paths are relative to the `static` directory of the project (under the
 /// project root, where the `Cargo.toml` file is).
 ///
-/// This is mainly useful with the [`FlareonApp::static_files`] trait method.
+/// This is mainly useful with the
+/// [`FlareonApp::static_files`](crate::FlareonApp::static_files) trait method.
 ///
 /// # Example
 ///
@@ -125,8 +126,8 @@ impl File {
 /// Middleware for serving static files.
 ///
 /// This middleware serves static files defined by the applications by using
-/// the [`FlareonApp::static_files`] trait method. The middleware serves files
-/// from the `/static/` path.
+/// the [`FlareonApp::static_files`](crate::FlareonApp::static_files) trait
+/// method. The middleware serves files from the `/static/` path.
 ///
 /// If a request is made to a path starting with `/static/`, the middleware
 /// checks if the file exists in the static files collection. If it does, the
@@ -253,7 +254,7 @@ mod tests {
     use tower::{Layer, ServiceExt};
 
     use super::*;
-    use crate::FlareonProject;
+    use crate::{FlareonApp, FlareonProject};
 
     #[test]
     fn static_files_add_and_get_file() {
