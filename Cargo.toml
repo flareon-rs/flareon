@@ -19,7 +19,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-anyhow = "1.0.14"
+anyhow = "1.0.92"
 askama = "0.12.1"
 askama_derive = "0.12.5"
 askama_parser = "0.2.1"
@@ -62,7 +62,7 @@ proc-macro-crate = "3"
 proc-macro2 = "1"
 quote = "1"
 rand = "0.8"
-regex = "1.8"
+regex = "1.11"
 rustversion = "1"
 sea-query = "0.32.0-rc.2"
 sea-query-binder = { version = "0.7.0-rc.2", features = ["sqlx-sqlite", "with-chrono", "runtime-tokio"] }
