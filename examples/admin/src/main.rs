@@ -22,7 +22,12 @@ impl FlareonApp for HelloApp {
     }
 
     async fn init(&self, context: &mut AppContext) -> flareon::Result<()> {
-        DatabaseUser::create_user(context.database(), "admin", "admin").await?;
+        // TODO use transaction
+        let user = DatabaseUser::get_by_username(context.database(), "admin").await?;
+        if user.is_none() {
+            DatabaseUser::create_user(context.database(), "admin", "admin").await?;
+        }
+
         Ok(())
     }
 

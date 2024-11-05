@@ -1,11 +1,11 @@
 #![cfg(feature = "fake")]
 
+use fake::rand::rngs::StdRng;
+use fake::rand::SeedableRng;
 use fake::{Dummy, Fake, Faker};
 use flareon::db::migrations::{Field, Operation};
 use flareon::db::query::ExprEq;
 use flareon::db::{model, query, Database, DatabaseField, Identifier, LimitedString, Model};
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 
 #[tokio::test]
 async fn model_crud() {

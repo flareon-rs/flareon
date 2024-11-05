@@ -161,6 +161,7 @@ impl Iden for &Identifier {
 pub struct Column {
     name: Identifier,
     auto_value: bool,
+    unique: bool,
     null: bool,
 }
 
@@ -171,6 +172,7 @@ impl Column {
         Self {
             name,
             auto_value: false,
+            unique: false,
             null: false,
         }
     }
@@ -179,6 +181,13 @@ impl Column {
     #[must_use]
     pub const fn auto(mut self) -> Self {
         self.auto_value = true;
+        self
+    }
+
+    /// Marks the column unique.
+    #[must_use]
+    pub const fn unique(mut self) -> Self {
+        self.unique = true;
         self
     }
 
@@ -690,7 +699,7 @@ impl<const LIMIT: u32> PartialEq<LimitedString<LIMIT>> for String {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Error)]
 #[error("string is too long ({length} > {LIMIT})")]
 pub struct NewLimitedStringError<const LIMIT: u32> {
-    length: u32,
+    pub(crate) length: u32,
 }
 
 impl<const LIMIT: u32> LimitedString<LIMIT> {
@@ -709,8 +718,8 @@ impl<const LIMIT: u32> LimitedString<LIMIT> {
 
 #[cfg(feature = "fake")]
 impl<const LIMIT: u32> fake::Dummy<usize> for LimitedString<LIMIT> {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(len: &usize, rng: &mut R) -> Self {
-        use rand::Rng;
+    fn dummy_with_rng<R: fake::rand::Rng + ?Sized>(len: &usize, rng: &mut R) -> Self {
+        use fake::rand::Rng;
 
         assert!(
             *len <= LIMIT as usize,
@@ -722,7 +731,7 @@ impl<const LIMIT: u32> fake::Dummy<usize> for LimitedString<LIMIT> {
         );
 
         let str: String = rng
-            .sample_iter(&rand::distributions::Alphanumeric)
+            .sample_iter(&fake::rand::distributions::Alphanumeric)
             .take(*len)
             .map(char::from)
             .collect();
@@ -732,7 +741,7 @@ impl<const LIMIT: u32> fake::Dummy<usize> for LimitedString<LIMIT> {
 
 #[cfg(feature = "fake")]
 impl<const LIMIT: u32> fake::Dummy<fake::Faker> for LimitedString<LIMIT> {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+    fn dummy_with_rng<R: fake::rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
         use fake::Fake;
 
         let len: usize = (0..LIMIT as usize).fake_with_rng(rng);

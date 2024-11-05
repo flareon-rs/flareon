@@ -326,6 +326,8 @@ pub struct Field {
     pub auto_value: bool,
     /// Whether the column can be null
     pub null: bool,
+    /// Whether the column has a unique constraint
+    pub unique: bool,
 }
 
 impl Field {
@@ -337,6 +339,7 @@ impl Field {
             primary_key: false,
             auto_value: false,
             null: false,
+            unique: false,
         }
     }
 
@@ -363,6 +366,12 @@ impl Field {
         self.null = value;
         self
     }
+
+    #[must_use]
+    pub const fn unique(mut self) -> Self {
+        self.unique = true;
+        self
+    }
 }
 
 impl From<&Field> for ColumnDef {
@@ -376,6 +385,9 @@ impl From<&Field> for ColumnDef {
         }
         if column.null {
             def.null();
+        }
+        if column.unique {
+            def.unique_key();
         }
         def
     }
@@ -623,6 +635,8 @@ const CREATE_APPLIED_MIGRATIONS_MIGRATION: Operation = Operation::create_model()
 
 #[cfg(test)]
 mod tests {
+    use sea_query::ColumnSpec;
+
     use super::*;
     use crate::db::{ColumnType, Database, DatabaseField, Identifier};
 
@@ -719,5 +733,52 @@ mod tests {
         assert_eq!(migration.app_name(), "testapp");
         assert_eq!(migration.name(), "m_0001_initial");
         assert_eq!(migration.operations().len(), 1);
+    }
+
+    macro_rules! has_spec {
+        ($column_def:expr, $spec:pat) => {
+            $column_def
+                .get_column_spec()
+                .iter()
+                .any(|spec| matches!(spec, $spec))
+        };
+    }
+
+    #[test]
+    fn test_field_to_column_def() {
+        let field = Field::new(Identifier::new("id"), ColumnType::Integer)
+            .primary_key()
+            .auto()
+            .null()
+            .unique();
+
+        let column_def = ColumnDef::from(&field);
+
+        assert_eq!(column_def.get_column_name(), "id");
+        assert_eq!(
+            column_def.get_column_type(),
+            Some(&sea_query::ColumnType::Integer)
+        );
+        assert!(has_spec!(column_def, ColumnSpec::PrimaryKey));
+        assert!(has_spec!(column_def, ColumnSpec::AutoIncrement));
+        assert!(has_spec!(column_def, ColumnSpec::Null));
+        assert!(has_spec!(column_def, ColumnSpec::UniqueKey));
+    }
+
+    #[test]
+    fn test_field_to_column_def_without_options() {
+        let field = Field::new(Identifier::new("name"), ColumnType::Text);
+
+        let column_def = ColumnDef::from(&field);
+
+        assert_eq!(column_def.get_column_name(), "name");
+        assert_eq!(
+            column_def.get_column_type(),
+            Some(&sea_query::ColumnType::Text)
+        );
+        assert!(!has_spec!(column_def, ColumnSpec::PrimaryKey));
+        assert!(!has_spec!(column_def, ColumnSpec::AutoIncrement));
+        assert!(!has_spec!(column_def, ColumnSpec::Null));
+        assert!(!has_spec!(column_def, ColumnSpec::UniqueKey));
     }
 }

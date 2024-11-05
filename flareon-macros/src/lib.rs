@@ -101,8 +101,8 @@ pub fn model(args: TokenStream, input: TokenStream) -> TokenStream {
             return TokenStream::from(Error::from(e).write_errors());
         }
     };
-    let ast = parse_macro_input!(input as syn::DeriveInput);
-    let token_stream = impl_model_for_struct(&attr_args, &ast);
+    let mut ast = parse_macro_input!(input as syn::DeriveInput);
+    let token_stream = impl_model_for_struct(&attr_args, &mut ast);
     token_stream.into()
 }
 

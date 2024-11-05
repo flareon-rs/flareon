@@ -13,6 +13,7 @@ fn attr_model() {
     t.compile_fail("tests/ui/attr_model_migration_invalid_name.rs");
     t.compile_fail("tests/ui/attr_model_tuple.rs");
     t.compile_fail("tests/ui/attr_model_enum.rs");
+    t.compile_fail("tests/ui/attr_model_generic.rs");
 }
 
 #[rustversion::attr(not(nightly), ignore)]

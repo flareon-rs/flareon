@@ -35,7 +35,7 @@ darling = "0.20"
 derive_builder = "0.20"
 derive_more = { version = "1", features = ["full"] }
 env_logger = "0.11"
-fake = { version = "2", features = ["derive", "chrono"] }
+fake = { version = "3", features = ["derive", "chrono"] }
 flareon = { path = "flareon" }
 flareon_codegen = { path = "flareon-codegen" }
 flareon_macros = { path = "flareon-macros" }

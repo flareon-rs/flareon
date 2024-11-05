@@ -1,13 +1,18 @@
 use darling::ast::NestedMeta;
-use darling::{FromDeriveInput, FromMeta};
+use darling::FromMeta;
 use flareon_codegen::model::{Field, Model, ModelArgs, ModelOpts};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
+use syn::punctuated::Punctuated;
+use syn::Token;
 
 use crate::flareon_ident;
 
 #[must_use]
-pub(super) fn impl_model_for_struct(args: &[NestedMeta], ast: &syn::DeriveInput) -> TokenStream {
+pub(super) fn impl_model_for_struct(
+    args: &[NestedMeta],
+    ast: &mut syn::DeriveInput,
+) -> TokenStream {
     let args = match ModelArgs::from_list(args) {
         Ok(v) => v,
         Err(e) => {
@@ -15,7 +20,7 @@ pub(super) fn impl_model_for_struct(args: &[NestedMeta], ast: &syn::DeriveInput)
         }
     };
 
-    let opts = match ModelOpts::from_derive_input(ast) {
+    let opts = match ModelOpts::new_from_derive_input(ast) {
         Ok(val) => val,
         Err(err) => {
             return err.write_errors();
@@ -30,7 +35,36 @@ pub(super) fn impl_model_for_struct(args: &[NestedMeta], ast: &syn::DeriveInput)
     };
     let builder = ModelBuilder::from_model(model);
 
-    quote!(#ast #builder)
+    let attrs = &ast.attrs;
+    let vis = &ast.vis;
+    let ident = &ast.ident;
+
+    // Filter out our helper attributes so they don't get passed to the struct
+    let fields = match &mut ast.data {
+        syn::Data::Struct(data) => &mut data.fields,
+        _ => panic!("Only structs are supported"),
+    };
+    let fields = remove_helper_field_attributes(fields);
+
+    quote!(
+        #(#attrs)*
+        #vis struct #ident {
+            #fields
+        }
+        #builder
+    )
+}
+
+fn remove_helper_field_attributes(fields: &mut syn::Fields) -> &Punctuated<syn::Field, Token![,]> {
+    match fields {
+        syn::Fields::Named(fields) => {
+            for field in &mut fields.named {
+                field.attrs.retain(|a| !a.path().is_ident("model"));
+            }
+            &fields.named
+        }
+        _ => panic!("Only named fields are supported"),
+    }
 }
 
 #[derive(Debug)]
@@ -77,18 +111,19 @@ impl ModelBuilder {
         let ty = &field.ty;
         let index = self.fields_as_columns.len();
         let column_name = &field.column_name;
-        let is_auto = field.auto_value;
-        let is_null = field.null;
 
         {
             let mut field_as_column = quote!(#orm_ident::Column::new(
                 #orm_ident::Identifier::new(#column_name)
             ));
-            if is_auto {
+            if field.auto_value {
                 field_as_column.append_all(quote!(.auto()));
             }
-            if is_null {
+            if field.null {
                 field_as_column.append_all(quote!(.null()));
+            }
+            if field.unique {
+                field_as_column.append_all(quote!(.unique()));
             }
             self.fields_as_columns.push(field_as_column);
         }

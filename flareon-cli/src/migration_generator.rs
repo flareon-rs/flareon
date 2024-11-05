@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context};
 use cargo_toml::Manifest;
-use darling::{FromDeriveInput, FromMeta};
+use darling::FromMeta;
 use flareon::db::migrations::{DynMigration, MigrationEngine};
 use flareon_codegen::model::{Field, Model, ModelArgs, ModelOpts, ModelType};
 use log::{debug, info};
@@ -494,7 +494,7 @@ struct ModelInSource {
 impl ModelInSource {
     fn from_item(item: ItemStruct, args: &ModelArgs) -> anyhow::Result<Self> {
         let input: syn::DeriveInput = item.clone().into();
-        let opts = ModelOpts::from_derive_input(&input)
+        let opts = ModelOpts::new_from_derive_input(&input)
             .map_err(|e| anyhow::anyhow!("cannot parse model: {}", e))?;
         let model = opts.as_model(args)?;
 
@@ -534,6 +534,9 @@ impl Repr for Field {
             tokens = quote! { #tokens.primary_key() }
         }
         tokens = quote! { #tokens.set_null(<#ty as ::flareon::db::DatabaseField>::NULLABLE) };
+        if self.unique {
+            tokens = quote! { #tokens.unique() }
+        }
         tokens
     }
 }

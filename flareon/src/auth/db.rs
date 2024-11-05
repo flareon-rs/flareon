@@ -31,6 +31,7 @@ pub(crate) const MAX_USERNAME_LENGTH: u32 = 255;
 #[model]
 pub struct DatabaseUser {
     id: i64,
+    #[model(unique)]
     username: LimitedString<MAX_USERNAME_LENGTH>,
     password: PasswordHash,
 }
@@ -121,13 +122,30 @@ impl DatabaseUser {
         Ok(db_user)
     }
 
+    pub async fn get_by_username<DB: DatabaseBackend>(
+        db: &DB,
+        username: &str,
+    ) -> Result<Option<Self>> {
+        let username = LimitedString::<MAX_USERNAME_LENGTH>::new(username).map_err(|_| {
+            AuthError::backend_error(CreateUserError::UsernameTooLong(username.len()))
+        })?;
+        let db_user = query!(DatabaseUser, $username == username)
+            .get(db)
+            .await
+            .map_err(AuthError::backend_error)?;
+
+        Ok(db_user)
+    }
+
     pub async fn authenticate<DB: DatabaseBackend>(
         db: &DB,
         credentials: &DatabaseUserCredentials,
     ) -> Result<Option<Self>> {
-        let username_limited =
-            LimitedString::<MAX_USERNAME_LENGTH>::new(credentials.username().to_string())
-                .map_err(|_| AuthError::backend_error(CreateUserError::UsernameTooLong(0)))?;
+        let username = credentials.username();
+        let username_limited = LimitedString::<MAX_USERNAME_LENGTH>::new(username.to_string())
+            .map_err(|_| {
+                AuthError::backend_error(CreateUserError::UsernameTooLong(username.len()))
+            })?;
         let user = query!(DatabaseUser, $username == username_limited)
             .get(db)
             .await
