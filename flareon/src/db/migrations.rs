@@ -3,7 +3,7 @@ use std::fmt::{Debug, Formatter};
 
 use flareon_macros::{model, query};
 use log::info;
-use sea_query::ColumnDef;
+use sea_query::{ColumnDef, StringLen};
 
 use crate::db::{ColumnType, Database, DatabaseField, Identifier, Result};
 
@@ -591,6 +591,7 @@ impl From<ColumnType> for sea_query::ColumnType {
             ColumnType::TimestampWithTimeZone => Self::TimestampWithTimeZone,
             ColumnType::Text => Self::Text,
             ColumnType::Blob => Self::Blob,
+            ColumnType::String(len) => Self::String(StringLen::N(len)),
         }
     }
 }

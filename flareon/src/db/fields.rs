@@ -1,7 +1,10 @@
 use flareon::db::DatabaseField;
 use sea_query::Value;
 
-use crate::db::{ColumnType, FromDbValue, Result, SqliteValueRef, SqlxValueRef, ToDbValue};
+use crate::db::{
+    ColumnType, DatabaseError, FromDbValue, LimitedString, Result, SqliteValueRef, SqlxValueRef,
+    ToDbValue,
+};
 
 macro_rules! impl_db_field {
     ($ty:ty, $column_type:ident) => {
@@ -71,4 +74,21 @@ where
 {
     const NULLABLE: bool = true;
     const TYPE: ColumnType = T::TYPE;
+}
+
+impl<const LIMIT: u32> DatabaseField for LimitedString<LIMIT> {
+    const TYPE: ColumnType = ColumnType::String(LIMIT);
+}
+
+impl<const LIMIT: u32> FromDbValue for LimitedString<LIMIT> {
+    fn from_sqlite(value: SqliteValueRef) -> Result<Self> {
+        let str = value.get::<String>()?;
+        Self::new(str).map_err(DatabaseError::value_decode)
+    }
+}
+
+impl<const LIMIT: u32> ToDbValue for LimitedString<LIMIT> {
+    fn to_sea_query_value(&self) -> Value {
+        self.0.clone().into()
+    }
 }

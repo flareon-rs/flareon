@@ -219,8 +219,27 @@ impl Row {
     }
 }
 
+/// A trait denoting that some type can be used as a field in a database.
 pub trait DatabaseField: FromDbValue + ToDbValue {
     const NULLABLE: bool = false;
+
+    /// The type of the column in the database as one of the variants of
+    /// the [`ColumnType`] enum.
+    ///
+    /// # Changing the column type after initial implementation
+    ///
+    /// Note that this should never be changed after the type is implemented.
+    /// The migration generator is unable to detect a change in the column type
+    /// and will not generate a migration for it. If the column type needs to
+    /// be changed, a manual migration should be written, or a new type should
+    /// be created.
+    ///
+    /// This is especially important for types that are stored as fixed-length
+    /// strings in the database, as the migration generator cannot detect a
+    /// change in the string length. For this reason, it's recommended to use
+    /// the [`LimitedString`] type for fixed-length strings (which uses const
+    /// generics, so each change in the length will be a new type) instead of
+    /// a custom type with a fixed length.
     const TYPE: ColumnType;
 }
 
@@ -621,6 +640,106 @@ impl StatementResult {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deref, Display)]
 pub struct RowsNum(pub u64);
 
+/// A wrapper over a string that has a limited length.
+///
+/// This type is used to represent a string that has a limited length in the
+/// database. The length is specified as a const generic parameter. The string
+/// is stored as a normal string in memory, but it is checked when it is
+/// created to ensure that it is not longer than the specified limit.
+///
+/// # Database
+///
+/// This type is represented by the `VARCHAR` type in the database, with the
+/// maximum length same as the limit specified in the type.
+///
+/// # Examples
+///
+/// ```
+/// use flareon::db::LimitedString;
+///
+/// let limited_string = LimitedString::<5>::new("test").unwrap();
+/// assert_eq!(limited_string, "test");
+///
+/// let limited_string = LimitedString::<5>::new("too long");
+/// assert!(limited_string.is_err());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deref)]
+pub struct LimitedString<const LIMIT: u32>(String);
+
+impl<const LIMIT: u32> PartialEq<&str> for LimitedString<LIMIT> {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+impl<const LIMIT: u32> PartialEq<String> for LimitedString<LIMIT> {
+    fn eq(&self, other: &String) -> bool {
+        self.0 == *other
+    }
+}
+impl<const LIMIT: u32> PartialEq<LimitedString<LIMIT>> for &str {
+    fn eq(&self, other: &LimitedString<LIMIT>) -> bool {
+        *self == other.0
+    }
+}
+impl<const LIMIT: u32> PartialEq<LimitedString<LIMIT>> for String {
+    fn eq(&self, other: &LimitedString<LIMIT>) -> bool {
+        *self == other.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Error)]
+#[error("string is too long ({length} > {LIMIT})")]
+pub struct NewLimitedStringError<const LIMIT: u32> {
+    length: u32,
+}
+
+impl<const LIMIT: u32> LimitedString<LIMIT> {
+    pub fn new(
+        value: impl Into<String>,
+    ) -> std::result::Result<Self, NewLimitedStringError<LIMIT>> {
+        let value = value.into();
+        let length = value.len() as u32;
+
+        if length > LIMIT {
+            return Err(NewLimitedStringError { length });
+        }
+        Ok(Self(value))
+    }
+}
+
+#[cfg(feature = "fake")]
+impl<const LIMIT: u32> fake::Dummy<usize> for LimitedString<LIMIT> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(len: &usize, rng: &mut R) -> Self {
+        use rand::Rng;
+
+        assert!(
+            *len <= LIMIT as usize,
+            concat!(
+                "len must be less than or equal to LIMIT (",
+                stringify!(LIMIT),
+                ")"
+            )
+        );
+
+        let str: String = rng
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(*len)
+            .map(char::from)
+            .collect();
+        Self::new(str).unwrap()
+    }
+}
+
+#[cfg(feature = "fake")]
+impl<const LIMIT: u32> fake::Dummy<fake::Faker> for LimitedString<LIMIT> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+        use fake::Fake;
+
+        let len: usize = (0..LIMIT as usize).fake_with_rng(rng);
+        len.fake_with_rng(rng)
+    }
+}
+
 /// A type that represents a column type in the database.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ColumnType {
@@ -642,6 +761,7 @@ pub enum ColumnType {
     TimestampWithTimeZone,
     Text,
     Blob,
+    String(u32),
 }
 
 #[cfg(test)]
@@ -666,5 +786,42 @@ mod tests {
 
         let column_null = column.null();
         assert!(column_null.null);
+    }
+
+    #[test]
+    fn limited_string_new_within_limit() {
+        let limited_string = LimitedString::<10>::new("short");
+        assert!(limited_string.is_ok());
+        assert_eq!(limited_string.unwrap(), "short");
+    }
+
+    #[test]
+    fn limited_string_new_exceeds_limit() {
+        let limited_string = LimitedString::<5>::new("too long");
+
+        assert!(limited_string.is_err());
+        let error = limited_string.unwrap_err();
+        assert_eq!(error.to_string(), "string is too long (8 > 5)");
+    }
+
+    #[test]
+    fn limited_string_new_exact_limit() {
+        let limited_string = LimitedString::<5>::new("exact");
+        assert!(limited_string.is_ok());
+        assert_eq!(limited_string.unwrap(), "exact");
+    }
+
+    #[test]
+    fn limited_string_eq() {
+        assert_eq!(LimitedString::<5>::new("test").unwrap(), "test");
+        assert_eq!("test", LimitedString::<5>::new("test").unwrap());
+        assert_eq!(
+            LimitedString::<5>::new("test").unwrap(),
+            String::from("test"),
+        );
+        assert_eq!(
+            String::from("test"),
+            LimitedString::<5>::new("test").unwrap(),
+        );
     }
 }

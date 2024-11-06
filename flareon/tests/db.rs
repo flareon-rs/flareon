@@ -1,7 +1,9 @@
+#![cfg(feature = "fake")]
+
 use fake::{Dummy, Fake, Faker};
 use flareon::db::migrations::{Field, Operation};
 use flareon::db::query::ExprEq;
-use flareon::db::{model, query, Database, DatabaseField, Identifier, Model};
+use flareon::db::{model, query, Database, DatabaseField, Identifier, LimitedString, Model};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -120,6 +122,7 @@ struct AllFieldsModel {
     field_string: String,
     field_blob: Vec<u8>,
     field_option: Option<String>,
+    field_limited_string: LimitedString<10>,
 }
 
 async fn migrate_all_fields_model(db: &Database) {
@@ -150,6 +153,7 @@ const CREATE_ALL_FIELDS_MODEL: Operation = Operation::create_model()
         all_fields_migration_field!(string, String),
         all_fields_migration_field!(blob, Vec<u8>),
         all_fields_migration_field!(option, Option<String>),
+        all_fields_migration_field!(limited_string, LimitedString<10>),
     ])
     .build();
 

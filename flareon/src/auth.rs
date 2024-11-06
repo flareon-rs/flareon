@@ -285,7 +285,12 @@ impl PasswordHash {
     /// Returns an error if the password hash is invalid.
     pub fn new<T: Into<String>>(hash: T) -> Result<Self> {
         let hash = hash.into();
+
+        if hash.len() > MAX_PASSWORD_HASH_LENGTH as usize {
+            return Err(AuthError::PasswordHashInvalid);
+        }
         password_auth::is_hash_obsolete(&hash).map_err(|_| AuthError::PasswordHashInvalid)?;
+
         Ok(Self(hash))
     }
 
@@ -303,6 +308,8 @@ impl PasswordHash {
     #[must_use]
     pub fn from_password(password: &Password) -> Self {
         let hash = password_auth::generate_hash(password.as_str());
+
+        assert!(hash.len() <= MAX_PASSWORD_HASH_LENGTH as usize);
         Self(hash)
     }
 
@@ -393,9 +400,10 @@ impl Debug for PasswordHash {
     }
 }
 
+const MAX_PASSWORD_HASH_LENGTH: u32 = 128;
+
 impl DatabaseField for PasswordHash {
-    // TODO change to length-limiting type
-    const TYPE: ColumnType = ColumnType::Text;
+    const TYPE: ColumnType = ColumnType::String(MAX_PASSWORD_HASH_LENGTH);
 }
 
 impl FromDbValue for PasswordHash {
