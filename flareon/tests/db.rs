@@ -83,12 +83,14 @@ macro_rules! all_fields_migration_field {
             Identifier::new(concat!("field_", stringify!($name))),
             <$ty as DatabaseField>::TYPE,
         )
+        .set_null(<$ty as DatabaseField>::NULLABLE)
     };
     ($ty:ty) => {
         Field::new(
             Identifier::new(concat!("field_", stringify!($ty))),
             <$ty as DatabaseField>::TYPE,
         )
+        .set_null(<$ty as DatabaseField>::NULLABLE)
     };
 }
 
@@ -117,6 +119,7 @@ struct AllFieldsModel {
     field_datetime_timezone: chrono::DateTime<chrono::FixedOffset>,
     field_string: String,
     field_blob: Vec<u8>,
+    field_option: Option<String>,
 }
 
 async fn migrate_all_fields_model(db: &Database) {
@@ -146,6 +149,7 @@ const CREATE_ALL_FIELDS_MODEL: Operation = Operation::create_model()
         all_fields_migration_field!(datetime_timezone, chrono::DateTime<chrono::FixedOffset>),
         all_fields_migration_field!(string, String),
         all_fields_migration_field!(blob, Vec<u8>),
+        all_fields_migration_field!(option, Option<String>),
     ])
     .build();
 

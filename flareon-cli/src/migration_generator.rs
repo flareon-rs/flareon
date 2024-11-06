@@ -533,6 +533,7 @@ impl Repr for Field {
         if self.primary_key {
             tokens = quote! { #tokens.primary_key() }
         }
+        tokens = quote! { #tokens.set_null(<#ty as ::flareon::db::DatabaseField>::NULLABLE) };
         tokens
     }
 }

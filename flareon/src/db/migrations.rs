@@ -357,6 +357,12 @@ impl Field {
         self.null = true;
         self
     }
+
+    #[must_use]
+    pub const fn set_null(mut self, value: bool) -> Self {
+        self.null = value;
+        self
+    }
 }
 
 impl From<&Field> for ColumnDef {

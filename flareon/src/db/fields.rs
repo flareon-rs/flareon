@@ -15,7 +15,19 @@ macro_rules! impl_db_field {
             }
         }
 
+        impl FromDbValue for Option<$ty> {
+            fn from_sqlite(value: SqliteValueRef) -> Result<Self> {
+                value.get::<Option<$ty>>()
+            }
+        }
+
         impl ToDbValue for $ty {
+            fn to_sea_query_value(&self) -> Value {
+                self.clone().into()
+            }
+        }
+
+        impl ToDbValue for Option<$ty> {
             fn to_sea_query_value(&self) -> Value {
                 self.clone().into()
             }
@@ -45,4 +57,18 @@ impl ToDbValue for &str {
     fn to_sea_query_value(&self) -> Value {
         (*self).to_string().into()
     }
+}
+
+impl ToDbValue for Option<&str> {
+    fn to_sea_query_value(&self) -> Value {
+        self.map(ToString::to_string).into()
+    }
+}
+
+impl<T: DatabaseField> DatabaseField for Option<T>
+where
+    Option<T>: ToDbValue + FromDbValue,
+{
+    const NULLABLE: bool = true;
+    const TYPE: ColumnType = T::TYPE;
 }

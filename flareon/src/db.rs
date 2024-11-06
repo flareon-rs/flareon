@@ -220,6 +220,7 @@ impl Row {
 }
 
 pub trait DatabaseField: FromDbValue + ToDbValue {
+    const NULLABLE: bool = false;
     const TYPE: ColumnType;
 }
 
@@ -603,6 +604,7 @@ pub struct StatementResult {
 
 impl StatementResult {
     /// Creates a new statement result with the given number of rows affected.
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn new(rows_affected: RowsNum) -> Self {
         Self { rows_affected }
