@@ -71,6 +71,7 @@ sqlx = { version = "0.8", default-features = false, features = ["macros", "json"
 subtle = "2"
 syn = { version = "2", features = ["full", "extra-traits"] }
 sync_wrapper = "1"
+tempfile = "3"
 thiserror = "2"
 time = "0.3.35"
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread"] }
