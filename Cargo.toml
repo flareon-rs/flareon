@@ -16,6 +16,10 @@ resolver = "2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "warn"
+
 [workspace.dependencies]
 anyhow = "1.0.92"
 askama = "0.12.1"

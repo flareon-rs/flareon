@@ -79,7 +79,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run clippy
-        run: cargo clippy --no-deps -- -Dclippy::all -Wclippy::pedantic
+        run: cargo clippy --no-deps --
 
   coverage:
     if: github.event_name == 'push' || github.event_name == 'schedule' ||

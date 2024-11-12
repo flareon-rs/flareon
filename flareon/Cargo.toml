@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Modern web framework focused on speed and ease of use."
 
+[lints]
+workspace = true
+
 [dependencies]
 askama.workspace = true
 askama_derive.workspace = true

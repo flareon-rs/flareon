@@ -12,6 +12,9 @@ proc-macro = true
 name = "tests"
 path = "tests/compile_tests.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 darling.workspace = true
 flareon_codegen.workspace = true
