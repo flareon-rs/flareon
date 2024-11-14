@@ -538,13 +538,14 @@ impl AppState {
 /// a `use` statement for a given type, but also, for instance, the type is
 /// defined in the current module.
 ///
-/// For instance, for `use std::collections::HashMap;` the `ImportedPath` would
+/// For instance, for `use std::collections::HashMap;` the `VisibleSymbol ` would
 /// be:
 ///
 /// ```ignore
-/// ImportedPath {
+/// VisibleSymbol {
 ///     alias: "HashMap",
 ///     full_path: "std::collections::HashMap",
+///     kind: VisibleSymbolKind::Use,
 /// }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
