@@ -136,10 +136,10 @@ impl MigrationGenerator {
         Ok(paths)
     }
 
-    fn process_source_files(&self, paths: Vec<SourceFile>) -> anyhow::Result<AppState> {
+    fn process_source_files(&self, source_files: Vec<SourceFile>) -> anyhow::Result<AppState> {
         let mut app_state = AppState::new();
 
-        for source_file in paths {
+        for source_file in source_files {
             let path = source_file.path.clone();
             self.process_parsed_file(source_file, &mut app_state)
                 .with_context(|| format!("unable to find models in file: {path:?}"))?;
@@ -538,8 +538,8 @@ impl AppState {
 /// a `use` statement for a given type, but also, for instance, the type is
 /// defined in the current module.
 ///
-/// For instance, for `use std::collections::HashMap;` the `VisibleSymbol ` would
-/// be:
+/// For instance, for `use std::collections::HashMap;` the `VisibleSymbol `
+/// would be:
 ///
 /// ```ignore
 /// VisibleSymbol {
