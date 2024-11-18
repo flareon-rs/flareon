@@ -15,6 +15,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
 use flareon::config::SecretKey;
+use flareon::db::impl_postgres::PostgresValueRef;
 #[cfg(test)]
 use mockall::automock;
 use password_auth::VerifyError;
@@ -408,6 +409,10 @@ impl DatabaseField for PasswordHash {
 
 impl FromDbValue for PasswordHash {
     fn from_sqlite(value: SqliteValueRef) -> flareon::db::Result<Self> {
+        PasswordHash::new(value.get::<String>()?).map_err(flareon::db::DatabaseError::value_decode)
+    }
+
+    fn from_postgres(value: PostgresValueRef) -> flareon::db::Result<Self> {
         PasswordHash::new(value.get::<String>()?).map_err(flareon::db::DatabaseError::value_decode)
     }
 }

@@ -635,10 +635,11 @@ const CREATE_APPLIED_MIGRATIONS_MIGRATION: Operation = Operation::create_model()
 
 #[cfg(test)]
 mod tests {
+    use flareon::test::TestDatabase;
     use sea_query::ColumnSpec;
 
     use super::*;
-    use crate::db::{ColumnType, Database, DatabaseField, Identifier};
+    use crate::db::{ColumnType, DatabaseField, Identifier};
 
     struct TestMigration;
 
@@ -656,12 +657,11 @@ mod tests {
             .build()];
     }
 
-    #[tokio::test]
-    async fn test_migration_engine_run() {
+    #[flareon_macros::dbtest]
+    async fn test_migration_engine_run(test_db: &mut TestDatabase) {
         let engine = MigrationEngine::new([TestMigration]);
-        let database = Database::new("sqlite::memory:").await.unwrap();
 
-        let result = engine.run(&database).await;
+        let result = engine.run(&test_db.database()).await;
 
         assert!(result.is_ok());
     }

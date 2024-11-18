@@ -4,6 +4,7 @@
 //! the error types that can occur when interacting with the database.
 
 mod fields;
+pub mod impl_postgres;
 pub mod impl_sqlite;
 pub mod migrations;
 pub mod query;
@@ -19,10 +20,11 @@ use log::debug;
 use mockall::automock;
 use query::Query;
 use sea_query::{Iden, SchemaStatementBuilder, SimpleExpr};
-use sea_query_binder::SqlxBinder;
+use sea_query_binder::{SqlxBinder, SqlxValues};
 use sqlx::{Type, TypeInfo};
 use thiserror::Error;
 
+use crate::db::impl_postgres::{DatabasePostgres, PostgresRow, PostgresValueRef};
 use crate::db::impl_sqlite::{DatabaseSqlite, SqliteRow, SqliteValueRef};
 
 /// An error that can occur when interacting with the database.
@@ -201,9 +203,11 @@ impl Column {
 
 /// A row structure that holds the data of a single row retrieved from the
 /// database.
+#[non_exhaustive]
 #[derive(Debug)]
 pub enum Row {
     Sqlite(SqliteRow),
+    Postgres(PostgresRow),
 }
 
 impl Row {
@@ -222,6 +226,9 @@ impl Row {
             Row::Sqlite(sqlite_row) => sqlite_row
                 .get_raw(index)
                 .and_then(|value| T::from_sqlite(value))?,
+            Row::Postgres(postgres) => postgres
+                .get_raw(index)
+                .and_then(|value| T::from_postgres(value))?,
         };
 
         Ok(result)
@@ -263,6 +270,16 @@ pub trait FromDbValue {
     fn from_sqlite(value: SqliteValueRef) -> Result<Self>
     where
         Self: Sized;
+
+    /// Converts the given `Postgresql` database value to a Rust value.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the value is not compatible with the
+    /// Rust type.
+    fn from_postgres(value: PostgresValueRef) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 /// A trait for converting a Rust value to a database value.
@@ -272,6 +289,12 @@ pub trait ToDbValue: Send + Sync {
     /// This method is used to convert the Rust value to a value that can be
     /// used in a query.
     fn to_sea_query_value(&self) -> sea_query::Value;
+}
+
+impl<T: ToDbValue + ?Sized> ToDbValue for &T {
+    fn to_sea_query_value(&self) -> sea_query::Value {
+        (*self).to_sea_query_value()
+    }
 }
 
 trait SqlxRowRef {
@@ -320,6 +343,7 @@ pub struct Database {
 #[derive(Debug)]
 enum DatabaseImpl {
     Sqlite(DatabaseSqlite),
+    Postgres(DatabasePostgres),
 }
 
 impl Database {
@@ -353,6 +377,12 @@ impl Database {
                 _url: url,
                 inner: DatabaseImpl::Sqlite(inner),
             }
+        } else if url.starts_with("postgresql:") {
+            let inner = DatabasePostgres::new(&url).await?;
+            Self {
+                _url: url,
+                inner: DatabaseImpl::Postgres(inner),
+            }
         } else {
             todo!("Other databases are not supported yet");
         };
@@ -382,9 +412,10 @@ impl Database {
     ///     db.close().await.unwrap();
     /// }
     /// ```
-    pub async fn close(self) -> Result<()> {
-        match self.inner {
+    pub async fn close(&self) -> Result<()> {
+        match &self.inner {
             DatabaseImpl::Sqlite(inner) => inner.close().await,
+            DatabaseImpl::Postgres(inner) => inner.close().await,
         }
     }
 
@@ -422,13 +453,14 @@ impl Database {
                     .map(|value| SimpleExpr::Value(value.to_sea_query_value()))
                     .collect::<Vec<_>>(),
             )?
-            .returning_col(Identifier::new("id"))
             .to_owned();
 
-        let row = self.fetch_one(&insert_statement).await?;
-        let id = row.get::<i64>(0)?;
+        let statement_result = self.execute_statement(&insert_statement).await?;
 
-        debug!("Inserted row with id: {}", id);
+        debug!(
+            "Inserted row; rows affected: {}",
+            statement_result.rows_affected()
+        );
 
         Ok(())
     }
@@ -526,12 +558,24 @@ impl Database {
         self.execute_statement(&delete).await
     }
 
-    async fn fetch_one<T>(&self, statement: &T) -> Result<Row>
-    where
-        T: SqlxBinder,
-    {
+    pub async fn raw(&self, query: &str) -> Result<StatementResult> {
+        self.raw_with(query, &[]).await
+    }
+
+    pub async fn raw_with(
+        &self,
+        query: &str,
+        values: &[&(dyn ToDbValue)],
+    ) -> Result<StatementResult> {
+        let values = values
+            .iter()
+            .map(ToDbValue::to_sea_query_value)
+            .collect::<Vec<_>>();
+        let values = SqlxValues(sea_query::Values(values));
+
         let result = match &self.inner {
-            DatabaseImpl::Sqlite(inner) => Row::Sqlite(inner.fetch_one(statement).await?),
+            DatabaseImpl::Sqlite(inner) => inner.raw_with(query, values).await?,
+            DatabaseImpl::Postgres(inner) => inner.raw_with(query, values).await?,
         };
 
         Ok(result)
@@ -543,6 +587,9 @@ impl Database {
     {
         let result = match &self.inner {
             DatabaseImpl::Sqlite(inner) => inner.fetch_option(statement).await?.map(Row::Sqlite),
+            DatabaseImpl::Postgres(inner) => {
+                inner.fetch_option(statement).await?.map(Row::Postgres)
+            }
         };
 
         Ok(result)
@@ -559,6 +606,12 @@ impl Database {
                 .into_iter()
                 .map(Row::Sqlite)
                 .collect(),
+            DatabaseImpl::Postgres(inner) => inner
+                .fetch_all(statement)
+                .await?
+                .into_iter()
+                .map(Row::Postgres)
+                .collect(),
         };
 
         Ok(result)
@@ -570,6 +623,7 @@ impl Database {
     {
         let result = match &self.inner {
             DatabaseImpl::Sqlite(inner) => inner.execute_statement(statement).await?,
+            DatabaseImpl::Postgres(inner) => inner.execute_statement(statement).await?,
         };
 
         Ok(result)
@@ -581,6 +635,7 @@ impl Database {
     ) -> Result<StatementResult> {
         let result = match &self.inner {
             DatabaseImpl::Sqlite(inner) => inner.execute_schema(statement).await?,
+            DatabaseImpl::Postgres(inner) => inner.execute_schema(statement).await?,
         };
 
         Ok(result)

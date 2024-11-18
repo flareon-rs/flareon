@@ -6,56 +6,55 @@ use fake::{Dummy, Fake, Faker};
 use flareon::db::migrations::{Field, Operation};
 use flareon::db::query::ExprEq;
 use flareon::db::{model, query, Database, DatabaseField, Identifier, LimitedString, Model};
+use flareon::test::TestDatabase;
 
-#[tokio::test]
-async fn model_crud() {
-    let db = test_sqlite_db().await;
+#[flareon_macros::dbtest]
+async fn model_crud(test_db: &mut TestDatabase) {
+    migrate_test_model(&*test_db).await;
 
-    migrate_test_model(&db).await;
-
-    assert_eq!(TestModel::objects().all(&db).await.unwrap(), vec![]);
+    assert_eq!(TestModel::objects().all(&**test_db).await.unwrap(), vec![]);
 
     let mut model = TestModel {
         id: 0,
         name: "test".to_owned(),
     };
-    model.save(&db).await.unwrap();
-    let objects = TestModel::objects().all(&db).await.unwrap();
+    model.save(&**test_db).await.unwrap();
+    let objects = TestModel::objects().all(&**test_db).await.unwrap();
     assert_eq!(objects.len(), 1);
     assert_eq!(objects[0].name, "test");
 
     TestModel::objects()
         .filter(<TestModel as Model>::Fields::id.eq(1))
-        .delete(&db)
+        .delete(&**test_db)
         .await
         .unwrap();
 
-    assert_eq!(TestModel::objects().all(&db).await.unwrap(), vec![]);
-
-    db.close().await.unwrap();
+    assert_eq!(TestModel::objects().all(&**test_db).await.unwrap(), vec![]);
 }
 
-#[tokio::test]
-async fn model_macro_filtering() {
-    let db = test_sqlite_db().await;
+#[flareon_macros::dbtest]
+async fn model_macro_filtering(test_db: &mut TestDatabase) {
+    migrate_test_model(&*test_db).await;
 
-    migrate_test_model(&db).await;
-
-    assert_eq!(TestModel::objects().all(&db).await.unwrap(), vec![]);
+    assert_eq!(TestModel::objects().all(&**test_db).await.unwrap(), vec![]);
 
     let mut model = TestModel {
         id: 0,
         name: "test".to_owned(),
     };
-    model.save(&db).await.unwrap();
-    let objects = query!(TestModel, $name == "test").all(&db).await.unwrap();
+    model.save(&**test_db).await.unwrap();
+    let objects = query!(TestModel, $name == "test")
+        .all(&**test_db)
+        .await
+        .unwrap();
     assert_eq!(objects.len(), 1);
     assert_eq!(objects[0].name, "test");
 
-    let objects = query!(TestModel, $name == "t").all(&db).await.unwrap();
+    let objects = query!(TestModel, $name == "t")
+        .all(&**test_db)
+        .await
+        .unwrap();
     assert!(objects.is_empty());
-
-    db.close().await.unwrap();
 }
 
 #[derive(Debug, PartialEq)]
@@ -118,6 +117,7 @@ struct AllFieldsModel {
     field_date: chrono::NaiveDate,
     field_time: chrono::NaiveTime,
     field_datetime: chrono::NaiveDateTime,
+    #[dummy(faker = "fake::chrono::Precision::<6>")]
     field_datetime_timezone: chrono::DateTime<chrono::FixedOffset>,
     field_string: String,
     field_blob: Vec<u8>,
@@ -157,30 +157,34 @@ const CREATE_ALL_FIELDS_MODEL: Operation = Operation::create_model()
     ])
     .build();
 
-#[tokio::test]
-async fn all_fields_model() {
-    let db = test_sqlite_db().await;
-
+#[flareon_macros::dbtest]
+async fn all_fields_model(db: &mut TestDatabase) {
     migrate_all_fields_model(&db).await;
 
-    assert_eq!(AllFieldsModel::objects().all(&db).await.unwrap(), vec![]);
+    assert_eq!(AllFieldsModel::objects().all(&**db).await.unwrap(), vec![]);
 
     let r = &mut StdRng::seed_from_u64(123_785);
     let mut models = (0..100)
         .map(|_| Faker.fake_with_rng(r))
         .collect::<Vec<AllFieldsModel>>();
     for model in &mut models {
-        model.save(&db).await.unwrap();
+        model.save(&**db).await.unwrap();
     }
 
-    let mut models_from_db: Vec<_> = AllFieldsModel::objects().all(&db).await.unwrap();
+    let mut models_from_db: Vec<_> = AllFieldsModel::objects().all(&**db).await.unwrap();
     models_from_db.iter_mut().for_each(|model| model.id = 0);
+    normalize_datetimes(&mut models);
+    normalize_datetimes(&mut models_from_db);
 
-    assert_eq!(models, models_from_db);
-
-    db.close().await.unwrap();
+    assert_eq!(models.len(), models_from_db.len());
+    assert!(models.iter().all(|model| models_from_db.contains(model)));
 }
 
-async fn test_sqlite_db() -> Database {
-    Database::new("sqlite::memory:").await.unwrap()
+/// Normalize the datetimes to UTC.
+fn normalize_datetimes(data: &mut Vec<AllFieldsModel>) {
+    for model in data {
+        model.field_datetime_timezone = model.field_datetime_timezone.with_timezone(
+            &chrono::FixedOffset::east_opt(0).expect("UTC timezone is always valid"),
+        );
+    }
 }

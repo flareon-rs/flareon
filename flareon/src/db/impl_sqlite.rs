@@ -19,18 +19,9 @@ impl DatabaseSqlite {
         Ok(Self { db_connection })
     }
 
-    pub(super) async fn close(self) -> Result<()> {
+    pub(super) async fn close(&self) -> Result<()> {
         self.db_connection.close().await;
         Ok(())
-    }
-
-    pub(super) async fn fetch_one<T: SqlxBinder>(&self, statement: &T) -> Result<SqliteRow> {
-        let (sql, values) = Self::build_sql(statement);
-
-        let row = sqlx::query_with(&sql, values)
-            .fetch_one(&self.db_connection)
-            .await?;
-        Ok(SqliteRow::new(row))
     }
 
     pub(super) async fn fetch_option<T: SqlxBinder>(
@@ -74,6 +65,10 @@ impl DatabaseSqlite {
         debug!("Schema modification: {}", sql);
 
         self.execute_sqlx(sqlx::query(&sql)).await
+    }
+
+    pub(super) async fn raw_with(&self, sql: &str, values: SqlxValues) -> Result<StatementResult> {
+        self.execute_sqlx(sqlx::query_with(sql, values)).await
     }
 
     async fn execute_sqlx<'a, A>(

@@ -540,13 +540,14 @@ impl AppState {
 ///
 /// For instance, for `use std::collections::HashMap;` the `VisibleSymbol `
 /// would be:
-///
 /// ```ignore
+/// # /*
 /// VisibleSymbol {
 ///     alias: "HashMap",
 ///     full_path: "std::collections::HashMap",
 ///     kind: VisibleSymbolKind::Use,
 /// }
+/// # */
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct VisibleSymbol {

@@ -606,6 +606,7 @@ where
     context.apps = apps;
 
     let context = Arc::new(context);
+    let context_cleanup = context.clone();
 
     let handler = |axum_request: axum::extract::Request| async move {
         let request = request_axum_to_flareon(axum_request, Arc::clone(&context));
@@ -663,6 +664,9 @@ where
         .map_err(|e| ErrorRepr::StartServer { source: e })?;
     if config::REGISTER_PANIC_HOOK {
         let _ = std::panic::take_hook();
+    }
+    if let Some(database) = &context_cleanup.database {
+        database.close().await?;
     }
 
     Ok(())
