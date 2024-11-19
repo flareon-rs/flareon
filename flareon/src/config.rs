@@ -16,6 +16,7 @@ use derive_builder::Builder;
 use derive_more::Debug;
 use subtle::ConstantTimeEq;
 
+#[cfg(feature = "db")]
 use crate::auth::db::DatabaseUserBackend;
 use crate::auth::AuthBackend;
 
@@ -63,6 +64,7 @@ pub struct ProjectConfig {
     #[debug("..")]
     #[builder(setter(custom))]
     auth_backend: Arc<dyn AuthBackend>,
+    #[cfg(feature = "db")]
     database_config: DatabaseConfig,
 }
 
@@ -81,17 +83,20 @@ impl ProjectConfigBuilder {
                 .auth_backend
                 .clone()
                 .unwrap_or_else(default_auth_backend),
+            #[cfg(feature = "db")]
             database_config: self.database_config.clone().unwrap_or_default(),
         }
     }
 }
 
+#[cfg(feature = "db")]
 #[derive(Debug, Clone, Builder)]
 pub struct DatabaseConfig {
     #[builder(setter(into))]
     url: String,
 }
 
+#[cfg(feature = "db")]
 impl DatabaseConfig {
     #[must_use]
     pub fn builder() -> DatabaseConfigBuilder {
@@ -104,6 +109,7 @@ impl DatabaseConfig {
     }
 }
 
+#[cfg(feature = "db")]
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
@@ -119,7 +125,15 @@ impl Default for ProjectConfig {
 }
 
 fn default_auth_backend() -> Arc<dyn AuthBackend> {
-    Arc::new(DatabaseUserBackend::new())
+    #[cfg(feature = "db")]
+    {
+        Arc::new(DatabaseUserBackend::new())
+    }
+
+    #[cfg(not(any(feature = "sqlite", feature = "postgres", feature = "mysql")))]
+    {
+        Arc::new(flareon::auth::NoAuthBackend)
+    }
 }
 
 impl ProjectConfig {
@@ -144,6 +158,7 @@ impl ProjectConfig {
     }
 
     #[must_use]
+    #[cfg(feature = "db")]
     pub fn database_config(&self) -> &DatabaseConfig {
         &self.database_config
     }

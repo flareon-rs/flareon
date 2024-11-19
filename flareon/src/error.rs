@@ -68,6 +68,7 @@ impl From<Error> for askama::Error {
 
 impl_error_from_repr!(askama::Error);
 impl_error_from_repr!(crate::router::path::ReverseError);
+#[cfg(feature = "db")]
 impl_error_from_repr!(crate::db::DatabaseError);
 impl_error_from_repr!(crate::forms::FormError);
 impl_error_from_repr!(crate::auth::AuthError);
@@ -105,6 +106,7 @@ pub(crate) enum ErrorRepr {
     TemplateRender(#[from] askama::Error),
     /// An error occurred while communicating with the database.
     #[error("Database error: {0}")]
+    #[cfg(feature = "db")]
     DatabaseError(#[from] crate::db::DatabaseError),
     /// An error occurred while parsing a form.
     #[error("Failed to process a form: {0}")]

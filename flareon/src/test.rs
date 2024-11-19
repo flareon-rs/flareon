@@ -1,23 +1,23 @@
 //! Test utilities for Flareon projects.
 
 use std::future::poll_fn;
-use std::mem;
-use std::ops::Deref;
 use std::sync::Arc;
 
 use derive_more::Debug;
-use flareon::{prepare_request, FlareonProject};
 use tower::Service;
 use tower_sessions::{MemoryStore, Session};
 
+#[cfg(feature = "db")]
 use crate::auth::db::DatabaseUserBackend;
 use crate::config::ProjectConfig;
+#[cfg(feature = "db")]
 use crate::db::migrations::{DynMigration, MigrationEngine, MigrationWrapper};
+#[cfg(feature = "db")]
 use crate::db::Database;
 use crate::request::{Request, RequestExt};
 use crate::response::Response;
 use crate::router::Router;
-use crate::{AppContext, Body, BoxedHandler, Result};
+use crate::{prepare_request, AppContext, Body, BoxedHandler, FlareonProject, Result};
 
 /// A test client for making requests to a Flareon project.
 ///
@@ -61,6 +61,7 @@ pub struct TestRequestBuilder {
     url: String,
     session: Option<Session>,
     config: Option<Arc<ProjectConfig>>,
+    #[cfg(feature = "db")]
     database: Option<Arc<Database>>,
     form_data: Option<Vec<(String, String)>>,
 }
@@ -110,11 +111,13 @@ impl TestRequestBuilder {
         self
     }
 
+    #[cfg(feature = "db")]
     pub fn database(&mut self, database: Arc<Database>) -> &mut Self {
         self.database = Some(database);
         self
     }
 
+    #[cfg(feature = "db")]
     pub fn with_db_auth(&mut self, db: Arc<Database>) -> &mut Self {
         let auth_backend = DatabaseUserBackend;
         let config = ProjectConfig::builder().auth_backend(auth_backend).build();
@@ -147,6 +150,7 @@ impl TestRequestBuilder {
             self.config.clone().unwrap_or_default(),
             Vec::new(),
             Arc::new(Router::empty()),
+            #[cfg(feature = "db")]
             self.database.clone(),
         );
         prepare_request(&mut request, Arc::new(app_context));
@@ -176,6 +180,7 @@ impl TestRequestBuilder {
     }
 }
 
+#[cfg(feature = "db")]
 #[derive(Debug)]
 pub struct TestDatabase {
     database: Arc<Database>,
@@ -183,6 +188,7 @@ pub struct TestDatabase {
     migrations: Vec<MigrationWrapper>,
 }
 
+#[cfg(feature = "db")]
 impl TestDatabase {
     fn new(database: Database, kind: TestDatabaseKind) -> TestDatabase {
         Self {
@@ -198,12 +204,13 @@ impl TestDatabase {
         Ok(Self::new(database, TestDatabaseKind::Sqlite))
     }
 
-    /// Create a new Postgres database for testing and connects to it.
+    /// Create a new PostgreSQL database for testing and connects to it.
     ///
     /// The database URL is read from the `POSTGRES_URL` environment variable.
     /// Note that it shouldn't include the database name — the function will
     /// create a new database for the test by connecting to the `postgres`
-    /// database.
+    /// database. If no URL is provided, it defaults to
+    /// `postgresql://flareon:flareon@localhost`.
     ///
     /// The database is created with the name `test_flareon__{test_name}`.
     /// Make sure that `test_name` is unique for each test so that the databases
@@ -213,15 +220,15 @@ impl TestDatabase {
     /// means that the database will not be dropped if the test panics.
     pub async fn new_postgres(test_name: &str) -> Result<Self> {
         let db_url = std::env::var("POSTGRES_URL")
-            .unwrap_or_else(|_| "postgresql://flareon:flareon@localhost:5432".to_string());
+            .unwrap_or_else(|_| "postgresql://flareon:flareon@localhost".to_string());
         let database = Database::new(format!("{db_url}/postgres")).await?;
 
-        let test_database_name = format!("test_flareon__{}", test_name);
+        let test_database_name = format!("test_flareon__{test_name}");
         database
-            .raw(&format!("DROP DATABASE IF EXISTS {}", test_database_name))
+            .raw(&format!("DROP DATABASE IF EXISTS {test_database_name}"))
             .await?;
         database
-            .raw(&format!("CREATE DATABASE {}", test_database_name))
+            .raw(&format!("CREATE DATABASE {test_database_name}"))
             .await?;
         database.close().await?;
 
@@ -230,6 +237,45 @@ impl TestDatabase {
         Ok(Self::new(
             database,
             TestDatabaseKind::Postgres {
+                db_url,
+                db_name: test_database_name,
+            },
+        ))
+    }
+
+    /// Create a new MySQL database for testing and connects to it.
+    ///
+    /// The database URL is read from the `MYSQL_URL` environment variable.
+    /// Note that it shouldn't include the database name — the function will
+    /// create a new database for the test by connecting to the `mysql`
+    /// database. If no URL is provided, it defaults to
+    /// `mysql://root:@localhost`.
+    ///
+    /// The database is created with the name `test_flareon__{test_name}`.
+    /// Make sure that `test_name` is unique for each test so that the databases
+    /// don't conflict with each other.
+    ///
+    /// The database is dropped when `self.cleanup()` is called. Note that this
+    /// means that the database will not be dropped if the test panics.
+    pub async fn new_mysql(test_name: &str) -> Result<Self> {
+        let db_url =
+            std::env::var("MYSQL_URL").unwrap_or_else(|_| "mysql://root:@localhost".to_string());
+        let database = Database::new(format!("{db_url}/mysql")).await?;
+
+        let test_database_name = format!("test_flareon__{test_name}");
+        database
+            .raw(&format!("DROP DATABASE IF EXISTS {test_database_name}"))
+            .await?;
+        database
+            .raw(&format!("CREATE DATABASE {test_database_name}"))
+            .await?;
+        database.close().await?;
+
+        let database = Database::new(format!("{db_url}/{test_database_name}")).await?;
+
+        Ok(Self::new(
+            database,
+            TestDatabaseKind::MySql {
                 db_url,
                 db_name: test_database_name,
             },
@@ -245,6 +291,7 @@ impl TestDatabase {
         self
     }
 
+    #[cfg(feature = "db")]
     pub fn with_auth(&mut self) -> &mut Self {
         self.add_migrations(flareon::auth::db::migrations::MIGRATIONS.to_vec());
         self
@@ -252,7 +299,7 @@ impl TestDatabase {
 
     pub async fn run_migrations(&mut self) -> &mut Self {
         if !self.migrations.is_empty() {
-            let engine = MigrationEngine::new(mem::take(&mut self.migrations));
+            let engine = MigrationEngine::new(std::mem::take(&mut self.migrations));
             engine.run(&self.database()).await.unwrap();
         }
         self
@@ -270,7 +317,13 @@ impl TestDatabase {
             TestDatabaseKind::Postgres { db_url, db_name } => {
                 let database = Database::new(format!("{db_url}/postgres")).await?;
 
-                database.raw(&format!("DROP DATABASE {}", db_name)).await?;
+                database.raw(&format!("DROP DATABASE {db_name}")).await?;
+                database.close().await?;
+            }
+            TestDatabaseKind::MySql { db_url, db_name } => {
+                let database = Database::new(format!("{db_url}/mysql")).await?;
+
+                database.raw(&format!("DROP DATABASE {db_name}")).await?;
                 database.close().await?;
             }
         }
@@ -279,7 +332,8 @@ impl TestDatabase {
     }
 }
 
-impl Deref for TestDatabase {
+#[cfg(feature = "db")]
+impl std::ops::Deref for TestDatabase {
     type Target = Database;
 
     fn deref(&self) -> &Self::Target {
@@ -287,8 +341,10 @@ impl Deref for TestDatabase {
     }
 }
 
+#[cfg(feature = "db")]
 #[derive(Debug, Clone)]
 enum TestDatabaseKind {
     Sqlite,
     Postgres { db_url: String, db_name: String },
+    MySql { db_url: String, db_name: String },
 }

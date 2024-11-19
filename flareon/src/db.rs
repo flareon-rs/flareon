@@ -4,10 +4,15 @@
 //! the error types that can occur when interacting with the database.
 
 mod fields;
+#[cfg(feature = "mysql")]
+pub mod impl_mysql;
+#[cfg(feature = "postgres")]
 pub mod impl_postgres;
+#[cfg(feature = "sqlite")]
 pub mod impl_sqlite;
 pub mod migrations;
 pub mod query;
+mod sea_query_db;
 
 use std::fmt::Write;
 use std::hash::Hash;
@@ -24,8 +29,13 @@ use sea_query_binder::{SqlxBinder, SqlxValues};
 use sqlx::{Type, TypeInfo};
 use thiserror::Error;
 
+#[cfg(feature = "mysql")]
+use crate::db::impl_mysql::{DatabaseMySql, MySqlRow, MySqlValueRef};
+#[cfg(feature = "postgres")]
 use crate::db::impl_postgres::{DatabasePostgres, PostgresRow, PostgresValueRef};
+#[cfg(feature = "sqlite")]
 use crate::db::impl_sqlite::{DatabaseSqlite, SqliteRow, SqliteValueRef};
+use crate::db::migrations::ColumnTypeMapper;
 
 /// An error that can occur when interacting with the database.
 #[derive(Debug, Error)]
@@ -206,8 +216,12 @@ impl Column {
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Row {
+    #[cfg(feature = "sqlite")]
     Sqlite(SqliteRow),
+    #[cfg(feature = "postgres")]
     Postgres(PostgresRow),
+    #[cfg(feature = "mysql")]
+    MySql(MySqlRow),
 }
 
 impl Row {
@@ -223,12 +237,18 @@ impl Row {
     /// returned by the database.
     pub fn get<T: FromDbValue>(&self, index: usize) -> Result<T> {
         let result = match self {
+            #[cfg(feature = "sqlite")]
             Row::Sqlite(sqlite_row) => sqlite_row
                 .get_raw(index)
                 .and_then(|value| T::from_sqlite(value))?,
-            Row::Postgres(postgres) => postgres
+            #[cfg(feature = "postgres")]
+            Row::Postgres(postgres_row) => postgres_row
                 .get_raw(index)
                 .and_then(|value| T::from_postgres(value))?,
+            #[cfg(feature = "mysql")]
+            Row::MySql(mysql_row) => mysql_row
+                .get_raw(index)
+                .and_then(|value| T::from_mysql(value))?,
         };
 
         Ok(result)
@@ -261,23 +281,36 @@ pub trait DatabaseField: FromDbValue + ToDbValue {
 
 /// A trait for converting a database value to a Rust value.
 pub trait FromDbValue {
-    /// Converts the given `SQLite` database value to a Rust value.
+    /// Converts the given SQLite database value to a Rust value.
     ///
     /// # Errors
     ///
     /// This method can return an error if the value is not compatible with the
     /// Rust type.
+    #[cfg(feature = "sqlite")]
     fn from_sqlite(value: SqliteValueRef) -> Result<Self>
     where
         Self: Sized;
 
-    /// Converts the given `Postgresql` database value to a Rust value.
+    /// Converts the given PostgreSQL database value to a Rust value.
     ///
     /// # Errors
     ///
     /// This method can return an error if the value is not compatible with the
     /// Rust type.
+    #[cfg(feature = "postgres")]
     fn from_postgres(value: PostgresValueRef) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// Converts the given MySQL database value to a Rust value.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the value is not compatible with the
+    /// Rust type.
+    #[cfg(feature = "mysql")]
+    fn from_mysql(value: MySqlValueRef) -> Result<Self>
     where
         Self: Sized;
 }
@@ -342,8 +375,12 @@ pub struct Database {
 
 #[derive(Debug)]
 enum DatabaseImpl {
+    #[cfg(feature = "sqlite")]
     Sqlite(DatabaseSqlite),
+    #[cfg(feature = "postgres")]
     Postgres(DatabasePostgres),
+    #[cfg(feature = "mysql")]
+    MySql(DatabaseMySql),
 }
 
 impl Database {
@@ -371,23 +408,35 @@ impl Database {
     /// ```
     pub async fn new<T: Into<String>>(url: T) -> Result<Self> {
         let url = url.into();
-        let db = if url.starts_with("sqlite:") {
+
+        #[cfg(feature = "sqlite")]
+        if url.starts_with("sqlite:") {
             let inner = DatabaseSqlite::new(&url).await?;
-            Self {
+            return Ok(Self {
                 _url: url,
                 inner: DatabaseImpl::Sqlite(inner),
-            }
-        } else if url.starts_with("postgresql:") {
+            });
+        }
+
+        #[cfg(feature = "postgres")]
+        if url.starts_with("postgresql:") {
             let inner = DatabasePostgres::new(&url).await?;
-            Self {
+            return Ok(Self {
                 _url: url,
                 inner: DatabaseImpl::Postgres(inner),
-            }
-        } else {
-            todo!("Other databases are not supported yet");
-        };
+            });
+        }
 
-        Ok(db)
+        #[cfg(feature = "mysql")]
+        if url.starts_with("mysql:") {
+            let inner = DatabaseMySql::new(&url).await?;
+            return Ok(Self {
+                _url: url,
+                inner: DatabaseImpl::MySql(inner),
+            });
+        }
+
+        panic!("Unsupported database URL: {url}");
     }
 
     /// Closes the database connection.
@@ -414,8 +463,12 @@ impl Database {
     /// ```
     pub async fn close(&self) -> Result<()> {
         match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner.close().await,
+            #[cfg(feature = "postgres")]
             DatabaseImpl::Postgres(inner) => inner.close().await,
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.close().await,
         }
     }
 
@@ -574,8 +627,12 @@ impl Database {
         let values = SqlxValues(sea_query::Values(values));
 
         let result = match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner.raw_with(query, values).await?,
+            #[cfg(feature = "postgres")]
             DatabaseImpl::Postgres(inner) => inner.raw_with(query, values).await?,
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.raw_with(query, values).await?,
         };
 
         Ok(result)
@@ -586,10 +643,14 @@ impl Database {
         T: SqlxBinder,
     {
         let result = match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner.fetch_option(statement).await?.map(Row::Sqlite),
+            #[cfg(feature = "postgres")]
             DatabaseImpl::Postgres(inner) => {
                 inner.fetch_option(statement).await?.map(Row::Postgres)
             }
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.fetch_option(statement).await?.map(Row::MySql),
         };
 
         Ok(result)
@@ -600,17 +661,26 @@ impl Database {
         T: SqlxBinder,
     {
         let result = match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner
                 .fetch_all(statement)
                 .await?
                 .into_iter()
                 .map(Row::Sqlite)
                 .collect(),
+            #[cfg(feature = "postgres")]
             DatabaseImpl::Postgres(inner) => inner
                 .fetch_all(statement)
                 .await?
                 .into_iter()
                 .map(Row::Postgres)
+                .collect(),
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner
+                .fetch_all(statement)
+                .await?
+                .into_iter()
+                .map(Row::MySql)
                 .collect(),
         };
 
@@ -619,11 +689,15 @@ impl Database {
 
     async fn execute_statement<T>(&self, statement: &T) -> Result<StatementResult>
     where
-        T: SqlxBinder,
+        T: SqlxBinder + Sync,
     {
         let result = match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner.execute_statement(statement).await?,
+            #[cfg(feature = "postgres")]
             DatabaseImpl::Postgres(inner) => inner.execute_statement(statement).await?,
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.execute_statement(statement).await?,
         };
 
         Ok(result)
@@ -634,11 +708,28 @@ impl Database {
         statement: T,
     ) -> Result<StatementResult> {
         let result = match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner.execute_schema(statement).await?,
+            #[cfg(feature = "postgres")]
             DatabaseImpl::Postgres(inner) => inner.execute_schema(statement).await?,
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.execute_schema(statement).await?,
         };
 
         Ok(result)
+    }
+}
+
+impl ColumnTypeMapper for Database {
+    fn sea_query_column_type_for(&self, column_type: ColumnType) -> sea_query::ColumnType {
+        match &self.inner {
+            #[cfg(feature = "sqlite")]
+            DatabaseImpl::Sqlite(inner) => inner.sea_query_column_type_for(column_type),
+            #[cfg(feature = "postgres")]
+            DatabaseImpl::Postgres(inner) => inner.sea_query_column_type_for(column_type),
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.sea_query_column_type_for(column_type),
+        }
     }
 }
 
@@ -821,8 +912,7 @@ pub enum ColumnType {
     Time,
     Date,
     DateTime,
-    Timestamp,
-    TimestampWithTimeZone,
+    DateTimeWithTimeZone,
     Text,
     Blob,
     String(u32),

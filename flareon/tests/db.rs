@@ -116,6 +116,7 @@ struct AllFieldsModel {
     field_f64: f64,
     field_date: chrono::NaiveDate,
     field_time: chrono::NaiveTime,
+    #[dummy(faker = "fake::chrono::Precision::<6>")]
     field_datetime: chrono::NaiveDateTime,
     #[dummy(faker = "fake::chrono::Precision::<6>")]
     field_datetime_timezone: chrono::DateTime<chrono::FixedOffset>,
@@ -177,7 +178,14 @@ async fn all_fields_model(db: &mut TestDatabase) {
     normalize_datetimes(&mut models_from_db);
 
     assert_eq!(models.len(), models_from_db.len());
-    assert!(models.iter().all(|model| models_from_db.contains(model)));
+    for model in &models {
+        assert!(
+            models_from_db.contains(model),
+            "Could not find model {:?} in models_from_db: {:?}",
+            model,
+            models_from_db
+        );
+    }
 }
 
 /// Normalize the datetimes to UTC.

@@ -226,7 +226,7 @@ impl Operation {
             } => {
                 let mut query = sea_query::Table::create().table(*table_name).to_owned();
                 for field in *fields {
-                    query.col(ColumnDef::from(field));
+                    query.col(field.as_column_def(database));
                 }
                 if *if_not_exists {
                     query.if_not_exists();
@@ -236,7 +236,7 @@ impl Operation {
             OperationInner::AddField { table_name, field } => {
                 let query = sea_query::Table::alter()
                     .table(*table_name)
-                    .add_column(ColumnDef::from(field))
+                    .add_column(field.as_column_def(database))
                     .to_owned();
                 database.execute_schema(query).await?;
             }
@@ -372,25 +372,31 @@ impl Field {
         self.unique = true;
         self
     }
-}
 
-impl From<&Field> for ColumnDef {
-    fn from(column: &Field) -> Self {
-        let mut def = ColumnDef::new_with_type(column.name, column.ty.into());
-        if column.primary_key {
+    fn as_column_def<T: ColumnTypeMapper>(&self, mapper: &T) -> ColumnDef {
+        let mut def =
+            ColumnDef::new_with_type(self.name, mapper.sea_query_column_type_for(self.ty));
+        if self.primary_key {
             def.primary_key();
         }
-        if column.auto_value {
+        if self.auto_value {
             def.auto_increment();
         }
-        if column.null {
+        if self.null {
             def.null();
+        } else {
+            def.not_null();
         }
-        if column.unique {
+        if self.unique {
             def.unique_key();
         }
         def
     }
+}
+
+#[cfg_attr(test, mockall::automock)]
+pub(super) trait ColumnTypeMapper {
+    fn sea_query_column_type_for(&self, column_type: ColumnType) -> sea_query::ColumnType;
 }
 
 macro_rules! unwrap_builder_option {
@@ -599,8 +605,7 @@ impl From<ColumnType> for sea_query::ColumnType {
             ColumnType::Time => Self::Time,
             ColumnType::Date => Self::Date,
             ColumnType::DateTime => Self::DateTime,
-            ColumnType::Timestamp => Self::Timestamp,
-            ColumnType::TimestampWithTimeZone => Self::TimestampWithTimeZone,
+            ColumnType::DateTimeWithTimeZone => Self::TimestampWithTimeZone,
             ColumnType::Text => Self::Text,
             ColumnType::Blob => Self::Blob,
             ColumnType::String(len) => Self::String(StringLen::N(len)),
@@ -752,7 +757,11 @@ mod tests {
             .null()
             .unique();
 
-        let column_def = ColumnDef::from(&field);
+        let mut mapper = MockColumnTypeMapper::new();
+        mapper
+            .expect_sea_query_column_type_for()
+            .return_const(sea_query::ColumnType::Integer);
+        let column_def = field.as_column_def(&mapper);
 
         assert_eq!(column_def.get_column_name(), "id");
         assert_eq!(
@@ -769,7 +778,11 @@ mod tests {
     fn test_field_to_column_def_without_options() {
         let field = Field::new(Identifier::new("name"), ColumnType::Text);
 
-        let column_def = ColumnDef::from(&field);
+        let mut mapper = MockColumnTypeMapper::new();
+        mapper
+            .expect_sea_query_column_type_for()
+            .return_const(sea_query::ColumnType::Text);
+        let column_def = field.as_column_def(&mapper);
 
         assert_eq!(column_def.get_column_name(), "name");
         assert_eq!(

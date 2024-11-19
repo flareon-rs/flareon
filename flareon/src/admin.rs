@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use derive_more::Debug;
 
-use crate::auth::db::DatabaseUserCredentials;
 use crate::auth::AuthRequestExt;
 use crate::forms::fields::Password;
 use crate::forms::{
@@ -100,13 +99,17 @@ async fn login(mut request: Request) -> flareon::Result<Response> {
 }
 
 async fn authenticate(request: &mut Request, login_form: LoginForm) -> flareon::Result<bool> {
+    #[cfg(feature = "db")]
     let user = request
-        .authenticate(&DatabaseUserCredentials::new(
+        .authenticate(&crate::auth::db::DatabaseUserCredentials::new(
             login_form.username,
             // TODO unify auth::Password and forms::fields::Password
             flareon::auth::Password::new(login_form.password.into_string()),
         ))
         .await?;
+
+    #[cfg(not(any(feature = "sqlite", feature = "postgres", feature = "mysql")))]
+    let mut user: Option<Box<dyn crate::auth::User + Send + Sync>> = None;
 
     if let Some(user) = user {
         request.login(user).await?;

@@ -20,6 +20,7 @@ use bytes::Bytes;
 use indexmap::IndexMap;
 use tower_sessions::Session;
 
+#[cfg(feature = "db")]
 use crate::db::Database;
 use crate::error::ErrorRepr;
 use crate::headers::FORM_CONTENT_TYPE;
@@ -57,6 +58,7 @@ pub trait RequestExt: private::Sealed {
     #[must_use]
     fn path_params_mut(&mut self) -> &mut PathParams;
 
+    #[cfg(feature = "db")]
     #[must_use]
     fn db(&self) -> &Database;
 
@@ -116,6 +118,7 @@ impl RequestExt for Request {
         self.extensions_mut().get_or_insert_default::<PathParams>()
     }
 
+    #[cfg(feature = "db")]
     fn db(&self) -> &Database {
         self.context().database()
     }

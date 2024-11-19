@@ -33,11 +33,11 @@ log.workspace = true
 mime_guess.workspace = true
 password-auth = { workspace = true, features = ["std", "argon2"] }
 pin-project-lite.workspace = true
-sea-query = { workspace = true, features = ["backend-sqlite", "backend-postgres"] }
-sea-query-binder = { workspace = true, features = ["sqlx-sqlite", "sqlx-postgres", "with-chrono", "runtime-tokio"] }
+sea-query = { workspace = true }
+sea-query-binder = { workspace = true, features = ["with-chrono", "runtime-tokio"] }
 serde.workspace = true
 sha2.workspace = true
-sqlx = { workspace = true, features = ["runtime-tokio", "sqlite", "postgres", "chrono"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "chrono"] }
 subtle = { workspace = true, features = ["std"] }
 sync_wrapper.workspace = true
 thiserror.workspace = true
@@ -67,4 +67,9 @@ ignored = [
 ]
 
 [features]
+default = ["sqlite", "postgres", "mysql"]
 fake = ["dep:fake"]
+db = []
+sqlite = ["db", "sea-query/backend-sqlite", "sea-query-binder/sqlx-sqlite", "sqlx/sqlite"]
+postgres = ["db", "sea-query/backend-postgres", "sea-query-binder/sqlx-postgres", "sqlx/postgres"]
+mysql = ["db", "sea-query/backend-mysql", "sea-query-binder/sqlx-mysql", "sqlx/mysql"]

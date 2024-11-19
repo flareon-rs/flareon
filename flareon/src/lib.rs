@@ -45,6 +45,7 @@
 
 extern crate self as flareon;
 
+#[cfg(feature = "db")]
 pub mod db;
 mod error;
 pub mod forms;
@@ -76,8 +77,6 @@ use axum::handler::HandlerWithoutStateExt;
 use bytes::Bytes;
 use derive_more::{Debug, Deref, Display, From};
 pub use error::Error;
-use flareon::config::DatabaseConfig;
-use flareon::router::RouterService;
 pub use flareon_macros::main;
 use futures_core::Stream;
 use futures_util::FutureExt;
@@ -91,12 +90,17 @@ use tower::util::BoxCloneService;
 use tower::Service;
 
 use crate::admin::AdminModelManager;
+#[cfg(feature = "db")]
+use crate::config::DatabaseConfig;
 use crate::config::ProjectConfig;
+#[cfg(feature = "db")]
 use crate::db::migrations::{DynMigration, MigrationEngine};
+#[cfg(feature = "db")]
 use crate::db::Database;
 use crate::error::ErrorRepr;
 use crate::error_page::{ErrorPageTrigger, FlareonDiagnostics};
 use crate::response::Response;
+use crate::router::RouterService;
 
 /// A type alias for a result that can return a `flareon::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -156,6 +160,7 @@ pub trait FlareonApp: Send + Sync {
         Router::empty()
     }
 
+    #[cfg(feature = "db")]
     fn migrations(&self) -> Vec<Box<dyn DynMigration>> {
         vec![]
     }
@@ -352,6 +357,7 @@ pub struct AppContext {
     #[debug("...")]
     apps: Vec<Box<dyn FlareonApp>>,
     router: Arc<Router>,
+    #[cfg(feature = "db")]
     database: Option<Arc<Database>>,
 }
 
@@ -361,12 +367,13 @@ impl AppContext {
         config: Arc<ProjectConfig>,
         apps: Vec<Box<dyn FlareonApp>>,
         router: Arc<Router>,
-        database: Option<Arc<Database>>,
+        #[cfg(feature = "db")] database: Option<Arc<Database>>,
     ) -> Self {
         Self {
             config,
             apps,
             router,
+            #[cfg(feature = "db")]
             database,
         }
     }
@@ -387,11 +394,13 @@ impl AppContext {
     }
 
     #[must_use]
+    #[cfg(feature = "db")]
     pub fn try_database(&self) -> Option<&Arc<Database>> {
         self.database.as_ref()
     }
 
     #[must_use]
+    #[cfg(feature = "db")]
     pub fn database(&self) -> &Database {
         self.try_database().expect(
             "Database missing. Did you forget to add the database when configuring FlareonProject?",
@@ -419,6 +428,7 @@ impl FlareonProjectBuilder<Uninitialized> {
                 config: Arc::new(ProjectConfig::default()),
                 apps: vec![],
                 router: Arc::new(Router::default()),
+                #[cfg(feature = "db")]
                 database: None,
             },
             urls: Vec::new(),
@@ -518,8 +528,11 @@ where
 
     /// Builds the Flareon project instance.
     pub async fn build(mut self) -> Result<FlareonProject> {
-        let database = Self::init_database(self.context.config.database_config()).await?;
-        self.context.database = Some(database);
+        #[cfg(feature = "db")]
+        {
+            let database = Self::init_database(self.context.config.database_config()).await?;
+            self.context.database = Some(database);
+        }
 
         Ok(FlareonProject {
             context: self.context,
@@ -527,6 +540,7 @@ where
         })
     }
 
+    #[cfg(feature = "db")]
     async fn init_database(config: &DatabaseConfig) -> Result<Arc<Database>> {
         let database = Database::new(config.url()).await?;
         Ok(Arc::new(database))
@@ -583,6 +597,7 @@ pub async fn run(project: FlareonProject, address_str: &str) -> Result<()> {
 pub async fn run_at(project: FlareonProject, listener: tokio::net::TcpListener) -> Result<()> {
     let (mut context, mut project_handler) = project.into_context();
 
+    #[cfg(feature = "db")]
     if let Some(database) = &context.database {
         let mut migrations: Vec<Box<dyn DynMigration>> = Vec::new();
         for app in &context.apps {
@@ -601,6 +616,7 @@ pub async fn run_at(project: FlareonProject, listener: tokio::net::TcpListener) 
     context.apps = apps;
 
     let context = Arc::new(context);
+    #[cfg(feature = "db")]
     let context_cleanup = context.clone();
 
     let handler = |axum_request: axum::extract::Request| async move {
@@ -660,6 +676,7 @@ pub async fn run_at(project: FlareonProject, listener: tokio::net::TcpListener) 
     if config::REGISTER_PANIC_HOOK {
         let _ = std::panic::take_hook();
     }
+    #[cfg(feature = "db")]
     if let Some(database) = &context_cleanup.database {
         database.close().await?;
     }

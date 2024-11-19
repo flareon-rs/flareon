@@ -6,6 +6,7 @@
 //!
 //! For the default way to store users in the database, see the [`db`] module.
 
+#[cfg(feature = "db")]
 pub mod db;
 
 use std::any::Any;
@@ -14,8 +15,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
-use flareon::config::SecretKey;
-use flareon::db::impl_postgres::PostgresValueRef;
 #[cfg(test)]
 use mockall::automock;
 use password_auth::VerifyError;
@@ -23,7 +22,8 @@ use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 
-use crate::db::impl_sqlite::SqliteValueRef;
+use crate::config::SecretKey;
+#[cfg(feature = "db")]
 use crate::db::{ColumnType, DatabaseField, FromDbValue, SqlxValueRef, ToDbValue};
 use crate::request::{Request, RequestExt};
 
@@ -403,20 +403,35 @@ impl Debug for PasswordHash {
 
 const MAX_PASSWORD_HASH_LENGTH: u32 = 128;
 
+#[cfg(feature = "db")]
 impl DatabaseField for PasswordHash {
     const TYPE: ColumnType = ColumnType::String(MAX_PASSWORD_HASH_LENGTH);
 }
 
+#[cfg(feature = "db")]
 impl FromDbValue for PasswordHash {
-    fn from_sqlite(value: SqliteValueRef) -> flareon::db::Result<Self> {
+    #[cfg(feature = "sqlite")]
+    fn from_sqlite(value: crate::db::impl_sqlite::SqliteValueRef) -> flareon::db::Result<Self> {
         PasswordHash::new(value.get::<String>()?).map_err(flareon::db::DatabaseError::value_decode)
     }
 
-    fn from_postgres(value: PostgresValueRef) -> flareon::db::Result<Self> {
+    #[cfg(feature = "postgres")]
+    fn from_postgres(
+        value: crate::db::impl_postgres::PostgresValueRef,
+    ) -> flareon::db::Result<Self> {
+        PasswordHash::new(value.get::<String>()?).map_err(flareon::db::DatabaseError::value_decode)
+    }
+
+    #[cfg(feature = "mysql")]
+    fn from_mysql(value: crate::db::impl_mysql::MySqlValueRef) -> crate::db::Result<Self>
+    where
+        Self: Sized,
+    {
         PasswordHash::new(value.get::<String>()?).map_err(flareon::db::DatabaseError::value_decode)
     }
 }
 
+#[cfg(feature = "db")]
 impl ToDbValue for PasswordHash {
     fn to_sea_query_value(&self) -> sea_query::Value {
         self.0.clone().into()
@@ -710,6 +725,28 @@ pub trait AuthBackend: Send + Sync {
     ) -> Result<Option<Box<dyn User + Send + Sync>>>;
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct NoAuthBackend;
+
+#[async_trait]
+impl AuthBackend for NoAuthBackend {
+    async fn authenticate(
+        &self,
+        _request: &Request,
+        _credentials: &(dyn Any + Send + Sync),
+    ) -> Result<Option<Box<dyn User + Send + Sync>>> {
+        Ok(None)
+    }
+
+    async fn get_by_id(
+        &self,
+        _request: &Request,
+        _id: UserId,
+    ) -> Result<Option<Box<dyn User + Send + Sync>>> {
+        Ok(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -719,27 +756,6 @@ mod tests {
     use super::*;
     use crate::config::ProjectConfig;
     use crate::test::TestRequestBuilder;
-
-    struct NoUserAuthBackend;
-
-    #[async_trait]
-    impl AuthBackend for NoUserAuthBackend {
-        async fn authenticate(
-            &self,
-            _request: &Request,
-            _credentials: &(dyn Any + Send + Sync),
-        ) -> Result<Option<Box<dyn User + Send + Sync>>> {
-            Ok(None)
-        }
-
-        async fn get_by_id(
-            &self,
-            _request: &Request,
-            _id: UserId,
-        ) -> Result<Option<Box<dyn User + Send + Sync>>> {
-            Ok(None)
-        }
-    }
 
     struct MockAuthBackend<F> {
         return_user: F,
@@ -894,7 +910,7 @@ mod tests {
 
     #[tokio::test]
     async fn user_anonymous() {
-        let mut request = test_request_with_auth_backend(NoUserAuthBackend {});
+        let mut request = test_request_with_auth_backend(NoAuthBackend {});
 
         let user = request.user().await.unwrap();
         assert!(!user.is_authenticated());
@@ -955,7 +971,7 @@ mod tests {
     /// session (can happen if the user is deleted from the database)
     #[tokio::test]
     async fn logout_on_invalid_user_id_in_session() {
-        let mut request = test_request_with_auth_backend(NoUserAuthBackend {});
+        let mut request = test_request_with_auth_backend(NoAuthBackend {});
 
         request
             .session_mut()

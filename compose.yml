@@ -1,8 +1,18 @@
 services:
+  mariadb:
+    image: mariadb:11
+    container_name: flareon-mariadb
+    environment:
+      MARIADB_DATABASE: mysql
+      MARIADB_USER: flareon
+      MARIADB_PASSWORD: flareon
+      MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: 1
+    ports:
+      - "3306:3306"
+
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: flareon-postgres
-    restart: always
     environment:
       POSTGRES_USER: flareon
       POSTGRES_PASSWORD: flareon
