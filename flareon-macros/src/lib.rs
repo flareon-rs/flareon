@@ -1,3 +1,4 @@
+mod dbtest;
 mod form;
 mod model;
 mod query;
@@ -7,8 +8,9 @@ use darling::Error;
 use proc_macro::TokenStream;
 use proc_macro_crate::crate_name;
 use quote::quote;
-use syn::parse_macro_input;
+use syn::{parse_macro_input, ItemFn};
 
+use crate::dbtest::fn_to_dbtest;
 use crate::form::impl_form_for_struct;
 use crate::model::impl_model_for_struct;
 use crate::query::{query_to_tokens, Query};
@@ -110,6 +112,14 @@ pub fn model(args: TokenStream, input: TokenStream) -> TokenStream {
 pub fn query(input: TokenStream) -> TokenStream {
     let query_input = parse_macro_input!(input as Query);
     query_to_tokens(query_input).into()
+}
+
+#[proc_macro_attribute]
+pub fn dbtest(_args: TokenStream, input: TokenStream) -> TokenStream {
+    let fn_input = parse_macro_input!(input as ItemFn);
+    fn_to_dbtest(fn_input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
 
 pub(crate) fn flareon_ident() -> proc_macro2::TokenStream {

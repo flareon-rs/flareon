@@ -1,6 +1,8 @@
 //! Test utilities for Flareon projects.
 
 use std::future::poll_fn;
+use std::mem;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use derive_more::Debug;
@@ -179,44 +181,118 @@ impl TestRequestBuilder {
 }
 
 #[derive(Debug)]
-pub struct TestDatabaseBuilder {
+pub struct TestDatabase {
+    database: Arc<Database>,
+    kind: TestDatabaseKind,
     migrations: Vec<MigrationWrapper>,
 }
 
-impl Default for TestDatabaseBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TestDatabaseBuilder {
-    #[must_use]
-    pub fn new() -> Self {
+impl TestDatabase {
+    fn new(database: Database, kind: TestDatabaseKind) -> TestDatabase {
         Self {
+            database: Arc::new(database),
+            kind,
             migrations: Vec::new(),
         }
     }
 
-    #[must_use]
+    /// Create a new in-memory SQLite database for testing.
+    pub async fn new_sqlite() -> Result<Self> {
+        let database = Database::new("sqlite::memory:").await?;
+        Ok(Self::new(database, TestDatabaseKind::Sqlite))
+    }
+
+    /// Create a new Postgres database for testing and connects to it.
+    ///
+    /// The database URL is read from the `POSTGRES_URL` environment variable.
+    /// Note that it shouldn't include the database name — the function will
+    /// create a new database for the test by connecting to the `postgres`
+    /// database.
+    ///
+    /// The database is created with the name `test_flareon__{test_name}`.
+    /// Make sure that `test_name` is unique for each test so that the databases
+    /// don't conflict with each other.
+    ///
+    /// The database is dropped when `self.cleanup()` is called. Note that this
+    /// means that the database will not be dropped if the test panics.
+    pub async fn new_postgres(test_name: &str) -> Result<Self> {
+        let db_url = std::env::var("POSTGRES_URL")
+            .unwrap_or_else(|_| "postgresql://flareon:flareon@localhost:5432".to_string());
+        let database = Database::new(format!("{db_url}/postgres")).await?;
+
+        let test_database_name = format!("test_flareon__{}", test_name);
+        database
+            .raw(&format!("DROP DATABASE IF EXISTS {}", test_database_name))
+            .await?;
+        database
+            .raw(&format!("CREATE DATABASE {}", test_database_name))
+            .await?;
+        database.close().await?;
+
+        let database = Database::new(format!("{db_url}/{test_database_name}")).await?;
+
+        Ok(Self::new(
+            database,
+            TestDatabaseKind::Postgres {
+                db_url,
+                db_name: test_database_name,
+            },
+        ))
+    }
+
     pub fn add_migrations<T: DynMigration + 'static, V: IntoIterator<Item = T>>(
-        mut self,
+        &mut self,
         migrations: V,
-    ) -> Self {
+    ) -> &mut Self {
         self.migrations
             .extend(migrations.into_iter().map(MigrationWrapper::new));
         self
     }
 
-    #[must_use]
-    pub fn with_auth(self) -> Self {
-        self.add_migrations(flareon::auth::db::migrations::MIGRATIONS.to_vec())
+    pub fn with_auth(&mut self) -> &mut Self {
+        self.add_migrations(flareon::auth::db::migrations::MIGRATIONS.to_vec());
+        self
+    }
+
+    pub async fn run_migrations(&mut self) -> &mut Self {
+        if !self.migrations.is_empty() {
+            let engine = MigrationEngine::new(mem::take(&mut self.migrations));
+            engine.run(&self.database()).await.unwrap();
+        }
+        self
     }
 
     #[must_use]
-    pub async fn build(self) -> Database {
-        let engine = MigrationEngine::new(self.migrations);
-        let database = Database::new("sqlite::memory:").await.unwrap();
-        engine.run(&database).await.unwrap();
-        database
+    pub fn database(&self) -> Arc<Database> {
+        self.database.clone()
     }
+
+    pub async fn cleanup(&self) -> Result<()> {
+        self.database.close().await?;
+        match &self.kind {
+            TestDatabaseKind::Sqlite => {}
+            TestDatabaseKind::Postgres { db_url, db_name } => {
+                let database = Database::new(format!("{db_url}/postgres")).await?;
+
+                database.raw(&format!("DROP DATABASE {}", db_name)).await?;
+                database.close().await?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Deref for TestDatabase {
+    type Target = Database;
+
+    fn deref(&self) -> &Self::Target {
+        &self.database
+    }
+}
+
+#[derive(Debug, Clone)]
+enum TestDatabaseKind {
+    Sqlite,
+    Postgres { db_url: String, db_name: String },
 }

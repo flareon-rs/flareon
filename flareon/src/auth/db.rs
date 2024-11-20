@@ -84,13 +84,14 @@ impl DatabaseUser {
     ///
     /// # #[tokio::main]
     /// # async fn main() -> flareon::Result<()> {
-    /// #     use flareon::test::{TestDatabaseBuilder, TestRequestBuilder};
+    /// #     use flareon::test::{TestDatabase, TestRequestBuilder};
+    /// #     let mut test_database = TestDatabase::new_sqlite().await?;
+    /// #     test_database.with_auth().run_migrations().await;
     /// #     let request = TestRequestBuilder::get("/")
-    /// #         .with_db_auth(std::sync::Arc::new(
-    /// #             TestDatabaseBuilder::new().with_auth().build().await,
-    /// #         ))
+    /// #         .with_db_auth(test_database.database())
     /// #         .build();
     /// #     view(&request).await?;
+    /// #     test_database.cleanup().await?;
     /// #     Ok(())
     /// # }
     /// ```

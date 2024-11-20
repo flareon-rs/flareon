@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Display};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -10,14 +10,14 @@ use cargo_toml::Manifest;
 use darling::FromMeta;
 use flareon::db::migrations::{DynMigration, MigrationEngine};
 use flareon_codegen::model::{Field, Model, ModelArgs, ModelOpts, ModelType};
-use log::{debug, info};
+use log::{debug, info, warn};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_quote, Attribute, ItemStruct, Meta};
+use syn::{parse_quote, Attribute, Meta, UseTree};
 
 use crate::utils::find_cargo_toml;
 
-pub fn make_migrations(path: &Path) -> anyhow::Result<()> {
+pub fn make_migrations(path: &Path, options: MigrationGeneratorOptions) -> anyhow::Result<()> {
     match find_cargo_toml(
         &path
             .canonicalize()
@@ -31,8 +31,8 @@ pub fn make_migrations(path: &Path) -> anyhow::Result<()> {
                 .with_context(|| "unable to find package in Cargo.toml")?
                 .name;
 
-            MigrationGenerator::new(cargo_toml_path, crate_name)
-                .generate_migrations()
+            MigrationGenerator::new(cargo_toml_path, crate_name, options)
+                .generate_and_write_migrations()
                 .with_context(|| "unable to generate migrations")?;
         }
         None => {
@@ -43,38 +43,63 @@ pub fn make_migrations(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct MigrationGeneratorOptions {
+    pub app_name: Option<String>,
+    pub output_dir: Option<PathBuf>,
+}
+
 #[derive(Debug)]
-struct MigrationGenerator {
+pub struct MigrationGenerator {
     cargo_toml_path: PathBuf,
     crate_name: String,
+    options: MigrationGeneratorOptions,
 }
 
 impl MigrationGenerator {
     #[must_use]
-    fn new(cargo_toml_path: PathBuf, crate_name: String) -> Self {
+    pub fn new(
+        cargo_toml_path: PathBuf,
+        crate_name: String,
+        options: MigrationGeneratorOptions,
+    ) -> Self {
         Self {
             cargo_toml_path,
             crate_name,
+            options,
         }
     }
 
-    fn generate_migrations(&mut self) -> anyhow::Result<()> {
-        let source_file_paths = self.find_source_files()?;
-        let AppState { models, migrations } = self.process_source_files(&source_file_paths)?;
-        let migration_processor = MigrationProcessor::new(migrations);
-        let migration_models = migration_processor.latest_models();
-        let (modified_models, operations) = self.generate_operations(&models, &migration_models);
-        if !operations.is_empty() {
-            self.generate_migration_file(
-                &migration_processor.next_migration_name()?,
-                &modified_models,
-                operations,
-            )?;
+    fn generate_and_write_migrations(&mut self) -> anyhow::Result<()> {
+        let source_files = self.get_source_files()?;
+
+        if let Some(migration) = self.generate_migrations(source_files)? {
+            self.write_migration(migration)?;
         }
+
         Ok(())
     }
 
-    fn find_source_files(&self) -> anyhow::Result<Vec<PathBuf>> {
+    pub fn generate_migrations(
+        &mut self,
+        source_files: Vec<SourceFile>,
+    ) -> anyhow::Result<Option<MigrationToWrite>> {
+        let AppState { models, migrations } = self.process_source_files(source_files)?;
+        let migration_processor = MigrationProcessor::new(migrations);
+        let migration_models = migration_processor.latest_models();
+        let (modified_models, operations) = self.generate_operations(&models, &migration_models);
+
+        if operations.is_empty() {
+            Ok(None)
+        } else {
+            let migration_name = migration_processor.next_migration_name()?;
+            let content =
+                self.generate_migration_file_content(&migration_name, &modified_models, operations);
+            Ok(Some(MigrationToWrite::new(migration_name, content)))
+        }
+    }
+
+    fn get_source_files(&mut self) -> anyhow::Result<Vec<SourceFile>> {
         let src_dir = self
             .cargo_toml_path
             .parent()
@@ -84,44 +109,76 @@ impl MigrationGenerator {
             .canonicalize()
             .with_context(|| "unable to canonicalize src dir")?;
 
-        let mut source_files = Vec::new();
+        let source_file_paths = Self::find_source_files(&src_dir)?;
+        let source_files = source_file_paths
+            .into_iter()
+            .map(|path| {
+                Self::parse_file(&src_dir, path.clone())
+                    .with_context(|| format!("unable to parse file: {path:?}"))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        Ok(source_files)
+    }
+
+    fn find_source_files(src_dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
+        let mut paths = Vec::new();
         for entry in glob::glob(src_dir.join("**/*.rs").to_str().unwrap())
             .with_context(|| "unable to find Rust source files with glob")?
         {
             let path = entry?;
-            source_files.push(path);
+            paths.push(
+                path.strip_prefix(src_dir)
+                    .expect("path must be in src dir")
+                    .to_path_buf(),
+            );
         }
 
-        Ok(source_files)
+        Ok(paths)
     }
 
-    fn process_source_files(&self, paths: &Vec<PathBuf>) -> anyhow::Result<AppState> {
+    fn process_source_files(&self, source_files: Vec<SourceFile>) -> anyhow::Result<AppState> {
         let mut app_state = AppState::new();
 
-        for path in paths {
-            self.process_file(path, &mut app_state)
+        for source_file in source_files {
+            let path = source_file.path.clone();
+            self.process_parsed_file(source_file, &mut app_state)
                 .with_context(|| format!("unable to find models in file: {path:?}"))?;
         }
 
         Ok(app_state)
     }
 
-    fn process_file(&self, path: &PathBuf, app_state: &mut AppState) -> anyhow::Result<()> {
-        debug!("Parsing file: {:?}", path);
-        let mut file = File::open(path).with_context(|| "unable to open file")?;
+    fn parse_file(src_dir: &Path, path: PathBuf) -> anyhow::Result<SourceFile> {
+        let full_path = src_dir.join(&path);
+        debug!("Parsing file: {:?}", &full_path);
+        let mut file = File::open(&full_path).with_context(|| "unable to open file")?;
 
         let mut src = String::new();
         file.read_to_string(&mut src)
-            .with_context(|| format!("unable to read file: {path:?}"))?;
+            .with_context(|| format!("unable to read file: {full_path:?}"))?;
 
-        let syntax = syn::parse_file(&src).with_context(|| "unable to parse file")?;
+        SourceFile::parse(path, &src)
+    }
+
+    fn process_parsed_file(
+        &self,
+        SourceFile {
+            path,
+            content: file,
+        }: SourceFile,
+        app_state: &mut AppState,
+    ) -> anyhow::Result<()> {
+        let imports = Self::get_imports(&file, &ModulePath::from_fs_path(&path));
+        let import_resolver = SymbolResolver::new(imports);
 
         let mut migration_models = Vec::new();
-        for item in syntax.items {
-            if let syn::Item::Struct(item) = item {
-                for attr in &item.attrs {
+        for item in file.items {
+            if let syn::Item::Struct(mut item) = item {
+                for attr in &item.attrs.clone() {
                     if is_model_attr(attr) {
-                        let args = Self::args_from_attr(path, attr)?;
+                        import_resolver.resolve_struct(&mut item);
+
+                        let args = Self::args_from_attr(&path, attr)?;
                         let model_in_source = ModelInSource::from_item(item, &args)?;
 
                         match args.model_type {
@@ -150,6 +207,29 @@ impl MigrationGenerator {
         }
 
         Ok(())
+    }
+
+    /// Return the list of top-level `use` statements, structs, and constants as
+    /// a list of [`VisibleSymbol`]s from the file.
+    fn get_imports(file: &syn::File, module_path: &ModulePath) -> Vec<VisibleSymbol> {
+        let mut imports = Vec::new();
+
+        for item in &file.items {
+            match item {
+                syn::Item::Use(item) => {
+                    imports.append(&mut VisibleSymbol::from_item_use(item, module_path));
+                }
+                syn::Item::Struct(item_struct) => {
+                    imports.push(VisibleSymbol::from_item_struct(item_struct, module_path));
+                }
+                syn::Item::Const(item_const) => {
+                    imports.push(VisibleSymbol::from_item_const(item_const, module_path));
+                }
+                _ => {}
+            }
+        }
+
+        imports
     }
 
     fn args_from_attr(path: &Path, attr: &Attribute) -> Result<ModelArgs, ParsingError> {
@@ -313,18 +393,18 @@ impl MigrationGenerator {
         todo!()
     }
 
-    fn generate_migration_file(
+    fn generate_migration_file_content(
         &self,
         migration_name: &str,
         modified_models: &[ModelInSource],
         operations: Vec<DynOperation>,
-    ) -> anyhow::Result<()> {
+    ) -> String {
         let operations: Vec<_> = operations
             .into_iter()
             .map(|operation| operation.repr())
             .collect();
 
-        let app_name = &self.crate_name;
+        let app_name = self.options.app_name.as_ref().unwrap_or(&self.crate_name);
         let migration_def = quote! {
             #[derive(Debug, Copy, Clone)]
             pub(super) struct Migration;
@@ -346,14 +426,17 @@ impl MigrationGenerator {
             #(#models)*
         };
 
-        let migration_path = self
-            .cargo_toml_path
-            .parent()
-            .unwrap()
-            .join("src")
-            .join("migrations");
-        let migration_file = migration_path.join(format!("{migration_name}.rs"));
-        let migration_content = Self::generate_migration(migration_def, models_def);
+        Self::generate_migration(migration_def, models_def)
+    }
+
+    fn write_migration(&self, migration: MigrationToWrite) -> anyhow::Result<()> {
+        let src_path = self
+            .options
+            .output_dir
+            .clone()
+            .unwrap_or(self.cargo_toml_path.parent().unwrap().join("src"));
+        let migration_path = src_path.join("migrations");
+        let migration_file = migration_path.join(format!("{}.rs", migration.name));
 
         std::fs::create_dir_all(&migration_path).with_context(|| {
             format!(
@@ -368,10 +451,9 @@ impl MigrationGenerator {
                 migration_file.display()
             )
         })?;
-        file.write_all(migration_content.as_bytes())
+        file.write_all(migration.content.as_bytes())
             .with_context(|| "unable to write migration file")?;
         info!("Generated migration: {}", migration_file.display());
-
         Ok(())
     }
 
@@ -411,6 +493,30 @@ impl MigrationGenerator {
 }
 
 #[derive(Debug, Clone)]
+pub struct SourceFile {
+    path: PathBuf,
+    content: syn::File,
+}
+
+impl SourceFile {
+    #[must_use]
+    pub fn new(path: PathBuf, content: syn::File) -> Self {
+        assert!(
+            path.is_relative(),
+            "path must be relative to the src directory"
+        );
+        Self { path, content }
+    }
+
+    pub fn parse(path: PathBuf, content: &str) -> anyhow::Result<Self> {
+        Ok(Self::new(
+            path,
+            syn::parse_file(content).with_context(|| "unable to parse file")?,
+        ))
+    }
+}
+
+#[derive(Debug, Clone)]
 struct AppState {
     /// All the application models found in the source
     models: Vec<ModelInSource>,
@@ -425,6 +531,290 @@ impl AppState {
             models: Vec::new(),
             migrations: Vec::new(),
         }
+    }
+}
+
+/// Represents a symbol visible in the current module. This might mean there is
+/// a `use` statement for a given type, but also, for instance, the type is
+/// defined in the current module.
+///
+/// For instance, for `use std::collections::HashMap;` the `VisibleSymbol `
+/// would be:
+/// ```ignore
+/// # /*
+/// VisibleSymbol {
+///     alias: "HashMap",
+///     full_path: "std::collections::HashMap",
+///     kind: VisibleSymbolKind::Use,
+/// }
+/// # */
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VisibleSymbol {
+    alias: String,
+    full_path: String,
+    kind: VisibleSymbolKind,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum VisibleSymbolKind {
+    Use,
+    Struct,
+    Const,
+}
+
+impl VisibleSymbol {
+    #[must_use]
+    fn new(alias: &str, full_path: &str, kind: VisibleSymbolKind) -> Self {
+        Self {
+            alias: alias.to_string(),
+            full_path: full_path.to_string(),
+            kind,
+        }
+    }
+
+    fn full_path_parts(&self) -> impl Iterator<Item = &str> {
+        self.full_path.split("::")
+    }
+
+    fn new_use(alias: &str, full_path: &str) -> Self {
+        Self::new(alias, full_path, VisibleSymbolKind::Use)
+    }
+
+    fn from_item_use(item: &syn::ItemUse, module_path: &ModulePath) -> Vec<Self> {
+        Self::from_tree(&item.tree, module_path)
+    }
+
+    fn from_item_struct(item: &syn::ItemStruct, module_path: &ModulePath) -> Self {
+        let ident = item.ident.to_string();
+        let full_path = Self::module_path(module_path, &ident);
+
+        Self {
+            alias: ident,
+            full_path,
+            kind: VisibleSymbolKind::Struct,
+        }
+    }
+
+    fn from_item_const(item: &syn::ItemConst, module_path: &ModulePath) -> Self {
+        let ident = item.ident.to_string();
+        let full_path = Self::module_path(module_path, &ident);
+
+        Self {
+            alias: ident,
+            full_path,
+            kind: VisibleSymbolKind::Const,
+        }
+    }
+
+    fn module_path(module_path: &ModulePath, ident: &str) -> String {
+        format!("{module_path}::{ident}")
+    }
+
+    fn from_tree(tree: &UseTree, current_module: &ModulePath) -> Vec<Self> {
+        match tree {
+            UseTree::Path(path) => {
+                let ident = path.ident.to_string();
+                let resolved_path = if ident == "crate" {
+                    current_module.crate_name().to_string()
+                } else if ident == "self" {
+                    current_module.to_string()
+                } else if ident == "super" {
+                    current_module.parent().to_string()
+                } else {
+                    ident
+                };
+
+                return Self::from_tree(&path.tree, current_module)
+                    .into_iter()
+                    .map(|import| {
+                        Self::new_use(
+                            &import.alias,
+                            &format!("{}::{}", resolved_path, import.full_path),
+                        )
+                    })
+                    .collect();
+            }
+            UseTree::Name(name) => {
+                let ident = name.ident.to_string();
+                return vec![Self::new_use(&ident, &ident)];
+            }
+            UseTree::Rename(rename) => {
+                return vec![Self::new_use(
+                    &rename.rename.to_string(),
+                    &rename.ident.to_string(),
+                )];
+            }
+            UseTree::Glob(_) => {
+                warn!("Glob imports are not supported");
+            }
+            UseTree::Group(group) => {
+                return group
+                    .items
+                    .iter()
+                    .flat_map(|tree| Self::from_tree(tree, current_module))
+                    .collect();
+            }
+        }
+
+        vec![]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ModulePath {
+    parts: Vec<String>,
+}
+
+impl ModulePath {
+    #[must_use]
+    fn from_fs_path(path: &Path) -> Self {
+        let mut parts = vec![String::from("crate")];
+
+        if path == Path::new("lib.rs") || path == Path::new("main.rs") {
+            return Self { parts };
+        }
+
+        parts.append(
+            &mut path
+                .components()
+                .map(|c| {
+                    let component_str = c.as_os_str().to_string_lossy();
+                    component_str
+                        .strip_suffix(".rs")
+                        .unwrap_or(&component_str)
+                        .to_string()
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        if parts
+            .last()
+            .expect("parts must have at least one component")
+            == "mod"
+        {
+            parts.pop();
+        }
+
+        Self { parts }
+    }
+
+    #[must_use]
+    fn parent(&self) -> Self {
+        let mut parts = self.parts.clone();
+        parts.pop();
+        Self { parts }
+    }
+
+    #[must_use]
+    fn crate_name(&self) -> &str {
+        &self.parts[0]
+    }
+}
+
+impl Display for ModulePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.parts.join("::"))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SymbolResolver {
+    /// List of imports in the format `"HashMap" -> VisibleSymbol`
+    symbols: HashMap<String, VisibleSymbol>,
+}
+
+impl SymbolResolver {
+    #[must_use]
+    fn new(symbols: Vec<VisibleSymbol>) -> Self {
+        let mut symbol_map = HashMap::new();
+        for symbol in symbols {
+            symbol_map.insert(symbol.alias.clone(), symbol);
+        }
+
+        Self {
+            symbols: symbol_map,
+        }
+    }
+
+    fn resolve_struct(&self, item: &mut syn::ItemStruct) {
+        for field in &mut item.fields {
+            if let syn::Type::Path(path) = &mut field.ty {
+                self.resolve(path);
+            }
+        }
+    }
+
+    /// Checks the provided `TypePath` and resolves the full type path, if
+    /// available.
+    fn resolve(&self, path: &mut syn::TypePath) {
+        let first_segment = path.path.segments.first();
+
+        if let Some(first_segment) = first_segment {
+            if let Some(symbol) = self.symbols.get(&first_segment.ident.to_string()) {
+                let mut new_segments: Vec<_> = symbol
+                    .full_path_parts()
+                    .map(|s| syn::PathSegment {
+                        ident: syn::Ident::new(s, first_segment.ident.span()),
+                        arguments: syn::PathArguments::None,
+                    })
+                    .collect();
+
+                let first_arguments = first_segment.arguments.clone();
+                new_segments
+                    .last_mut()
+                    .expect("new_segments must have at least one element")
+                    .arguments = first_arguments;
+
+                new_segments.extend(path.path.segments.iter().skip(1).cloned());
+                path.path.segments = syn::punctuated::Punctuated::from_iter(new_segments);
+            }
+
+            for segment in &mut path.path.segments {
+                self.resolve_path_arguments(&mut segment.arguments);
+            }
+        }
+    }
+
+    fn resolve_path_arguments(&self, arguments: &mut syn::PathArguments) {
+        if let syn::PathArguments::AngleBracketed(args) = arguments {
+            for arg in &mut args.args {
+                self.resolve_generic_argument(arg);
+            }
+        }
+    }
+
+    fn resolve_generic_argument(&self, arg: &mut syn::GenericArgument) {
+        if let syn::GenericArgument::Type(syn::Type::Path(path)) = arg {
+            if let Some(new_arg) = self.try_resolve_generic_const(path) {
+                *arg = new_arg;
+            } else {
+                self.resolve(path);
+            }
+        }
+    }
+
+    fn try_resolve_generic_const(&self, path: &syn::TypePath) -> Option<syn::GenericArgument> {
+        if path.qself.is_none() && path.path.segments.len() == 1 {
+            let segment = path
+                .path
+                .segments
+                .first()
+                .expect("segments have exactly one element");
+            if segment.arguments.is_none() {
+                let ident = segment.ident.to_string();
+                if let Some(symbol) = self.symbols.get(&ident) {
+                    if symbol.kind == VisibleSymbolKind::Const {
+                        let path = &symbol.full_path;
+                        return Some(syn::GenericArgument::Const(
+                            syn::parse_str(path).expect("full_path should be a valid path"),
+                        ));
+                    }
+                }
+            }
+        }
+
+        None
     }
 }
 
@@ -487,12 +877,12 @@ impl MigrationProcessor {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ModelInSource {
-    model_item: ItemStruct,
+    model_item: syn::ItemStruct,
     model: Model,
 }
 
 impl ModelInSource {
-    fn from_item(item: ItemStruct, args: &ModelArgs) -> anyhow::Result<Self> {
+    fn from_item(item: syn::ItemStruct, args: &ModelArgs) -> anyhow::Result<Self> {
         let input: syn::DeriveInput = item.clone().into();
         let opts = ModelOpts::new_from_derive_input(&input)
             .map_err(|e| anyhow::anyhow!("cannot parse model: {}", e))?;
@@ -502,6 +892,19 @@ impl ModelInSource {
             model_item: item,
             model,
         })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MigrationToWrite {
+    pub name: String,
+    pub content: String,
+}
+
+impl MigrationToWrite {
+    #[must_use]
+    pub fn new(name: String, content: String) -> Self {
+        Self { name, content }
     }
 }
 
@@ -629,7 +1032,7 @@ impl ParsingError {
 }
 
 impl Display for ParsingError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)?;
         if let Some(source) = &self.source {
             write!(f, "\n{source}")?;
@@ -640,3 +1043,162 @@ impl Display for ParsingError {
 }
 
 impl Error for ParsingError {}
+
+#[cfg(test)]
+mod tests {
+    use quote::ToTokens;
+
+    use super::*;
+
+    #[test]
+    fn migration_processor_next_migration_name_empty() {
+        let migrations = vec![];
+        let processor = MigrationProcessor::new(migrations);
+
+        let next_migration_name = processor.next_migration_name().unwrap();
+        assert_eq!(next_migration_name, "m_0001_initial");
+    }
+
+    #[test]
+    fn imports() {
+        let source = r"
+use std::collections::HashMap;
+use std::error::Error as StdError;
+use std::fmt::{Debug, Display, Formatter};
+use std::fs::*;
+use rand as r;
+use super::MyModel;
+use crate::MyOtherModel;
+use self::MyThirdModel;
+
+struct MyFourthModel {}
+
+const MY_CONSTANT: u8 = 42;
+        ";
+
+        let file = SourceFile::parse(PathBuf::from("foo/bar.rs").clone(), source).unwrap();
+        let imports =
+            MigrationGenerator::get_imports(&file.content, &ModulePath::from_fs_path(&file.path));
+
+        let expected = vec![
+            VisibleSymbol {
+                alias: "HashMap".to_string(),
+                full_path: "std::collections::HashMap".to_string(),
+                kind: VisibleSymbolKind::Use,
+            },
+            VisibleSymbol {
+                alias: "StdError".to_string(),
+                full_path: "std::error::Error".to_string(),
+                kind: VisibleSymbolKind::Use,
+            },
+            VisibleSymbol {
+                alias: "Debug".to_string(),
+                full_path: "std::fmt::Debug".to_string(),
+                kind: VisibleSymbolKind::Use,
+            },
+            VisibleSymbol {
+                alias: "Display".to_string(),
+                full_path: "std::fmt::Display".to_string(),
+                kind: VisibleSymbolKind::Use,
+            },
+            VisibleSymbol {
+                alias: "Formatter".to_string(),
+                full_path: "std::fmt::Formatter".to_string(),
+                kind: VisibleSymbolKind::Use,
+            },
+            VisibleSymbol {
+                alias: "r".to_string(),
+                full_path: "rand".to_string(),
+                kind: VisibleSymbolKind::Use,
+            },
+            VisibleSymbol {
+                alias: "MyModel".to_string(),
+                full_path: "crate::foo::MyModel".to_string(),
+                kind: VisibleSymbolKind::Use,
+            },
+            VisibleSymbol {
+                alias: "MyOtherModel".to_string(),
+                full_path: "crate::MyOtherModel".to_string(),
+                kind: VisibleSymbolKind::Use,
+            },
+            VisibleSymbol {
+                alias: "MyThirdModel".to_string(),
+                full_path: "crate::foo::bar::MyThirdModel".to_string(),
+                kind: VisibleSymbolKind::Use,
+            },
+            VisibleSymbol {
+                alias: "MyFourthModel".to_string(),
+                full_path: "crate::foo::bar::MyFourthModel".to_string(),
+                kind: VisibleSymbolKind::Struct,
+            },
+            VisibleSymbol {
+                alias: "MY_CONSTANT".to_string(),
+                full_path: "crate::foo::bar::MY_CONSTANT".to_string(),
+                kind: VisibleSymbolKind::Const,
+            },
+        ];
+        assert_eq!(imports, expected);
+    }
+
+    #[test]
+    fn import_resolver() {
+        let resolver = SymbolResolver::new(vec![
+            VisibleSymbol::new_use("MyType", "crate::models::MyType"),
+            VisibleSymbol::new_use("HashMap", "std::collections::HashMap"),
+        ]);
+
+        let path = &mut parse_quote!(MyType);
+        resolver.resolve(path);
+        assert_eq!(
+            quote!(crate::models::MyType).to_string(),
+            path.into_token_stream().to_string()
+        );
+
+        let path = &mut parse_quote!(HashMap<String, u8>);
+        resolver.resolve(path);
+        assert_eq!(
+            quote!(std::collections::HashMap<String, u8>).to_string(),
+            path.into_token_stream().to_string()
+        );
+
+        let path = &mut parse_quote!(Option<MyType>);
+        resolver.resolve(path);
+        assert_eq!(
+            quote!(Option<crate::models::MyType>).to_string(),
+            path.into_token_stream().to_string()
+        );
+    }
+
+    #[test]
+    fn import_resolver_resolve_struct() {
+        let resolver = SymbolResolver::new(vec![
+            VisibleSymbol::new_use("MyType", "crate::models::MyType"),
+            VisibleSymbol::new_use("HashMap", "std::collections::HashMap"),
+            VisibleSymbol::new_use("LimitedString", "flareon::db::LimitedString"),
+            VisibleSymbol::new(
+                "MY_CONSTANT",
+                "crate::constants::MY_CONSTANT",
+                VisibleSymbolKind::Const,
+            ),
+        ]);
+
+        let mut actual = parse_quote! {
+            struct Example {
+                field_1: MyType,
+                field_2: HashMap<String, MyType>,
+                field_3: Option<String>,
+                field_4: LimitedString<MY_CONSTANT>,
+            }
+        };
+        resolver.resolve_struct(&mut actual);
+        let expected = quote! {
+            struct Example {
+                field_1: crate::models::MyType,
+                field_2: std::collections::HashMap<String, crate::models::MyType>,
+                field_3: Option<String>,
+                field_4: flareon::db::LimitedString<{ crate::constants::MY_CONSTANT }>,
+            }
+        };
+        assert_eq!(actual.into_token_stream().to_string(), expected.to_string());
+    }
+}

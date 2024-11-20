@@ -5,13 +5,18 @@ on:
     paths:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
-    schedule:
-      - cron: "0 0 * * *"
+      - ".github/workflows/audit.yml"
+  schedule:
+    - cron: "0 0 * * *"
 
 jobs:
   security_audit:
     name: Audit check
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v2.0.0

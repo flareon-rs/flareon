@@ -28,6 +28,24 @@ built on top of [axum](https://github.com/tokio-rs/axum).
 * **Secure by default** — security should be opt-out, not opt-in. Flareon takes care of making your web apps secure by
   default, defending it against common modern web vulnerabilities. You can focus on building your app, not securing it.
 
+## Development
+
+### Testing
+
+Tests that require using external databases are ignored by default. In order to run them, execute the following in the
+root of the repository:
+
+```shell
+docker compose up -d
+cargo test --all-features -- --include-ignored
+```
+
+You can them execute the following command to stop the database:
+
+```shell
+docker compose down
+```
+
 ## License
 
 Flareon is licensed under either of the following, at your option:
