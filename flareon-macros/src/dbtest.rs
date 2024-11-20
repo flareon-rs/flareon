@@ -17,6 +17,7 @@ pub(super) fn fn_to_dbtest(test_function_decl: ItemFn) -> syn::Result<TokenStrea
 
     let result = quote! {
         #[::tokio::test]
+        #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
         async fn #sqlite_ident() {
             let mut database = flareon::test::TestDatabase::new_sqlite().await.unwrap();
 

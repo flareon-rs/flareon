@@ -1,4 +1,5 @@
 #![cfg(feature = "fake")]
+#![cfg_attr(miri, ignore)]
 
 use fake::rand::rngs::StdRng;
 use fake::rand::SeedableRng;

@@ -1,5 +1,6 @@
 #[rustversion::attr(not(nightly), ignore)]
 #[test]
+#[cfg_attr(miri, ignore)] // unsupported operation: extern static `pidfd_spawnp` is not supported by Miri
 fn derive_form() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui/derive_form.rs");
@@ -7,6 +8,7 @@ fn derive_form() {
 
 #[rustversion::attr(not(nightly), ignore)]
 #[test]
+#[cfg_attr(miri, ignore)] // unsupported operation: extern static `pidfd_spawnp` is not supported by Miri
 fn attr_model() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui/attr_model.rs");
@@ -18,6 +20,7 @@ fn attr_model() {
 
 #[rustversion::attr(not(nightly), ignore)]
 #[test]
+#[cfg_attr(miri, ignore)] // unsupported operation: extern static `pidfd_spawnp` is not supported by Miri
 fn func_query() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui/func_query.rs");
@@ -29,6 +32,7 @@ fn func_query() {
 
 #[rustversion::attr(not(nightly), ignore)]
 #[test]
+#[cfg_attr(miri, ignore)] // unsupported operation: extern static `pidfd_spawnp` is not supported by Miri
 fn attr_main() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui/attr_main.rs");

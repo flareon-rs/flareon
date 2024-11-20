@@ -842,6 +842,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn password_hash() {
         let password = Password::new("password".to_string());
         let hash = PasswordHash::from_password(&password);
@@ -873,6 +874,7 @@ mod tests {
     const TEST_PASSWORD_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$QAAI3EMU1eTLT9NzzBhQjg$khq4zuHsEyk9trGjuqMBFYnTbpqkmn0wXGxFn1nkPBc";
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn password_hash_debug() {
         let hash = PasswordHash::new(TEST_PASSWORD_HASH).unwrap();
         assert_eq!(
@@ -882,6 +884,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn password_hash_verify() {
         let password = Password::new("password");
         let hash = PasswordHash::from_password(&password);
@@ -898,6 +901,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn password_hash_str() {
         let hash = PasswordHash::new(TEST_PASSWORD_HASH).unwrap();
         assert_eq!(hash.as_str(), TEST_PASSWORD_HASH);

@@ -376,6 +376,7 @@ mod tests {
     use crate::db::MockDatabaseBackend;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn session_auth_hash() {
         let user = DatabaseUser::new(
             1,
@@ -389,6 +390,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn database_user_traits() {
         let user = DatabaseUser::new(
             1,
@@ -406,6 +408,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn create_user() {
         let mut mock_db = MockDatabaseBackend::new();
         mock_db
@@ -422,6 +425,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn get_by_id() {
         let mut mock_db = MockDatabaseBackend::new();
         let user = DatabaseUser::new(
@@ -442,6 +446,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn authenticate() {
         let mut mock_db = MockDatabaseBackend::new();
         let user = DatabaseUser::new(
@@ -464,6 +469,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn authenticate_non_existing() {
         let mut mock_db = MockDatabaseBackend::new();
 
@@ -480,6 +486,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn authenticate_invalid_password() {
         let mut mock_db = MockDatabaseBackend::new();
         let user = DatabaseUser::new(

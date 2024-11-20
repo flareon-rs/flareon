@@ -774,6 +774,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
     async fn flareon_project_builder() {
         let project = FlareonProject::builder()
             .register_app_with_views(MockFlareonApp {}, "/app")
@@ -785,6 +786,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
     async fn flareon_project_router() {
         let project = FlareonProject::builder()
             .register_app_with_views(MockFlareonApp {}, "/app")

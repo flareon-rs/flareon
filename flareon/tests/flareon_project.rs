@@ -9,6 +9,7 @@ async fn hello(_request: Request) -> flareon::Result<Response> {
 }
 
 #[tokio::test]
+#[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
 async fn flareon_project_router_sub_path() {
     struct App1;
     impl FlareonApp for App1 {

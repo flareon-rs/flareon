@@ -257,6 +257,7 @@ mod tests {
     use crate::{FlareonApp, FlareonProject};
 
     #[test]
+    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
     fn static_files_add_and_get_file() {
         let mut static_files = StaticFiles::new();
         static_files.add_file("test.txt", "This is a test file");
@@ -338,6 +339,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
     async fn static_files_middleware_from_app_context() {
         struct App1;
         impl FlareonApp for App1 {

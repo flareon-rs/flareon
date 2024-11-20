@@ -7,6 +7,7 @@ use flareon_cli::migration_generator::{
 /// Test that the migration generator can generate a create model migration for
 /// a given model which compiles successfully.
 #[test]
+#[cfg_attr(miri, ignore)] // unsupported operation: extern static `pidfd_spawnp` is not supported by Miri
 fn create_model_compile_test() {
     let mut generator = MigrationGenerator::new(
         PathBuf::from("Cargo.toml"),
