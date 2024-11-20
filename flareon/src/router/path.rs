@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::fmt::Display;
 
 use log::debug;
-use regex::Regex;
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
@@ -15,30 +14,41 @@ impl PathMatcher {
     pub(crate) fn new<T: Into<String>>(path_pattern: T) -> Self {
         let path_pattern = path_pattern.into();
 
-        let mut last_end = 0;
-        let mut parts = Vec::new();
-        let param_regex = Regex::new(":([^/]+)").expect("Invalid regex");
-        for capture in param_regex.captures_iter(&path_pattern) {
-            let full_match = capture.get(0).expect("Could not get regex match");
-            let start = full_match.start();
-            if start > last_end {
-                parts.push(PathPart::Literal(path_pattern[last_end..start].to_string()));
-            }
-
-            let name = capture
-                .get(1)
-                .expect("Could not get regex capture")
-                .as_str()
-                .to_owned();
-            assert!(
-                Self::is_param_name_valid(&name),
-                "Invalid parameter name: `{name}`"
-            );
-            parts.push(PathPart::Param { name });
-            last_end = start + full_match.len();
+        #[derive(Debug, Copy, Clone)]
+        enum State {
+            Literal { start: usize },
+            Param { start: usize },
         }
-        if last_end < path_pattern.len() {
-            parts.push(PathPart::Literal(path_pattern[last_end..].to_string()));
+
+        let mut parts = Vec::new();
+        let mut state = State::Literal { start: 0 };
+
+        for (index, ch) in path_pattern.chars().map(Some).chain([None]).enumerate() {
+            match (ch, state) {
+                (Some('/') | None, State::Param { start }) => {
+                    let param_name = &path_pattern[start..index];
+                    assert!(
+                        Self::is_param_name_valid(param_name),
+                        "Invalid parameter name: `{param_name}`"
+                    );
+
+                    parts.push(PathPart::Param {
+                        name: param_name.to_string(),
+                    });
+                    state = State::Literal { start: index };
+                }
+                (Some(':') | None, State::Literal { start }) => {
+                    let literal = &path_pattern[start..index];
+                    if !literal.is_empty() {
+                        parts.push(PathPart::Literal(literal.to_string()));
+                    }
+                    state = State::Param { start: index + 1 };
+                }
+                (Some(':'), State::Param { .. }) => {
+                    panic!("Consecutive parameters are not allowed");
+                }
+                _ => {}
+            }
         }
 
         Self { parts }
@@ -239,6 +249,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn reverse_param_map_default() {
+        let map = ReverseParamMap::default();
+        assert_eq!(map.params.len(), 0);
+    }
+
+    #[test]
     fn path_parser_no_params() {
         let path_parser = PathMatcher::new("/users");
         assert_eq!(
@@ -292,6 +308,30 @@ mod tests {
                 "/abc"
             ))
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "Consecutive parameters are not allowed")]
+    fn path_parser_consecutive_params() {
+        let _ = PathMatcher::new("/users/:id:post_id");
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid parameter name: ``")]
+    fn path_parser_invalid_name_empty() {
+        let _ = PathMatcher::new("/users/:");
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid parameter name: `123`")]
+    fn path_parser_invalid_name_numeric() {
+        let _ = PathMatcher::new("/users/:123");
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid parameter name: `abc#$%`")]
+    fn path_parser_invalid_name_non_alphanumeric() {
+        let _ = PathMatcher::new("/users/:abc#$%");
     }
 
     #[test]

@@ -9,7 +9,7 @@ description = "Modern web framework focused on speed and ease of use - CLI tool.
 anyhow.workspace = true
 cargo_toml.workspace = true
 chrono.workspace = true
-clap.workspace = true
+clap = { workspace = true, features = ["derive", "env"] }
 clap-verbosity-flag.workspace = true
 darling.workspace = true
 env_logger.workspace = true

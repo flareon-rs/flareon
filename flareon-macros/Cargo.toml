@@ -16,8 +16,8 @@ path = "tests/compile_tests.rs"
 darling.workspace = true
 flareon_codegen.workspace = true
 proc-macro-crate.workspace = true
-proc-macro2.workspace = true
-quote.workspace = true
+proc-macro2 = { workspace = true, features = ["proc-macro"] }
+quote = { workspace = true, features = ["proc-macro"] }
 syn.workspace = true
 
 [dev-dependencies]
