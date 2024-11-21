@@ -41,6 +41,7 @@
     unused_import_braces,
     unused_qualifications
 )]
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 extern crate self as flareon;
 

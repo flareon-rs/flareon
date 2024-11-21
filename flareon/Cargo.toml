@@ -52,6 +52,10 @@ fake.workspace = true
 futures.workspace = true
 mockall.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [package.metadata.cargo-machete]
 ignored = [
     # askama doesn't seem to be working with minimal versions of its dependencies at the moment,
