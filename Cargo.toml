@@ -53,7 +53,6 @@ http = "1.1"
 http-body = "1"
 http-body-util = "0.1"
 indexmap = "2"
-itertools = "0.13"
 log = "0.4"
 mime_guess = { version = "2", default-features = false }
 mockall = "0.13"
@@ -63,13 +62,11 @@ prettyplease = "0.2"
 proc-macro-crate = "3"
 proc-macro2 = { version = "1", default-features = false }
 quote = { version = "1", default-features = false }
-rand = "0.8"
 rustversion = "1"
 sea-query = { version = "0.32.0-rc.2", default-features = false }
 sea-query-binder = { version = "0.7.0-rc.2", default-features = false }
 serde = "1"
 sha2 = "0.11.0-pre.4"
-slug = "0.1"
 sqlx = { version = "0.8", default-features = false }
 subtle = { version = "2", default-features = false }
 syn = { version = "2", default-features = false }
