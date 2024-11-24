@@ -1,14 +1,14 @@
 mod migrations;
 
 use askama::Template;
-use flareon::db::migrations::MigrationEngine;
-use flareon::db::{model, query, Database, Model};
+use flareon::config::{DatabaseConfig, ProjectConfig};
+use flareon::db::migrations::DynMigration;
+use flareon::db::{model, query, Model};
 use flareon::forms::Form;
 use flareon::request::{Request, RequestExt};
 use flareon::response::{Response, ResponseExt};
 use flareon::router::{Route, Router};
 use flareon::{reverse, Body, FlareonApp, FlareonProject, StatusCode};
-use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
 #[model]
@@ -24,12 +24,8 @@ struct IndexTemplate<'a> {
     todo_items: Vec<TodoItem>,
 }
 
-static DB: OnceCell<Database> = OnceCell::const_new();
-
 async fn index(request: Request) -> flareon::Result<Response> {
-    let db = DB.get().unwrap();
-
-    let todo_items = TodoItem::objects().all(db).await?;
+    let todo_items = TodoItem::objects().all(request.db()).await?;
     let index_template = IndexTemplate {
         request: &request,
         todo_items,
@@ -49,12 +45,11 @@ async fn add_todo(mut request: Request) -> flareon::Result<Response> {
     let todo_form = TodoForm::from_request(&mut request).await?.unwrap();
 
     {
-        let db = DB.get().unwrap();
         TodoItem {
             id: 0,
             title: todo_form.title,
         }
-        .save(db)
+        .save(request.db())
         .await?;
     }
 
@@ -69,8 +64,9 @@ async fn remove_todo(request: Request) -> flareon::Result<Response> {
     let todo_id = todo_id.parse::<i32>().expect("todo_id is not a number");
 
     {
-        let db = DB.get().unwrap();
-        query!(TodoItem, $id == todo_id).delete(db).await?;
+        query!(TodoItem, $id == todo_id)
+            .delete(request.db())
+            .await?;
     }
 
     Ok(reverse!(request, "index"))
@@ -83,6 +79,16 @@ impl FlareonApp for TodoApp {
         "todo-app"
     }
 
+    fn migrations(&self) -> Vec<Box<dyn DynMigration>> {
+        // TODO: this is way too complicated for the user-facing API
+        #[allow(trivial_casts)]
+        migrations::MIGRATIONS
+            .iter()
+            .copied()
+            .map(|x| Box::new(x) as Box<dyn DynMigration>)
+            .collect()
+    }
+
     fn router(&self) -> Router {
         Router::with_urls([
             Route::with_handler_and_name("/", index, "index"),
@@ -92,23 +98,22 @@ impl FlareonApp for TodoApp {
     }
 }
 
-#[tokio::main]
-async fn main() {
-    env_logger::init();
-
-    let db = DB
-        .get_or_init(|| async { Database::new("sqlite::memory:").await.unwrap() })
-        .await;
-    MigrationEngine::new(migrations::MIGRATIONS.iter().copied())
-        .run(db)
-        .await
-        .unwrap();
-
+#[flareon::main]
+async fn main() -> flareon::Result<FlareonProject> {
     let todo_project = FlareonProject::builder()
+        .config(
+            ProjectConfig::builder()
+                .database_config(
+                    DatabaseConfig::builder()
+                        .url("sqlite::memory:")
+                        .build()
+                        .unwrap(),
+                )
+                .build(),
+        )
         .register_app_with_views(TodoApp, "")
         .build()
-        .await
-        .unwrap();
+        .await?;
 
-    flareon::run(todo_project, "127.0.0.1:8080").await.unwrap();
+    Ok(todo_project)
 }

@@ -17,24 +17,20 @@ use crate::db::Database;
 use crate::request::{Request, RequestExt};
 use crate::response::Response;
 use crate::router::Router;
-use crate::{AppContext, Body, Error, Result};
+use crate::{AppContext, Body, BoxedHandler, Result};
 
 /// A test client for making requests to a Flareon project.
 ///
 /// Useful for End-to-End testing Flareon projects.
 #[derive(Debug)]
-pub struct Client<S> {
+pub struct Client {
     context: Arc<AppContext>,
-    handler: S,
+    handler: BoxedHandler,
 }
 
-impl<S> Client<S>
-where
-    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
-    S::Future: Send,
-{
+impl Client {
     #[must_use]
-    pub fn new(project: FlareonProject<S>) -> Self {
+    pub fn new(project: FlareonProject) -> Self {
         let (context, handler) = project.into_context();
         Self {
             context: Arc::new(context),

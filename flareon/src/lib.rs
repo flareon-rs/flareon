@@ -78,6 +78,7 @@ use derive_more::{Debug, Deref, Display, From};
 pub use error::Error;
 use flareon::config::DatabaseConfig;
 use flareon::router::RouterService;
+pub use flareon_macros::main;
 use futures_core::Stream;
 use futures_util::FutureExt;
 use http::request::Parts;
@@ -86,6 +87,7 @@ use log::info;
 use request::Request;
 use router::{Route, Router};
 use sync_wrapper::SyncWrapper;
+use tower::util::BoxCloneService;
 use tower::Service;
 
 use crate::admin::AdminModelManager;
@@ -333,12 +335,13 @@ impl http_body::Body for Body {
     }
 }
 
+pub type BoxedHandler = BoxCloneService<Request, Response, Error>;
+
 /// A Flareon project, ready to be run.
 #[derive(Debug)]
-// TODO add Middleware type?
-pub struct FlareonProject<S> {
+pub struct FlareonProject {
     context: AppContext,
-    handler: S,
+    handler: BoxedHandler,
 }
 
 /// A part of [`FlareonProject`] that contains the shared context and configs
@@ -466,7 +469,7 @@ impl FlareonProjectBuilder<Uninitialized> {
     }
 
     /// Builds the Flareon project instance.
-    pub async fn build(self) -> Result<FlareonProject<RouterService>> {
+    pub async fn build(self) -> Result<FlareonProject> {
         self.into_builder_with_service().build().await
     }
 
@@ -483,7 +486,11 @@ impl FlareonProjectBuilder<Uninitialized> {
     }
 }
 
-impl<S: Service<Request>> FlareonProjectBuilder<S> {
+impl<S> FlareonProjectBuilder<S>
+where
+    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
+    S::Future: Send,
+{
     #[must_use]
     pub fn middleware<M: tower::Layer<S>>(
         self,
@@ -510,13 +517,13 @@ impl<S: Service<Request>> FlareonProjectBuilder<S> {
     }
 
     /// Builds the Flareon project instance.
-    pub async fn build(mut self) -> Result<FlareonProject<S>> {
+    pub async fn build(mut self) -> Result<FlareonProject> {
         let database = Self::init_database(self.context.config.database_config()).await?;
         self.context.database = Some(database);
 
         Ok(FlareonProject {
             context: self.context,
-            handler: self.handler,
+            handler: BoxedHandler::new(self.handler),
         })
     }
 
@@ -532,19 +539,14 @@ impl Default for FlareonProjectBuilder<Uninitialized> {
     }
 }
 
-impl FlareonProject<()> {
+impl FlareonProject {
     #[must_use]
     pub fn builder() -> FlareonProjectBuilder<Uninitialized> {
         FlareonProjectBuilder::default()
     }
-}
 
-impl<S> FlareonProject<S>
-where
-    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
-{
     #[must_use]
-    pub fn into_context(self) -> (AppContext, S) {
+    pub fn into_context(self) -> (AppContext, BoxedHandler) {
         (self.context, self.handler)
     }
 }
@@ -557,11 +559,7 @@ where
 /// # Errors
 ///
 /// This function returns an error if the server fails to start.
-pub async fn run<S>(project: FlareonProject<S>, address_str: &str) -> Result<()>
-where
-    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
-    S::Future: Send,
-{
+pub async fn run(project: FlareonProject, address_str: &str) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(address_str)
         .await
         .map_err(|e| ErrorRepr::StartServer { source: e })?;
@@ -582,11 +580,7 @@ where
 /// # Errors
 ///
 /// This function returns an error if the server fails to start.
-pub async fn run_at<S>(project: FlareonProject<S>, listener: tokio::net::TcpListener) -> Result<()>
-where
-    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
-    S::Future: Send,
-{
+pub async fn run_at(project: FlareonProject, listener: tokio::net::TcpListener) -> Result<()> {
     let (mut context, mut project_handler) = project.into_context();
 
     if let Some(database) = &context.database {
@@ -673,6 +667,13 @@ where
     Ok(())
 }
 
+pub async fn run_cli(project: FlareonProject) -> Result<()> {
+    // TODO: we want to have a (extensible) CLI interface soon, but for simplicity
+    // we just run the server now
+    run(project, "127.0.0.1:8080").await?;
+    Ok(())
+}
+
 fn request_parts_for_diagnostics(request: Request) -> (Option<Parts>, Request) {
     if config::DEBUG_MODE {
         let (parts, body) = request.into_parts();
@@ -697,11 +698,10 @@ pub(crate) fn prepare_request(request: &mut Request, context: Arc<AppContext>) {
     request.extensions_mut().insert(context);
 }
 
-async fn pass_to_axum<S>(request: Request, handler: &mut S) -> Result<axum::response::Response>
-where
-    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
-    S::Future: Send,
-{
+async fn pass_to_axum(
+    request: Request,
+    handler: &mut BoxedHandler,
+) -> Result<axum::response::Response> {
     poll_fn(|cx| handler.poll_ready(cx)).await?;
     let response = handler.call(request).await?;
 

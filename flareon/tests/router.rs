@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use flareon::request::{Request, RequestExt};
 use flareon::response::{Response, ResponseExt};
-use flareon::router::{Route, Router, RouterService};
+use flareon::router::{Route, Router};
 use flareon::test::Client;
 use flareon::{Body, FlareonApp, FlareonProject, StatusCode};
 
@@ -43,7 +43,7 @@ async fn path_params() {
 }
 
 #[must_use]
-async fn project() -> FlareonProject<RouterService> {
+async fn project() -> FlareonProject {
     struct RouterApp;
     impl FlareonApp for RouterApp {
         fn name(&self) -> &'static str {

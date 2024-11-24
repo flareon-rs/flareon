@@ -26,3 +26,11 @@ fn func_query() {
     t.compile_fail("tests/ui/func_query_double_field.rs");
     t.compile_fail("tests/ui/func_query_invalid_field.rs");
 }
+
+#[rustversion::attr(not(nightly), ignore)]
+#[test]
+fn attr_main() {
+    let t = trybuild::TestCases::new();
+    t.pass("tests/ui/attr_main.rs");
+    t.compile_fail("tests/ui/attr_main_args.rs");
+}

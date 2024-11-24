@@ -800,9 +800,7 @@ dependencies = [
 name = "example-admin"
 version = "0.1.0"
 dependencies = [
- "env_logger",
  "flareon",
- "tokio",
 ]
 
 [[package]]
@@ -810,7 +808,6 @@ name = "example-hello-world"
 version = "0.1.0"
 dependencies = [
  "flareon",
- "tokio",
 ]
 
 [[package]]
@@ -819,7 +816,6 @@ version = "0.1.0"
 dependencies = [
  "askama",
  "flareon",
- "tokio",
 ]
 
 [[package]]
@@ -827,9 +823,7 @@ name = "example-todo-list"
 version = "0.1.0"
 dependencies = [
  "askama",
- "env_logger",
  "flareon",
- "tokio",
 ]
 
 [[package]]

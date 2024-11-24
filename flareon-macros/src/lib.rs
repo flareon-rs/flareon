@@ -1,5 +1,6 @@
 mod dbtest;
 mod form;
+mod main_fn;
 mod model;
 mod query;
 
@@ -12,6 +13,7 @@ use syn::{parse_macro_input, ItemFn};
 
 use crate::dbtest::fn_to_dbtest;
 use crate::form::impl_form_for_struct;
+use crate::main_fn::fn_to_flareon_main;
 use crate::model::impl_model_for_struct;
 use crate::query::{query_to_tokens, Query};
 
@@ -118,6 +120,14 @@ pub fn query(input: TokenStream) -> TokenStream {
 pub fn dbtest(_args: TokenStream, input: TokenStream) -> TokenStream {
     let fn_input = parse_macro_input!(input as ItemFn);
     fn_to_dbtest(fn_input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+#[proc_macro_attribute]
+pub fn main(_args: TokenStream, input: TokenStream) -> TokenStream {
+    let fn_input = parse_macro_input!(input as ItemFn);
+    fn_to_flareon_main(fn_input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

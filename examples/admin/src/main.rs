@@ -36,10 +36,8 @@ impl FlareonApp for HelloApp {
     }
 }
 
-#[tokio::main]
-async fn main() {
-    env_logger::init();
-
+#[flareon::main]
+async fn main() -> flareon::Result<FlareonProject> {
     let flareon_project = FlareonProject::builder()
         .config(
             ProjectConfig::builder()
@@ -57,10 +55,7 @@ async fn main() {
         .middleware_with_context(StaticFilesMiddleware::from_app_context)
         .middleware(SessionMiddleware::new())
         .build()
-        .await
-        .unwrap();
+        .await?;
 
-    flareon::run(flareon_project, "127.0.0.1:8000")
-        .await
-        .unwrap();
+    Ok(flareon_project)
 }
