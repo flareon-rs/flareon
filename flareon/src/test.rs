@@ -11,7 +11,9 @@ use tower_sessions::{MemoryStore, Session};
 use crate::auth::db::DatabaseUserBackend;
 use crate::config::ProjectConfig;
 #[cfg(feature = "db")]
-use crate::db::migrations::{DynMigration, MigrationEngine, MigrationWrapper};
+use crate::db::migrations::{
+    DynMigration, MigrationDependency, MigrationEngine, MigrationWrapper, Operation,
+};
 #[cfg(feature = "db")]
 use crate::db::Database;
 use crate::request::{Request, RequestExt};
@@ -299,7 +301,7 @@ impl TestDatabase {
 
     pub async fn run_migrations(&mut self) -> &mut Self {
         if !self.migrations.is_empty() {
-            let engine = MigrationEngine::new(std::mem::take(&mut self.migrations));
+            let engine = MigrationEngine::new(std::mem::take(&mut self.migrations)).unwrap();
             engine.run(&self.database()).await.unwrap();
         }
         self
@@ -347,4 +349,50 @@ enum TestDatabaseKind {
     Sqlite,
     Postgres { db_url: String, db_name: String },
     MySql { db_url: String, db_name: String },
+}
+
+#[cfg(feature = "db")]
+#[derive(Debug, Clone)]
+pub struct TestMigration {
+    app_name: &'static str,
+    name: &'static str,
+    dependencies: Vec<MigrationDependency>,
+    operations: Vec<Operation>,
+}
+
+#[cfg(feature = "db")]
+impl TestMigration {
+    #[must_use]
+    pub fn new<D: Into<Vec<MigrationDependency>>, O: Into<Vec<Operation>>>(
+        app_name: &'static str,
+        name: &'static str,
+        dependencies: D,
+        operations: O,
+    ) -> Self {
+        Self {
+            app_name,
+            name,
+            dependencies: dependencies.into(),
+            operations: operations.into(),
+        }
+    }
+}
+
+#[cfg(feature = "db")]
+impl DynMigration for TestMigration {
+    fn app_name(&self) -> &str {
+        self.app_name
+    }
+
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    fn dependencies(&self) -> &[MigrationDependency] {
+        &self.dependencies
+    }
+
+    fn operations(&self) -> &[Operation] {
+        &self.operations
+    }
 }

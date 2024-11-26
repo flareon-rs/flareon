@@ -603,7 +603,7 @@ pub async fn run_at(project: FlareonProject, listener: tokio::net::TcpListener) 
         for app in &context.apps {
             migrations.extend(app.migrations());
         }
-        let migration_engine = MigrationEngine::new(migrations);
+        let migration_engine = MigrationEngine::new(migrations)?;
         migration_engine.run(database).await?;
     }
 

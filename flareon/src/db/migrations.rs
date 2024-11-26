@@ -1,11 +1,23 @@
+mod sorter;
+
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
 use flareon_macros::{model, query};
 use log::info;
 use sea_query::{ColumnDef, StringLen};
+use thiserror::Error;
 
+use crate::db::migrations::sorter::{MigrationSorter, MigrationSorterError};
 use crate::db::{ColumnType, Database, DatabaseField, Identifier, Result};
+
+#[derive(Debug, Clone, Error)]
+#[non_exhaustive]
+pub enum MigrationEngineError {
+    /// An error occurred while determining the correct order of migrations.
+    #[error("Error while determining the correct order of migrations")]
+    MigrationSortError(#[from] MigrationSorterError),
+}
 
 /// A migration engine that can run migrations.
 #[derive(Debug)]
@@ -14,25 +26,27 @@ pub struct MigrationEngine {
 }
 
 impl MigrationEngine {
-    #[must_use]
-    pub fn new<T: DynMigration + 'static, V: IntoIterator<Item = T>>(migrations: V) -> Self {
+    pub fn new<T: DynMigration + 'static, V: IntoIterator<Item = T>>(
+        migrations: V,
+    ) -> Result<Self> {
         let migrations = migrations.into_iter().map(MigrationWrapper::new).collect();
         Self::from_wrapper(migrations)
     }
 
-    #[must_use]
-    pub fn from_wrapper(mut migrations: Vec<MigrationWrapper>) -> Self {
-        Self::sort_migrations(&mut migrations);
-        Self { migrations }
+    pub fn from_wrapper(mut migrations: Vec<MigrationWrapper>) -> Result<Self> {
+        Self::sort_migrations(&mut migrations)?;
+        Ok(Self { migrations })
     }
 
     /// Sorts the migrations by app name and migration name to ensure that the
     /// order of applying migrations is consistent and deterministic. Then
     /// determines the correct order of applying migrations based on the
     /// dependencies between them.
-    pub fn sort_migrations<T: DynMigration>(migrations: &mut [T]) {
-        migrations.sort_by(|a, b| (a.app_name(), a.name()).cmp(&(b.app_name(), b.name())));
-        // TODO: Determine the correct order based on the dependencies
+    pub fn sort_migrations<T: DynMigration>(migrations: &mut [T]) -> Result<()> {
+        MigrationSorter::new(migrations)
+            .sort()
+            .map_err(MigrationEngineError::from)?;
+        Ok(())
     }
 
     /// Runs the migrations. If a migration is already applied, it will be
@@ -51,7 +65,9 @@ impl MigrationEngine {
     /// # Examples
     ///
     /// ```
-    /// use flareon::db::migrations::{Field, Migration, MigrationEngine, Operation};
+    /// use flareon::db::migrations::{
+    ///     Field, Migration, MigrationDependency, MigrationEngine, Operation,
+    /// };
     /// use flareon::db::{Database, DatabaseField, Identifier};
     /// use flareon::Result;
     ///
@@ -60,6 +76,7 @@ impl MigrationEngine {
     /// impl Migration for MyMigration {
     ///     const APP_NAME: &'static str = "todoapp";
     ///     const MIGRATION_NAME: &'static str = "m_0001_initial";
+    ///     const DEPENDENCIES: &'static [MigrationDependency] = &[];
     ///     const OPERATIONS: &'static [Operation] = &[Operation::create_model()
     ///         .table_name(Identifier::new("todoapp__my_model"))
     ///         .fields(&[
@@ -73,7 +90,7 @@ impl MigrationEngine {
     ///
     /// # #[tokio::main]
     /// # async fn main() -> Result<()> {
-    /// let engine = MigrationEngine::new([MyMigration]);
+    /// let engine = MigrationEngine::new([MyMigration])?;
     /// let database = Database::new("sqlite::memory:").await?;
     /// engine.run(&database).await?;
     /// # Ok(())
@@ -504,12 +521,14 @@ impl AddFieldBuilder {
 pub trait Migration {
     const APP_NAME: &'static str;
     const MIGRATION_NAME: &'static str;
+    const DEPENDENCIES: &'static [MigrationDependency];
     const OPERATIONS: &'static [Operation];
 }
 
 pub trait DynMigration {
     fn app_name(&self) -> &str;
     fn name(&self) -> &str;
+    fn dependencies(&self) -> &[MigrationDependency];
     fn operations(&self) -> &[Operation];
 }
 
@@ -520,6 +539,10 @@ impl<T: Migration + Send + Sync + 'static> DynMigration for T {
 
     fn name(&self) -> &str {
         Self::MIGRATION_NAME
+    }
+
+    fn dependencies(&self) -> &[MigrationDependency] {
+        Self::DEPENDENCIES
     }
 
     fn operations(&self) -> &[Operation] {
@@ -536,6 +559,10 @@ impl DynMigration for &dyn DynMigration {
         DynMigration::name(*self)
     }
 
+    fn dependencies(&self) -> &[MigrationDependency] {
+        DynMigration::dependencies(*self)
+    }
+
     fn operations(&self) -> &[Operation] {
         DynMigration::operations(*self)
     }
@@ -548,6 +575,10 @@ impl DynMigration for Box<dyn DynMigration> {
 
     fn name(&self) -> &str {
         DynMigration::name(&**self)
+    }
+
+    fn dependencies(&self) -> &[MigrationDependency] {
+        DynMigration::dependencies(&**self)
     }
 
     fn operations(&self) -> &[Operation] {
@@ -571,6 +602,10 @@ impl DynMigration for MigrationWrapper {
 
     fn name(&self) -> &str {
         self.0.name()
+    }
+
+    fn dependencies(&self) -> &[MigrationDependency] {
+        self.0.dependencies()
     }
 
     fn operations(&self) -> &[Operation] {
@@ -613,6 +648,52 @@ impl From<ColumnType> for sea_query::ColumnType {
     }
 }
 
+/// A migration dependency: a relationship between two migrations that tells the
+/// migration engine which migrations need to be applied before
+/// others.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct MigrationDependency {
+    inner: MigrationDependencyInner,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+enum MigrationDependencyInner {
+    Migration {
+        app: &'static str,
+        migration: &'static str,
+    },
+    Model {
+        app: &'static str,
+        model_name: &'static str,
+    },
+}
+
+impl MigrationDependency {
+    #[must_use]
+    const fn new(inner: MigrationDependencyInner) -> Self {
+        Self { inner }
+    }
+
+    /// Creates a dependency on another migration.
+    ///
+    /// This ensures that the migration engine will apply the migration with
+    /// given app and migration name before the current migration.
+    #[must_use]
+    pub const fn migration(app: &'static str, migration: &'static str) -> Self {
+        Self::new(MigrationDependencyInner::Migration { app, migration })
+    }
+
+    /// Creates a dependency on a model.
+    ///
+    /// This ensures that the migration engine will apply the migration that
+    /// creates the model with the given app and model name before the current
+    /// migration.
+    #[must_use]
+    pub const fn model(app: &'static str, model_name: &'static str) -> Self {
+        Self::new(MigrationDependencyInner::Model { app, model_name })
+    }
+}
+
 #[derive(Debug)]
 #[model(table_name = "flareon__migrations", model_type = "internal")]
 struct AppliedMigration {
@@ -651,6 +732,7 @@ mod tests {
     impl Migration for TestMigration {
         const APP_NAME: &'static str = "testapp";
         const MIGRATION_NAME: &'static str = "m_0001_initial";
+        const DEPENDENCIES: &'static [MigrationDependency] = &[];
         const OPERATIONS: &'static [Operation] = &[Operation::create_model()
             .table_name(Identifier::new("testapp__test_model"))
             .fields(&[
@@ -664,7 +746,7 @@ mod tests {
 
     #[flareon_macros::dbtest]
     async fn test_migration_engine_run(test_db: &mut TestDatabase) {
-        let engine = MigrationEngine::new([TestMigration]);
+        let engine = MigrationEngine::new([TestMigration]).unwrap();
 
         let result = engine.run(&test_db.database()).await;
 

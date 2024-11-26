@@ -5,6 +5,7 @@ pub(super) struct Migration;
 impl ::flareon::db::migrations::Migration for Migration {
     const APP_NAME: &'static str = "flareon_auth";
     const MIGRATION_NAME: &'static str = "m_0001_initial";
+    const DEPENDENCIES: &'static [::flareon::db::migrations::MigrationDependency] = &[];
     const OPERATIONS: &'static [::flareon::db::migrations::Operation] = &[
         ::flareon::db::migrations::Operation::create_model()
             .table_name(::flareon::db::Identifier::new("database_user"))

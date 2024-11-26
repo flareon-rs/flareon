@@ -54,6 +54,9 @@ pub enum DatabaseError {
     /// Error when decoding database value.
     #[error("Error when decoding database value: {0}")]
     ValueDecode(Box<dyn std::error::Error + 'static + Send + Sync>),
+    /// Error when applying migrations.
+    #[error("Error when applying migrations: {0}")]
+    MigrationError(#[from] migrations::MigrationEngineError),
 }
 
 impl DatabaseError {

@@ -85,7 +85,7 @@ impl MigrationGenerator {
         source_files: Vec<SourceFile>,
     ) -> anyhow::Result<Option<MigrationToWrite>> {
         let AppState { models, migrations } = self.process_source_files(source_files)?;
-        let migration_processor = MigrationProcessor::new(migrations);
+        let migration_processor = MigrationProcessor::new(migrations)?;
         let migration_models = migration_processor.latest_models();
         let (modified_models, operations) = self.generate_operations(&models, &migration_models);
 
@@ -93,8 +93,13 @@ impl MigrationGenerator {
             Ok(None)
         } else {
             let migration_name = migration_processor.next_migration_name()?;
-            let content =
-                self.generate_migration_file_content(&migration_name, &modified_models, operations);
+            let dependencies = migration_processor.dependencies();
+            let content = self.generate_migration_file_content(
+                &migration_name,
+                &modified_models,
+                dependencies,
+                operations,
+            );
             Ok(Some(MigrationToWrite::new(migration_name, content)))
         }
     }
@@ -397,11 +402,16 @@ impl MigrationGenerator {
         &self,
         migration_name: &str,
         modified_models: &[ModelInSource],
+        dependencies: Vec<DynDependency>,
         operations: Vec<DynOperation>,
     ) -> String {
         let operations: Vec<_> = operations
             .into_iter()
             .map(|operation| operation.repr())
+            .collect();
+        let dependencies: Vec<_> = dependencies
+            .into_iter()
+            .map(|dependency| dependency.repr())
             .collect();
 
         let app_name = self.options.app_name.as_ref().unwrap_or(&self.crate_name);
@@ -412,6 +422,9 @@ impl MigrationGenerator {
             impl ::flareon::db::migrations::Migration for Migration {
                 const APP_NAME: &'static str = #app_name;
                 const MIGRATION_NAME: &'static str = #migration_name;
+                const DEPENDENCIES: &'static [::flareon::db::migrations::MigrationDependency] = &[
+                    #(#dependencies,)*
+                ];
                 const OPERATIONS: &'static [::flareon::db::migrations::Operation] = &[
                     #(#operations,)*
                 ];
@@ -825,10 +838,9 @@ struct MigrationProcessor {
 }
 
 impl MigrationProcessor {
-    #[must_use]
-    fn new(mut migrations: Vec<Migration>) -> Self {
-        MigrationEngine::sort_migrations(&mut migrations);
-        Self { migrations }
+    fn new(mut migrations: Vec<Migration>) -> anyhow::Result<Self> {
+        MigrationEngine::sort_migrations(&mut migrations)?;
+        Ok(Self { migrations })
     }
 
     /// Returns the latest (in the order of applying migrations) versions of the
@@ -872,6 +884,18 @@ impl MigrationProcessor {
         let date_time = now.format("%Y%m%d_%H%M%S");
 
         Ok(format!("m_{migration_number:04}_auto_{date_time}"))
+    }
+
+    fn dependencies(&self) -> Vec<DynDependency> {
+        if self.migrations.is_empty() {
+            return Vec::new();
+        }
+
+        let last_migration = self.migrations.last().unwrap();
+        vec![DynDependency::Migration {
+            app: last_migration.app_name.clone(),
+            migration: last_migration.name.clone(),
+        }]
     }
 }
 
@@ -960,8 +984,39 @@ impl DynMigration for Migration {
         &self.name
     }
 
+    fn dependencies(&self) -> &[flareon::db::migrations::MigrationDependency] {
+        &[]
+    }
+
     fn operations(&self) -> &[flareon::db::migrations::Operation] {
         &[]
+    }
+}
+
+/// A version of [`flareon::db::migrations::MigrationDependency`] that can be
+/// created at runtime and is using codegen types.
+///
+/// This is used to generate migration files.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum DynDependency {
+    Migration { app: String, migration: String },
+    Model { app: String, model_name: String },
+}
+
+impl Repr for DynDependency {
+    fn repr(&self) -> TokenStream {
+        match self {
+            Self::Migration { app, migration } => {
+                quote! {
+                    ::flareon::db::migrations::MigrationDependency::migration(#app, #migration)
+                }
+            }
+            Self::Model { app, model_name } => {
+                quote! {
+                    ::flareon::db::migrations::MigrationDependency::model(#app, #model_name)
+                }
+            }
+        }
     }
 }
 
@@ -1053,10 +1108,38 @@ mod tests {
     #[test]
     fn migration_processor_next_migration_name_empty() {
         let migrations = vec![];
-        let processor = MigrationProcessor::new(migrations);
+        let processor = MigrationProcessor::new(migrations).unwrap();
 
         let next_migration_name = processor.next_migration_name().unwrap();
         assert_eq!(next_migration_name, "m_0001_initial");
+    }
+
+    #[test]
+    fn migration_processor_dependencies_empty() {
+        let migrations = vec![];
+        let processor = MigrationProcessor::new(migrations).unwrap();
+
+        let next_migration_name = processor.dependencies();
+        assert_eq!(next_migration_name, vec![]);
+    }
+
+    #[test]
+    fn migration_processor_dependencies_previous() {
+        let migrations = vec![Migration {
+            app_name: "app1".to_string(),
+            name: "m0001_initial".to_string(),
+            models: vec![],
+        }];
+        let processor = MigrationProcessor::new(migrations).unwrap();
+
+        let next_migration_name = processor.dependencies();
+        assert_eq!(
+            next_migration_name,
+            vec![DynDependency::Migration {
+                app: "app1".to_string(),
+                migration: "m0001_initial".to_string(),
+            }]
+        );
     }
 
     #[test]
