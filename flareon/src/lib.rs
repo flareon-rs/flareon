@@ -42,6 +42,12 @@
     unused_qualifications
 )]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/flareon-rs/flareon/refs/heads/logo/assets/logo-docs.svg"
+)]
+#![doc(
+    html_favicon_url = "https://raw.githubusercontent.com/flareon-rs/flareon/refs/heads/logo/assets/favicon.svg"
+)]
 
 extern crate self as flareon;
 
