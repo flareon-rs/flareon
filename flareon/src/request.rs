@@ -17,6 +17,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+#[cfg(feature = "json")]
+use flareon::headers::JSON_CONTENT_TYPE;
 use indexmap::IndexMap;
 use tower_sessions::Session;
 
@@ -78,11 +80,40 @@ pub trait RequestExt: private::Sealed {
     /// Throws an error if the request method is not GET or HEAD and the content
     /// type is not `application/x-www-form-urlencoded`.
     /// Throws an error if the request body could not be read.
-    ///
-    /// # Returns
-    ///
-    /// The request body as bytes.
     async fn form_data(&mut self) -> Result<Bytes>;
+
+    /// Get the request body as JSON and deserialize it into a type `T`
+    /// implementing `serde::de::DeserializeOwned`.
+    ///
+    /// The content type of the request must be `application/json`.
+    ///
+    /// # Errors
+    ///
+    /// Throws an error if the content type is not `application/json`.
+    /// Throws an error if the request body could not be read.
+    /// Throws an error if the request body could not be deserialized - either
+    /// because the JSON is invalid or because the deserialization to the target
+    /// structure failed.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flareon::request::{Request, RequestExt};
+    /// use flareon::response::{Response, ResponseExt};
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Serialize, Deserialize)]
+    /// struct MyData {
+    ///     hello: String,
+    /// }
+    ///
+    /// async fn my_handler(mut request: Request) -> flareon::Result<Response> {
+    ///     let data: MyData = request.json().await?;
+    ///     Ok(Response::new_json(flareon::StatusCode::OK, &data)?)
+    /// }
+    /// ```
+    #[cfg(feature = "json")]
+    async fn json<T: serde::de::DeserializeOwned>(&mut self) -> Result<T>;
 
     #[must_use]
     fn content_type(&self) -> Option<&http::HeaderValue>;
@@ -152,6 +183,16 @@ impl RequestExt for Request {
         }
     }
 
+    #[cfg(feature = "json")]
+    async fn json<T: serde::de::DeserializeOwned>(&mut self) -> Result<T> {
+        self.expect_content_type(JSON_CONTENT_TYPE)?;
+
+        let body = std::mem::take(self.body_mut());
+        let bytes = body.into_bytes().await?;
+
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
     fn content_type(&self) -> Option<&http::HeaderValue> {
         self.headers().get(http::header::CONTENT_TYPE)
     }
@@ -203,4 +244,56 @@ impl PathParams {
 
 pub(crate) fn query_pairs(bytes: &Bytes) -> impl Iterator<Item = (Cow<str>, Cow<str>)> {
     form_urlencoded::parse(bytes.as_ref())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_form_data() {
+        let mut request = http::Request::builder()
+            .method(http::Method::POST)
+            .header(http::header::CONTENT_TYPE, FORM_CONTENT_TYPE)
+            .body(Body::fixed("hello=world"))
+            .unwrap();
+
+        let bytes = request.form_data().await.unwrap();
+        assert_eq!(bytes, Bytes::from_static(b"hello=world"));
+    }
+
+    #[cfg(feature = "json")]
+    #[tokio::test]
+    async fn test_json() {
+        let mut request = http::Request::builder()
+            .method(http::Method::POST)
+            .header(http::header::CONTENT_TYPE, JSON_CONTENT_TYPE)
+            .body(Body::fixed(r#"{"hello":"world"}"#))
+            .unwrap();
+
+        let data: serde_json::Value = request.json().await.unwrap();
+        assert_eq!(data, serde_json::json!({"hello": "world"}));
+    }
+
+    #[test]
+    fn test_path_params() {
+        let mut path_params = PathParams::new();
+        path_params.insert("name".into(), "world".into());
+
+        assert_eq!(path_params.get("name"), Some("world"));
+        assert_eq!(path_params.get("missing"), None);
+    }
+
+    #[test]
+    fn test_query_pairs() {
+        let bytes = Bytes::from_static(b"hello=world&foo=bar");
+        let pairs: Vec<_> = query_pairs(&bytes).collect();
+        assert_eq!(
+            pairs,
+            vec![
+                (Cow::from("hello"), Cow::from("world")),
+                (Cow::from("foo"), Cow::from("bar"))
+            ]
+        );
+    }
 }

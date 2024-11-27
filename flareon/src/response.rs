@@ -13,6 +13,8 @@
 //! ```
 
 use crate::headers::HTML_CONTENT_TYPE;
+#[cfg(feature = "json")]
+use crate::headers::JSON_CONTENT_TYPE;
 use crate::{Body, StatusCode};
 
 const RESPONSE_BUILD_FAILURE: &str = "Failed to build response";
@@ -31,12 +33,44 @@ mod private {
 ///
 /// This trait is sealed since it doesn't make sense to be implemented for types
 /// outside the context of Flareon.
-pub trait ResponseExt: private::Sealed {
+pub trait ResponseExt: Sized + private::Sealed {
     #[must_use]
     fn builder() -> http::response::Builder;
 
     #[must_use]
     fn new_html(status: StatusCode, body: Body) -> Self;
+
+    /// Create a new JSON response.
+    ///
+    /// This function will create a new response with a content type of
+    /// `application/json` and a body that is the JSON-serialized version of the
+    /// provided instance of a type implementing `serde::Serialize`.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the data could not be serialized
+    /// to JSON.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use flareon::response::{Response, ResponseExt};
+    /// use flareon::{Body, StatusCode};
+    /// use serde::Serialize;
+    ///
+    /// #[derive(Serialize)]
+    /// struct MyData {
+    ///     hello: String,
+    /// }
+    ///
+    /// let data = MyData {
+    ///     hello: String::from("world"),
+    /// };
+    /// let response = Response::new_json(StatusCode::OK, &data)?;
+    /// # Ok::<(), flareon::Error>(())
+    /// ```
+    #[cfg(feature = "json")]
+    fn new_json<T: ?Sized + serde::Serialize>(status: StatusCode, data: &T) -> crate::Result<Self>;
 
     #[must_use]
     fn new_redirect<T: Into<String>>(location: T) -> Self;
@@ -59,6 +93,15 @@ impl ResponseExt for Response {
             .expect(RESPONSE_BUILD_FAILURE)
     }
 
+    #[cfg(feature = "json")]
+    fn new_json<T: ?Sized + serde::Serialize>(status: StatusCode, data: &T) -> crate::Result<Self> {
+        Ok(http::Response::builder()
+            .status(status)
+            .header(http::header::CONTENT_TYPE, JSON_CONTENT_TYPE)
+            .body(Body::fixed(serde_json::to_string(data)?))
+            .expect(RESPONSE_BUILD_FAILURE))
+    }
+
     #[must_use]
     fn new_redirect<T: Into<String>>(location: T) -> Self {
         http::Response::builder()
@@ -74,6 +117,7 @@ mod tests {
     use super::*;
     use crate::headers::HTML_CONTENT_TYPE;
     use crate::response::{Response, ResponseExt};
+    use crate::BodyInner;
 
     #[test]
     fn response_new_html() {
@@ -84,6 +128,33 @@ mod tests {
             response.headers().get(http::header::CONTENT_TYPE).unwrap(),
             HTML_CONTENT_TYPE
         );
+    }
+
+    #[test]
+    #[cfg(feature = "json")]
+    fn response_new_json() {
+        #[derive(serde::Serialize)]
+        struct MyData {
+            hello: String,
+        }
+
+        let data = MyData {
+            hello: String::from("world"),
+        };
+        let response = Response::new_json(StatusCode::OK, &data).unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(http::header::CONTENT_TYPE).unwrap(),
+            JSON_CONTENT_TYPE
+        );
+        match &response.body().inner {
+            BodyInner::Fixed(fixed) => {
+                assert_eq!(fixed, r#"{"hello":"world"}"#);
+            }
+            _ => {
+                panic!("Expected fixed body");
+            }
+        }
     }
 
     #[test]

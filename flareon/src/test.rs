@@ -66,6 +66,8 @@ pub struct TestRequestBuilder {
     #[cfg(feature = "db")]
     database: Option<Arc<Database>>,
     form_data: Option<Vec<(String, String)>>,
+    #[cfg(feature = "json")]
+    json_data: Option<String>,
 }
 
 impl TestRequestBuilder {
@@ -140,6 +142,12 @@ impl TestRequestBuilder {
         self
     }
 
+    #[cfg(feature = "json")]
+    pub fn json<T: serde::Serialize>(&mut self, data: &T) -> &mut Self {
+        self.json_data = Some(serde_json::to_string(data).expect("Failed to serialize JSON"));
+        self
+    }
+
     #[must_use]
     pub fn build(&mut self) -> http::Request<Body> {
         let mut request = http::Request::builder()
@@ -175,6 +183,15 @@ impl TestRequestBuilder {
             request.headers_mut().insert(
                 http::header::CONTENT_TYPE,
                 http::HeaderValue::from_static("application/x-www-form-urlencoded"),
+            );
+        }
+
+        #[cfg(feature = "json")]
+        if let Some(json_data) = &self.json_data {
+            *request.body_mut() = Body::fixed(json_data.clone());
+            request.headers_mut().insert(
+                http::header::CONTENT_TYPE,
+                http::HeaderValue::from_static("application/json"),
             );
         }
 

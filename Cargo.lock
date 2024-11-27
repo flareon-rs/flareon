@@ -810,6 +810,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-json"
+version = "0.1.0"
+dependencies = [
+ "flareon",
+ "serde",
+]
+
+[[package]]
 name = "example-sessions"
 version = "0.1.0"
 dependencies = [
@@ -876,6 +884,7 @@ dependencies = [
  "sea-query",
  "sea-query-binder",
  "serde",
+ "serde_json",
  "sha2 0.11.0-pre.4",
  "sqlx",
  "subtle",

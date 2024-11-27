@@ -9,6 +9,7 @@ members = [
     "examples/todo-list",
     "examples/sessions",
     "examples/admin",
+    "examples/json",
 ]
 resolver = "2"
 
@@ -67,6 +68,7 @@ rustversion = "1"
 sea-query = { version = "0.32.0-rc.2", default-features = false }
 sea-query-binder = { version = "0.7.0-rc.2", default-features = false }
 serde = "1"
+serde_json = "1"
 sha2 = "0.11.0-pre.4"
 sqlx = { version = "0.8", default-features = false }
 subtle = { version = "2", default-features = false }

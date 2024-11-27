@@ -1,0 +1,10 @@
+[package]
+name = "example-json"
+version = "0.1.0"
+publish = false
+description = "JSON - Flareon example."
+edition = "2021"
+
+[dependencies]
+flareon = { path = "../../flareon" }
+serde = "1"
