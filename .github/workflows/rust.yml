@@ -155,7 +155,7 @@ jobs:
       - name: Run grcov
         run: grcov . --binary-path target/debug/deps/ -s . -t lcov --branch --ignore-not-existing --ignore '../**' --ignore '/*' --ignore 'examples/**' -o coverage.lcov
 
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v5
         with:
           files: ./coverage.lcov
           flags: rust
