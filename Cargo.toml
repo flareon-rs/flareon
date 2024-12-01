@@ -22,7 +22,7 @@ all = "deny"
 pedantic = "warn"
 
 [workspace.dependencies]
-anyhow = "1.0.92"
+anyhow = "1.0.93"
 askama = "0.12.1"
 askama_derive = "0.12.5"
 askama_parser = "0.2.1"
@@ -30,7 +30,7 @@ async-stream = "0.3"
 async-trait = "0.1"
 axum = { version = "0.7", default-features = false }
 backtrace = "0.3"
-bytes = "1.7"
+bytes = "1.9"
 cargo_toml = "0.20"
 chrono = { version = "0.4", default-features = false }
 clap = "4"
@@ -77,7 +77,7 @@ sync_wrapper = "1"
 tempfile = "3"
 thiserror = "2"
 time = { version = "0.3.35", default-features = false }
-tokio = { version = "1.40", default-features = false }
+tokio = { version = "1.41", default-features = false }
 tower = "0.5.1"
 tower-sessions = { version = "0.13", default-features = false }
 trybuild = { version = "1", features = ["diff"] }
