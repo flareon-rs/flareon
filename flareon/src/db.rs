@@ -12,6 +12,7 @@ pub mod impl_postgres;
 pub mod impl_sqlite;
 pub mod migrations;
 pub mod query;
+mod relations;
 mod sea_query_db;
 
 use std::fmt::Write;
@@ -24,6 +25,7 @@ use log::debug;
 #[cfg(test)]
 use mockall::automock;
 use query::Query;
+pub use relations::{ForeignKey, ForeignKeyOnDeletePolicy, ForeignKeyOnUpdatePolicy};
 use sea_query::{Iden, SchemaStatementBuilder, SimpleExpr};
 use sea_query_binder::{SqlxBinder, SqlxValues};
 use sqlx::{Type, TypeInfo};
@@ -57,6 +59,10 @@ pub enum DatabaseError {
     /// Error when applying migrations.
     #[error("Error when applying migrations: {0}")]
     MigrationError(#[from] migrations::MigrationEngineError),
+    /// Foreign Key could not be retrieved from the database because the record
+    /// was not found.
+    #[error("Error retrieving a Foreign Key from the database: record not found")]
+    ForeignKeyNotFound,
 }
 
 impl DatabaseError {
@@ -100,8 +106,14 @@ pub trait Model: Sized + Send + 'static {
     /// Rust.
     type Fields;
 
+    /// The primary key type of the model.
+    type PrimaryKey: PrimaryKey;
+
     /// The name of the table in the database.
     const TABLE_NAME: Identifier;
+
+    /// The name of the primary key column in the database.
+    const PRIMARY_KEY_NAME: Identifier;
 
     /// The columns of the model.
     const COLUMNS: &'static [Column];
@@ -114,6 +126,13 @@ pub trait Model: Sized + Send + 'static {
     /// with the model.
     fn from_db(db_row: Row) -> Result<Self>;
 
+    /// Returns the primary key of the model.
+    fn primary_key(&self) -> &Self::PrimaryKey;
+
+    /// Used by the ORM to set the primary key of the model after it has been
+    /// saved to the database.
+    fn set_primary_key(&mut self, primary_key: Self::PrimaryKey);
+
     /// Gets the values of the model for the given columns.
     fn get_values(&self, columns: &[usize]) -> Vec<&dyn ToDbValue>;
 
@@ -122,6 +141,11 @@ pub trait Model: Sized + Send + 'static {
     fn objects() -> Query<Self> {
         Query::new()
     }
+
+    async fn get_by_primary_key<DB: DatabaseBackend>(
+        db: &DB,
+        pk: Self::PrimaryKey,
+    ) -> Result<Option<Self>>;
 
     /// Saves the model to the database.
     ///
@@ -213,6 +237,8 @@ impl Column {
         self
     }
 }
+
+pub trait PrimaryKey: DatabaseField + Clone {}
 
 /// A row structure that holds the data of a single row retrieved from the
 /// database.
@@ -509,14 +535,17 @@ impl Database {
                     .map(|value| SimpleExpr::Value(value.to_sea_query_value()))
                     .collect::<Vec<_>>(),
             )?
+            .returning_col(T::PRIMARY_KEY_NAME)
             .to_owned();
 
-        let statement_result = self.execute_statement(&insert_statement).await?;
+        let row = self
+            .fetch_option(&insert_statement)
+            .await?
+            .expect("query should return the primary key");
+        let primary_key = row.get::<T::PrimaryKey>(0)?;
+        data.set_primary_key(primary_key);
 
-        debug!(
-            "Inserted row; rows affected: {}",
-            statement_result.rows_affected()
-        );
+        debug!("Inserted row");
 
         Ok(())
     }

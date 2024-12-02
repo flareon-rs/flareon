@@ -1,0 +1,5 @@
+error: composite primary keys are not supported; only one primary key field is allowed
+ --> tests/ui/attr_model_multiple_pks.rs:7:5
+  |
+7 |     id_2: i64,
+  |     ^^^^

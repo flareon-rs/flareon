@@ -4,6 +4,10 @@ use crate::db::ColumnType;
 impl_sea_query_db_backend!(DatabaseMySql: sqlx::mysql::MySql, sqlx::mysql::MySqlPool, MySqlRow, MySqlValueRef, sea_query::MysqlQueryBuilder);
 
 impl DatabaseMySql {
+    async fn init(&self) -> crate::db::Result<()> {
+        Ok(())
+    }
+
     fn prepare_values(_values: &mut sea_query_binder::SqlxValues) {
         // No changes are needed for MySQL
     }

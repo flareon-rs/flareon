@@ -3,6 +3,10 @@ use crate::db::sea_query_db::impl_sea_query_db_backend;
 impl_sea_query_db_backend!(DatabasePostgres: sqlx::postgres::Postgres, sqlx::postgres::PgPool, PostgresRow, PostgresValueRef, sea_query::PostgresQueryBuilder);
 
 impl DatabasePostgres {
+    async fn init(&self) -> crate::db::Result<()> {
+        Ok(())
+    }
+
     fn prepare_values(values: &mut sea_query_binder::SqlxValues) {
         for value in &mut values.0 .0 {
             Self::tinyint_to_smallint(value);

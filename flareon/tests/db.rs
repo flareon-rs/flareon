@@ -5,7 +5,10 @@ use fake::rand::SeedableRng;
 use fake::{Dummy, Fake, Faker};
 use flareon::db::migrations::{Field, Operation};
 use flareon::db::query::ExprEq;
-use flareon::db::{model, query, Database, DatabaseField, Identifier, LimitedString, Model};
+use flareon::db::{
+    model, query, Database, DatabaseError, DatabaseField, ForeignKey, ForeignKeyOnDeletePolicy,
+    ForeignKeyOnUpdatePolicy, Identifier, LimitedString, Model,
+};
 use flareon::test::TestDatabase;
 
 #[flareon_macros::dbtest]
@@ -195,4 +198,90 @@ fn normalize_datetimes(data: &mut Vec<AllFieldsModel>) {
             &chrono::FixedOffset::east_opt(0).expect("UTC timezone is always valid"),
         );
     }
+}
+
+#[flareon_macros::dbtest]
+async fn foreign_keys(db: &mut TestDatabase) {
+    env_logger::init();
+
+    #[derive(Debug, Clone, PartialEq)]
+    #[model]
+    struct Artist {
+        id: i32,
+        name: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    #[model]
+    struct Track {
+        id: i32,
+        artist: ForeignKey<Artist>,
+        name: String,
+    }
+
+    const CREATE_ARTIST: Operation = Operation::create_model()
+        .table_name(Identifier::new("artist"))
+        .fields(&[
+            Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
+                .primary_key()
+                .auto(),
+            Field::new(Identifier::new("name"), <String as DatabaseField>::TYPE),
+        ])
+        .build();
+    const CREATE_TRACK: Operation = Operation::create_model()
+        .table_name(Identifier::new("track"))
+        .fields(&[
+            Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
+                .primary_key()
+                .auto(),
+            Field::new(
+                Identifier::new("artist"),
+                <ForeignKey<Artist> as DatabaseField>::TYPE,
+            )
+            .foreign_key(
+                <Artist as Model>::TABLE_NAME,
+                <Artist as Model>::PRIMARY_KEY_NAME,
+                ForeignKeyOnDeletePolicy::Restrict,
+                ForeignKeyOnUpdatePolicy::Restrict,
+            ),
+            Field::new(Identifier::new("name"), <String as DatabaseField>::TYPE),
+        ])
+        .build();
+
+    CREATE_ARTIST.forwards(db).await.unwrap();
+    CREATE_TRACK.forwards(db).await.unwrap();
+
+    let mut artist = Artist {
+        id: 0,
+        name: "artist".to_owned(),
+    };
+    artist.save(&**db).await.unwrap();
+
+    let mut track = Track {
+        id: 0,
+        artist: ForeignKey::from(&artist),
+        name: "track".to_owned(),
+    };
+    track.save(&**db).await.unwrap();
+
+    let mut track = Track::objects().all(&**db).await.unwrap()[0].clone();
+    let artist_from_db = track.artist.get(&**db).await.unwrap();
+    assert_eq!(artist_from_db, &artist);
+
+    let error = query!(Artist, $id == artist.id)
+        .delete(&**db)
+        .await
+        .unwrap_err();
+    // expected foreign key violation
+    assert!(matches!(error, DatabaseError::DatabaseEngineError(_)));
+
+    query!(Track, $artist == &artist)
+        .delete(&**db)
+        .await
+        .unwrap();
+    query!(Artist, $id == artist.id)
+        .delete(&**db)
+        .await
+        .unwrap();
+    // no error should be thrown
 }
