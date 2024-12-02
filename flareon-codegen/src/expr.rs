@@ -9,7 +9,9 @@ enum ItemToken {
     Field(FieldParser),
     Literal(syn::Lit),
     Ident(syn::Ident),
-    MethodCall(MethodCallParser),
+    MemberAccess(MemberAccessParser),
+    FunctionCall(FunctionCallParser),
+    Reference(ReferenceParser),
     Op(OpParser),
 }
 
@@ -23,8 +25,12 @@ impl Parse for ItemToken {
 
         if lookahead.peek(Token![$]) {
             input.parse().map(ItemToken::Field)
+        } else if lookahead.peek(Token![&]) {
+            input.parse().map(ItemToken::Reference)
         } else if lookahead.peek(Token![.]) {
-            input.parse().map(ItemToken::MethodCall)
+            input.parse().map(ItemToken::MemberAccess)
+        } else if lookahead.peek(syn::token::Paren) {
+            input.parse().map(ItemToken::FunctionCall)
         } else if lookahead.peek(syn::Lit) {
             input.parse().map(ItemToken::Literal)
         } else if lookahead.peek(syn::Ident) {
@@ -41,7 +47,9 @@ impl ItemToken {
             ItemToken::Field(field) => field.span(),
             ItemToken::Literal(lit) => lit.span(),
             ItemToken::Ident(ident) => ident.span(),
-            ItemToken::MethodCall(method_call) => method_call.span(),
+            ItemToken::MemberAccess(member_access) => member_access.span(),
+            ItemToken::FunctionCall(function_call) => function_call.span(),
+            ItemToken::Reference(reference) => reference.span(),
             ItemToken::Op(op) => op.span(),
         }
     }
@@ -49,7 +57,7 @@ impl ItemToken {
 
 #[derive(Debug)]
 struct FieldParser {
-    _field_token: Token![$],
+    field_token: Token![$],
     name: syn::Ident,
 }
 
@@ -63,34 +71,74 @@ impl FieldParser {
 impl Parse for FieldParser {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         Ok(FieldParser {
-            _field_token: input.parse()?,
+            field_token: input.parse()?,
             name: input.parse()?,
         })
     }
 }
 
 #[derive(Debug)]
-struct MethodCallParser {
-    _dot: Token![.],
-    method_name: syn::Ident,
-    _paren_token: syn::token::Paren,
-    args: syn::punctuated::Punctuated<syn::Expr, Token![,]>,
+struct ReferenceParser {
+    reference_token: Token![&],
+    expr: syn::Expr,
 }
 
-impl MethodCallParser {
+impl ReferenceParser {
     #[must_use]
     fn span(&self) -> proc_macro2::Span {
-        self.method_name.span()
+        self.expr.span()
     }
 }
 
-impl Parse for MethodCallParser {
+impl Parse for ReferenceParser {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(ReferenceParser {
+            reference_token: input.parse()?,
+            expr: input.parse()?,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct MemberAccessParser {
+    dot: Token![.],
+    member_name: syn::Ident,
+}
+
+impl MemberAccessParser {
+    #[must_use]
+    fn span(&self) -> proc_macro2::Span {
+        self.member_name.span()
+    }
+}
+
+impl Parse for MemberAccessParser {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            dot: input.parse()?,
+            member_name: input.parse()?,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct FunctionCallParser {
+    paren_token: syn::token::Paren,
+    args: syn::punctuated::Punctuated<syn::Expr, Token![,]>,
+}
+
+impl FunctionCallParser {
+    #[must_use]
+    fn span(&self) -> proc_macro2::Span {
+        self.args.span()
+    }
+}
+
+impl Parse for FunctionCallParser {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let args_content;
         Ok(Self {
-            _dot: input.parse()?,
-            method_name: input.parse()?,
-            _paren_token: syn::parenthesized!(args_content in input),
+            paren_token: syn::parenthesized!(args_content in input),
             args: args_content.parse_terminated(syn::Expr::parse, Token![,])?,
         })
     }
@@ -202,18 +250,25 @@ type InfixBindingPriority = BindingPriority<u8, u8>;
 /// assert_eq!(
 ///     expr,
 ///     Expr::Eq(
-///         Box::new(Expr::FieldRef(parse_quote!(field))),
+///         Box::new(Expr::FieldRef { field_name: parse_quote!(field), field_token: parse_quote!($)}),
 ///         Box::new(Expr::Value(parse_quote!(42)))
 ///     )
 /// );
 /// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
-    FieldRef(syn::Ident),
+    FieldRef {
+        field_name: syn::Ident,
+        field_token: Token![$],
+    },
     Value(syn::Expr),
-    MethodCall {
-        called_on: Box<Expr>,
-        method_name: syn::Ident,
+    MemberAccess {
+        parent: Box<Expr>,
+        member_name: syn::Ident,
+        member_access_token: Token![.],
+    },
+    FunctionCall {
+        function: Box<Expr>,
         args: Vec<syn::Expr>,
     },
     And(Box<Expr>, Box<Expr>),
@@ -247,7 +302,18 @@ impl Expr {
             let lhs_item = input.parse::<ItemToken>()?;
 
             match lhs_item {
-                ItemToken::Field(field) => Expr::FieldRef(field.name),
+                ItemToken::Field(field) => Expr::FieldRef {
+                    field_name: field.name,
+                    field_token: field.field_token,
+                },
+                ItemToken::Reference(reference) => {
+                    Expr::Value(syn::Expr::Reference(syn::ExprReference {
+                        attrs: Vec::new(),
+                        and_token: reference.reference_token,
+                        mutability: None,
+                        expr: Box::new(reference.expr),
+                    }))
+                }
                 ItemToken::Ident(ident) => Expr::Value(syn::Expr::Path(syn::ExprPath {
                     attrs: Vec::new(),
                     qself: None,
@@ -273,12 +339,19 @@ impl Expr {
 
             let op_item = input.fork().parse::<ItemToken>()?;
             match op_item {
-                ItemToken::MethodCall(call) => {
+                ItemToken::MemberAccess(member_access) => {
+                    input.parse::<ItemToken>()?;
+                    lhs = Expr::MemberAccess {
+                        parent: Box::new(lhs),
+                        member_name: member_access.member_name,
+                        member_access_token: member_access.dot,
+                    };
+                }
+                ItemToken::FunctionCall(call) => {
                     input.parse::<ItemToken>()?;
                     let args = call.args.into_iter().collect::<Vec<_>>();
-                    lhs = Expr::MethodCall {
-                        called_on: Box::new(lhs),
-                        method_name: call.method_name,
+                    lhs = Expr::FunctionCall {
+                        function: Box::new(lhs),
                         args,
                     };
                 }
@@ -321,59 +394,86 @@ impl Expr {
 
     #[must_use]
     pub fn as_tokens(&self) -> Option<TokenStream> {
+        self.as_tokens_impl(ExprAsTokensMode::FieldRefAsNone)
+    }
+
+    #[must_use]
+    pub fn as_tokens_full(&self) -> TokenStream {
+        self.as_tokens_impl(ExprAsTokensMode::Full)
+            .expect("Full mode should never return None")
+    }
+
+    #[must_use]
+    fn as_tokens_impl(&self, mode: ExprAsTokensMode) -> Option<TokenStream> {
         match self {
-            Expr::FieldRef(_) => None,
+            Expr::FieldRef {
+                field_name,
+                field_token,
+            } => match mode {
+                ExprAsTokensMode::FieldRefAsNone => None,
+                ExprAsTokensMode::Full => Some(quote! {#field_token #field_name}),
+            },
             Expr::Value(expr) => Some(quote! {#expr}),
-            Expr::MethodCall {
-                called_on,
-                method_name,
-                args,
+            Expr::MemberAccess {
+                parent,
+                member_name,
+                member_access_token,
             } => {
-                let called_on_tokens = called_on.as_tokens()?;
-                Some(quote! {#called_on_tokens.#method_name(#(#args),*)})
+                let parent_tokens = parent.as_tokens_impl(mode)?;
+                Some(quote! {#parent_tokens #member_access_token #member_name})
+            }
+            Expr::FunctionCall { function, args } => {
+                let function_tokens = function.as_tokens_impl(mode)?;
+                Some(quote! {#function_tokens(#(#args),*)})
             }
             Expr::And(lhs, rhs) => {
-                let lhs_tokens = lhs.as_tokens()?;
-                let rhs_tokens = rhs.as_tokens()?;
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
                 Some(quote! {#lhs_tokens && #rhs_tokens})
             }
             Expr::Or(lhs, rhs) => {
-                let lhs_tokens = lhs.as_tokens()?;
-                let rhs_tokens = rhs.as_tokens()?;
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
                 Some(quote! {#lhs_tokens || #rhs_tokens})
             }
             Expr::Eq(lhs, rhs) => {
-                let lhs_tokens = lhs.as_tokens()?;
-                let rhs_tokens = rhs.as_tokens()?;
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
                 Some(quote! {#lhs_tokens == #rhs_tokens})
             }
             Expr::Ne(lhs, rhs) => {
-                let lhs_tokens = lhs.as_tokens()?;
-                let rhs_tokens = rhs.as_tokens()?;
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
                 Some(quote! {#lhs_tokens != #rhs_tokens})
             }
             Expr::Add(lhs, rhs) => {
-                let lhs_tokens = lhs.as_tokens()?;
-                let rhs_tokens = rhs.as_tokens()?;
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
                 Some(quote! {#lhs_tokens + #rhs_tokens})
             }
             Expr::Sub(lhs, rhs) => {
-                let lhs_tokens = lhs.as_tokens()?;
-                let rhs_tokens = rhs.as_tokens()?;
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
                 Some(quote! {#lhs_tokens - #rhs_tokens})
             }
             Expr::Mul(lhs, rhs) => {
-                let lhs_tokens = lhs.as_tokens()?;
-                let rhs_tokens = rhs.as_tokens()?;
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
                 Some(quote! {#lhs_tokens * #rhs_tokens})
             }
             Expr::Div(lhs, rhs) => {
-                let lhs_tokens = lhs.as_tokens()?;
-                let rhs_tokens = rhs.as_tokens()?;
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
                 Some(quote! {#lhs_tokens / #rhs_tokens})
             }
         }
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum ExprAsTokensMode {
+    FieldRefAsNone,
+    Full,
 }
 
 impl Parse for Expr {
@@ -393,7 +493,7 @@ mod tests {
     #[test]
     fn field_ref() {
         let input = quote! { $field };
-        let expected = Expr::FieldRef(syn::Ident::new("field", span()));
+        let expected = field("field");
 
         assert_eq!(expected, unwrap_syn(Expr::parse(input)));
     }
@@ -410,7 +510,7 @@ mod tests {
     fn field_eq() {
         let input = quote! { $field == 42 };
         let expected = Expr::Eq(
-            Box::new(Expr::FieldRef(syn::Ident::new("field", span()))),
+            Box::new(field("field")),
             Box::new(Expr::Value(parse_quote!(42))),
         );
 
@@ -439,11 +539,11 @@ mod tests {
         let input = quote! { $field == 42 && $field != 42 };
         let expected = Expr::And(
             Box::new(Expr::Eq(
-                Box::new(Expr::FieldRef(syn::Ident::new("field", span()))),
+                Box::new(field("field")),
                 Box::new(Expr::Value(parse_quote!(42))),
             )),
             Box::new(Expr::Ne(
-                Box::new(Expr::FieldRef(syn::Ident::new("field", span()))),
+                Box::new(field("field")),
                 Box::new(Expr::Value(parse_quote!(42))),
             )),
         );
@@ -471,17 +571,51 @@ mod tests {
     }
 
     #[test]
+    fn function_call() {
+        let input = quote! { $a == bar() };
+        let expected = Expr::Eq(
+            Box::new(field("a")),
+            Box::new(Expr::FunctionCall {
+                function: Box::new(value("bar")),
+                args: Vec::new(),
+            }),
+        );
+
+        assert_eq!(expected, unwrap_syn(Expr::parse(input)));
+    }
+
+    #[test]
+    fn parse_member_access() {
+        let input = quote! { $a == foo.bar };
+        let expected = Expr::Eq(
+            Box::new(field("a")),
+            Box::new(member_access(value("foo"), "bar")),
+        );
+
+        assert_eq!(expected, unwrap_syn(Expr::parse(input)));
+    }
+
+    #[test]
+    fn parse_reference() {
+        let input = quote! { &foo };
+        let expected = reference("foo");
+
+        assert_eq!(expected, unwrap_syn(Expr::parse(input)));
+    }
+
+    #[test]
     fn method_call() {
         let input = quote! { $a == foo.bar().baz() };
         let expected = Expr::Eq(
             Box::new(field("a")),
-            Box::new(Expr::MethodCall {
-                called_on: Box::new(Expr::MethodCall {
-                    called_on: Box::new(value("foo")),
-                    method_name: syn::Ident::new("bar", span()),
-                    args: Vec::new(),
-                }),
-                method_name: syn::Ident::new("baz", span()),
+            Box::new(Expr::FunctionCall {
+                function: Box::new(member_access(
+                    Expr::FunctionCall {
+                        function: Box::new(member_access(value("foo"), "bar")),
+                        args: Vec::new(),
+                    },
+                    "baz",
+                )),
                 args: Vec::new(),
             }),
         );
@@ -569,9 +703,35 @@ mod tests {
         assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
     }
 
+    #[test]
+    fn tokens_full() {
+        let input = quote! { $name.len() };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens_full().to_string());
+    }
+
     #[must_use]
     fn field(name: &str) -> Expr {
-        Expr::FieldRef(syn::Ident::new(name, span()))
+        Expr::FieldRef {
+            field_name: syn::Ident::new(name, span()),
+            field_token: Token![$](span()),
+        }
+    }
+
+    #[must_use]
+    fn member_access(parent: Expr, member_name: &str) -> Expr {
+        Expr::MemberAccess {
+            parent: Box::new(parent),
+            member_name: syn::Ident::new(member_name, span()),
+            member_access_token: Token![.](span()),
+        }
+    }
+
+    #[must_use]
+    fn reference(ident: &str) -> Expr {
+        let ident = syn::Ident::new(ident, span());
+        Expr::Value(parse_quote!(&#ident))
     }
 
     #[must_use]

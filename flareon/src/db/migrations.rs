@@ -3,13 +3,14 @@ mod sorter;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
-use flareon_macros::{model, query};
+use flareon::db::relations::ForeignKeyOnUpdatePolicy;
 use sea_query::{ColumnDef, StringLen};
 use thiserror::Error;
 use tracing::info;
 
 use crate::db::migrations::sorter::{MigrationSorter, MigrationSorterError};
-use crate::db::{ColumnType, Database, DatabaseField, Identifier, Result};
+use crate::db::relations::ForeignKeyOnDeletePolicy;
+use crate::db::{model, query, ColumnType, Database, DatabaseField, Identifier, Model, Result};
 
 #[derive(Debug, Clone, Error)]
 #[non_exhaustive]
@@ -244,6 +245,17 @@ impl Operation {
                 let mut query = sea_query::Table::create().table(*table_name).to_owned();
                 for field in *fields {
                     query.col(field.as_column_def(database));
+                    if let Some(foreign_key) = field.foreign_key {
+                        query.foreign_key(
+                            sea_query::ForeignKeyCreateStatement::new()
+                                .from_tbl(*table_name)
+                                .from_col(field.name)
+                                .to_tbl(foreign_key.model)
+                                .to_col(foreign_key.field)
+                                .on_delete(foreign_key.on_delete.into())
+                                .on_update(foreign_key.on_update.into()),
+                        );
+                    }
                 }
                 if *if_not_exists {
                     query.if_not_exists();
@@ -345,6 +357,7 @@ pub struct Field {
     pub null: bool,
     /// Whether the column has a unique constraint
     pub unique: bool,
+    foreign_key: Option<ForeignKeyReference>,
 }
 
 impl Field {
@@ -357,7 +370,34 @@ impl Field {
             auto_value: false,
             null: false,
             unique: false,
+            foreign_key: None,
         }
+    }
+
+    #[must_use]
+    pub const fn foreign_key(
+        mut self,
+        to_model: Identifier,
+        to_field: Identifier,
+        on_delete: ForeignKeyOnDeletePolicy,
+        on_update: ForeignKeyOnUpdatePolicy,
+    ) -> Self {
+        assert!(
+            self.null || !matches!(on_delete, ForeignKeyOnDeletePolicy::SetNone),
+            "`ForeignKey` must be inside `Option` if `on_delete` is set to `SetNone`"
+        );
+        assert!(
+            self.null || !matches!(on_update, ForeignKeyOnUpdatePolicy::SetNone),
+            "`ForeignKey` must be inside `Option` if `on_update` is set to `SetNone`"
+        );
+
+        self.foreign_key = Some(ForeignKeyReference {
+            model: to_model,
+            field: to_field,
+            on_delete,
+            on_update,
+        });
+        self
     }
 
     #[must_use]
@@ -409,6 +449,14 @@ impl Field {
         }
         def
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+struct ForeignKeyReference {
+    model: Identifier,
+    field: Identifier,
+    on_delete: ForeignKeyOnDeletePolicy,
+    on_update: ForeignKeyOnUpdatePolicy,
 }
 
 #[cfg_attr(test, mockall::automock)]

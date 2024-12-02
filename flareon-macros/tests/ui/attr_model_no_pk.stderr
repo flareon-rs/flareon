@@ -1,0 +1,5 @@
+error: models must have a primary key field, either named `id` or annotated with the `#[model(primary_key)]` attribute
+ --> tests/ui/attr_model_no_pk.rs:4:8
+  |
+4 | struct MyModel {
+  |        ^^^^^^^

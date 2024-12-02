@@ -4,8 +4,16 @@ use crate::db::ColumnType;
 impl_sea_query_db_backend!(DatabaseMySql: sqlx::mysql::MySql, sqlx::mysql::MySqlPool, MySqlRow, MySqlValueRef, sea_query::MysqlQueryBuilder);
 
 impl DatabaseMySql {
+    async fn init(&self) -> crate::db::Result<()> {
+        Ok(())
+    }
+
     fn prepare_values(_values: &mut sea_query_binder::SqlxValues) {
         // No changes are needed for MySQL
+    }
+
+    fn last_inserted_row_id_for(result: &sqlx::mysql::MySqlQueryResult) -> Option<u64> {
+        Some(result.last_insert_id())
     }
 
     pub(super) fn sea_query_column_type_for(

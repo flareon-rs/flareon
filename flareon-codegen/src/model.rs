@@ -1,6 +1,8 @@
 use convert_case::{Case, Casing};
 use darling::{FromDeriveInput, FromField, FromMeta};
 
+use crate::symbol_resolver::SymbolResolver;
+
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Default, FromMeta)]
 pub struct ModelArgs {
@@ -59,8 +61,16 @@ impl ModelOpts {
     ///
     /// Returns an error if the model name does not start with an underscore
     /// when the model type is [`ModelType::Migration`].
-    pub fn as_model(&self, args: &ModelArgs) -> Result<Model, syn::Error> {
-        let fields = self.fields().iter().map(|field| field.as_field()).collect();
+    pub fn as_model(
+        &self,
+        args: &ModelArgs,
+        symbol_resolver: Option<&SymbolResolver>,
+    ) -> Result<Model, syn::Error> {
+        let fields: Vec<_> = self
+            .fields()
+            .iter()
+            .map(|field| field.as_field(symbol_resolver))
+            .collect();
 
         let mut original_name = self.ident.to_string();
         if args.model_type == ModelType::Migration {
@@ -80,13 +90,35 @@ impl ModelOpts {
             original_name.to_string().to_case(Case::Snake)
         };
 
+        let primary_key_field = self.get_primary_key_field(&fields)?;
+
         Ok(Model {
             name: self.ident.clone(),
             original_name,
             model_type: args.model_type,
             table_name,
+            pk_field: primary_key_field.clone(),
             fields,
         })
+    }
+
+    fn get_primary_key_field<'a>(&self, fields: &'a [Field]) -> Result<&'a Field, syn::Error> {
+        let pks: Vec<_> = fields.iter().filter(|field| field.primary_key).collect();
+        if pks.is_empty() {
+            return Err(syn::Error::new(
+                self.ident.span(),
+                "models must have a primary key field, either named `id` \
+                or annotated with the `#[model(primary_key)]` attribute",
+            ));
+        }
+        if pks.len() > 1 {
+            return Err(syn::Error::new(
+                pks[1].field_name.span(),
+                "composite primary keys are not supported; only one primary key field is allowed",
+            ));
+        }
+
+        Ok(pks[0])
     }
 }
 
@@ -95,10 +127,50 @@ impl ModelOpts {
 pub struct FieldOpts {
     pub ident: Option<syn::Ident>,
     pub ty: syn::Type,
+    pub primary_key: darling::util::Flag,
     pub unique: darling::util::Flag,
 }
 
 impl FieldOpts {
+    #[must_use]
+    fn find_type(&self, type_to_check: &str, symbol_resolver: &SymbolResolver) -> bool {
+        let mut ty = self.ty.clone();
+        symbol_resolver.resolve(&mut ty);
+        Self::inner_type_names(&ty)
+            .iter()
+            .any(|name| name == type_to_check)
+    }
+
+    #[must_use]
+    fn inner_type_names(ty: &syn::Type) -> Vec<String> {
+        let mut names = Vec::new();
+        Self::inner_type_names_impl(ty, &mut names);
+        names
+    }
+
+    fn inner_type_names_impl(ty: &syn::Type, names: &mut Vec<String>) {
+        if let syn::Type::Path(type_path) = ty {
+            let name = type_path
+                .path
+                .segments
+                .iter()
+                .map(|s| s.ident.to_string())
+                .collect::<Vec<_>>()
+                .join("::");
+            names.push(name);
+
+            for arg in &type_path.path.segments {
+                if let syn::PathArguments::AngleBracketed(arg) = &arg.arguments {
+                    for arg in &arg.args {
+                        if let syn::GenericArgument::Type(ty) = arg {
+                            Self::inner_type_names_impl(ty, names);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Convert the field options into a field.
     ///
     /// # Panics
@@ -106,32 +178,37 @@ impl FieldOpts {
     /// Panics if the field does not have an identifier (i.e. it is a tuple
     /// struct).
     #[must_use]
-    pub fn as_field(&self) -> Field {
+    pub fn as_field(&self, symbol_resolver: Option<&SymbolResolver>) -> Field {
         let name = self.ident.as_ref().unwrap();
         let column_name = name.to_string();
-        // TODO define a separate type for auto fields
-        let is_auto = column_name == "id";
-        // TODO define #[model(primary_key)] attribute
-        let is_primary_key = column_name == "id";
+        let (auto_value, foreign_key) = match symbol_resolver {
+            Some(resolver) => (
+                Some(self.find_type("flareon::db::Auto", resolver)),
+                Some(self.find_type("flareon::db::ForeignKey", resolver)),
+            ),
+            None => (None, None),
+        };
+        let is_primary_key = column_name == "id" || self.primary_key.is_present();
 
         Field {
             field_name: name.clone(),
             column_name,
             ty: self.ty.clone(),
-            auto_value: is_auto,
+            auto_value,
             primary_key: is_primary_key,
-            null: false,
+            foreign_key,
             unique: self.unique.is_present(),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Model {
     pub name: syn::Ident,
     pub original_name: String,
     pub model_type: ModelType,
     pub table_name: String,
+    pub pk_field: Field,
     pub fields: Vec<Field>,
 }
 
@@ -147,9 +224,13 @@ pub struct Field {
     pub field_name: syn::Ident,
     pub column_name: String,
     pub ty: syn::Type,
-    pub auto_value: bool,
+    /// Whether the field is an auto field (e.g. `id`); `None` if it could not
+    /// be determined.
+    pub auto_value: Option<bool>,
     pub primary_key: bool,
-    pub null: bool,
+    /// Whether the field is a foreign key; `None` if it could not be
+    /// determined.
+    pub foreign_key: Option<bool>,
     pub unique: bool,
 }
 
@@ -158,6 +239,8 @@ mod tests {
     use syn::parse_quote;
 
     use super::*;
+    #[cfg(feature = "symbol-resolver")]
+    use crate::symbol_resolver::{VisibleSymbol, VisibleSymbolKind};
 
     #[test]
     fn model_args_default() {
@@ -197,7 +280,7 @@ mod tests {
         };
         let opts = ModelOpts::new_from_derive_input(&input).unwrap();
         let args = ModelArgs::default();
-        let model = opts.as_model(&args).unwrap();
+        let model = opts.as_model(&args, None).unwrap();
         assert_eq!(model.name.to_string(), "TestModel");
         assert_eq!(model.table_name, "test_model");
         assert_eq!(model.fields.len(), 2);
@@ -215,10 +298,64 @@ mod tests {
         };
         let opts = ModelOpts::new_from_derive_input(&input).unwrap();
         let args = ModelArgs::from_meta(&input.attrs.first().unwrap().meta).unwrap();
-        let err = opts.as_model(&args).unwrap_err();
+        let err = opts.as_model(&args, None).unwrap_err();
         assert_eq!(
             err.to_string(),
             "migration model names must start with an underscore"
+        );
+    }
+
+    #[test]
+    fn model_opts_as_model_pk_attr() {
+        let input: syn::DeriveInput = parse_quote! {
+            #[model]
+            struct TestModel {
+                #[model(primary_key)]
+                name: i32,
+            }
+        };
+        let opts = ModelOpts::new_from_derive_input(&input).unwrap();
+        let args = ModelArgs::default();
+        let model = opts.as_model(&args, None).unwrap();
+        assert_eq!(model.fields.len(), 1);
+        assert!(model.fields[0].primary_key);
+    }
+
+    #[test]
+    fn model_opts_as_model_no_pk() {
+        let input: syn::DeriveInput = parse_quote! {
+            #[model]
+            struct TestModel {
+                name: String,
+            }
+        };
+        let opts = ModelOpts::new_from_derive_input(&input).unwrap();
+        let args = ModelArgs::default();
+        let err = opts.as_model(&args, None).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "models must have a primary key field, either named `id` \
+            or annotated with the `#[model(primary_key)]` attribute"
+        );
+    }
+
+    #[test]
+    fn model_opts_as_model_multiple_pks() {
+        let input: syn::DeriveInput = parse_quote! {
+            #[model]
+            struct TestModel {
+                id: i64,
+                #[model(primary_key)]
+                id_2: i64,
+                name: String,
+            }
+        };
+        let opts = ModelOpts::new_from_derive_input(&input).unwrap();
+        let args = ModelArgs::default();
+        let err = opts.as_model(&args, None).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "composite primary keys are not supported; only one primary key field is allowed"
         );
     }
 
@@ -229,10 +366,46 @@ mod tests {
             name: String
         };
         let field_opts = FieldOpts::from_field(&input).unwrap();
-        let field = field_opts.as_field();
+        let field = field_opts.as_field(None);
         assert_eq!(field.field_name.to_string(), "name");
         assert_eq!(field.column_name, "name");
         assert_eq!(field.ty, parse_quote!(String));
         assert!(field.unique);
+        assert_eq!(field.auto_value, None);
+        assert_eq!(field.foreign_key, None);
+    }
+
+    #[test]
+    fn inner_type_names() {
+        let input: syn::Type =
+            parse_quote! { ::my_crate::MyContainer<'a, Vec<std::string::String>> };
+        let names = FieldOpts::inner_type_names(&input);
+        assert_eq!(
+            names,
+            vec!["my_crate::MyContainer", "Vec", "std::string::String"]
+        );
+    }
+
+    #[cfg(feature = "symbol-resolver")]
+    #[test]
+    fn contains_type() {
+        let symbols = vec![VisibleSymbol::new(
+            "MyContainer",
+            "my_crate::MyContainer",
+            VisibleSymbolKind::Use,
+        )];
+        let resolver = SymbolResolver::new(symbols);
+
+        let opts = FieldOpts {
+            ident: None,
+            ty: parse_quote! { MyContainer<std::string::String> },
+            primary_key: Default::default(),
+            unique: Default::default(),
+        };
+
+        assert!(opts.find_type("my_crate::MyContainer", &resolver));
+        assert!(opts.find_type("std::string::String", &resolver));
+        assert!(!opts.find_type("MyContainer", &resolver));
+        assert!(!opts.find_type("String", &resolver));
     }
 }

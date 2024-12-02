@@ -27,7 +27,7 @@ pub(super) fn impl_model_for_struct(
         }
     };
 
-    let model = match opts.as_model(&args) {
+    let model = match opts.as_model(&args, None) {
         Ok(val) => val,
         Err(err) => {
             return err.to_compile_error();
@@ -71,9 +71,11 @@ fn remove_helper_field_attributes(fields: &mut syn::Fields) -> &Punctuated<syn::
 struct ModelBuilder {
     name: Ident,
     table_name: String,
+    pk_field: Field,
     fields_struct_name: Ident,
     fields_as_columns: Vec<TokenStream>,
     fields_as_from_db: Vec<TokenStream>,
+    fields_as_update_from_db: Vec<TokenStream>,
     fields_as_get_values: Vec<TokenStream>,
     fields_as_field_refs: Vec<TokenStream>,
 }
@@ -91,9 +93,11 @@ impl ModelBuilder {
         let mut model_builder = Self {
             name: model.name.clone(),
             table_name: model.table_name,
+            pk_field: model.pk_field.clone(),
             fields_struct_name: format_ident!("{}Fields", model.name),
             fields_as_columns: Vec::with_capacity(field_count),
             fields_as_from_db: Vec::with_capacity(field_count),
+            fields_as_update_from_db: Vec::with_capacity(field_count),
             fields_as_get_values: Vec::with_capacity(field_count),
             fields_as_field_refs: Vec::with_capacity(field_count),
         };
@@ -113,18 +117,9 @@ impl ModelBuilder {
         let column_name = &field.column_name;
 
         {
-            let mut field_as_column = quote!(#orm_ident::Column::new(
+            let field_as_column = quote!(#orm_ident::Column::new(
                 #orm_ident::Identifier::new(#column_name)
             ));
-            if field.auto_value {
-                field_as_column.append_all(quote!(.auto()));
-            }
-            if field.null {
-                field_as_column.append_all(quote!(.null()));
-            }
-            if field.unique {
-                field_as_column.append_all(quote!(.unique()));
-            }
             self.fields_as_columns.push(field_as_column);
         }
 
@@ -132,8 +127,12 @@ impl ModelBuilder {
             #name: db_row.get::<#ty>(#index)?
         ));
 
+        self.fields_as_update_from_db.push(quote!(
+            #index => { self.#name = db_row.get::<#ty>(row_field_id)?; }
+        ));
+
         self.fields_as_get_values.push(quote!(
-            #index => &self.#name as &dyn #orm_ident::ToDbValue
+            #index => &self.#name as &dyn #orm_ident::ToDbFieldValue
         ));
 
         self.fields_as_field_refs.push(quote!(
@@ -144,24 +143,40 @@ impl ModelBuilder {
 
     #[must_use]
     fn build_model_impl(&self) -> TokenStream {
+        let crate_ident = flareon_ident();
         let orm_ident = orm_ident();
 
         let name = &self.name;
         let table_name = &self.table_name;
         let fields_struct_name = &self.fields_struct_name;
         let fields_as_columns = &self.fields_as_columns;
+        let pk_field_name = &self.pk_field.field_name;
+        let pk_column_name = &self.pk_field.column_name;
+        let pk_type = &self.pk_field.ty;
         let fields_as_from_db = &self.fields_as_from_db;
+        let fields_as_update_from_db = &self.fields_as_update_from_db;
         let fields_as_get_values = &self.fields_as_get_values;
 
         quote! {
+            #[#crate_ident::__private::async_trait]
             #[automatically_derived]
             impl #orm_ident::Model for #name {
                 type Fields = #fields_struct_name;
+                type PrimaryKey = #pk_type;
 
                 const COLUMNS: &'static [#orm_ident::Column] = &[
                     #(#fields_as_columns,)*
                 ];
                 const TABLE_NAME: #orm_ident::Identifier = #orm_ident::Identifier::new(#table_name);
+                const PRIMARY_KEY_NAME: #orm_ident::Identifier = #orm_ident::Identifier::new(#pk_column_name);
+
+                fn primary_key(&self) -> &Self::PrimaryKey {
+                    &self.#pk_field_name
+                }
+
+                fn set_primary_key(&mut self, primary_key: Self::PrimaryKey) {
+                    self.#pk_field_name = primary_key;
+                }
 
                 fn from_db(db_row: #orm_ident::Row) -> #orm_ident::Result<Self> {
                     Ok(Self {
@@ -169,7 +184,18 @@ impl ModelBuilder {
                     })
                 }
 
-                fn get_values(&self, columns: &[usize]) -> Vec<&dyn #orm_ident::ToDbValue> {
+                fn update_from_db(&mut self, db_row: #orm_ident::Row, columns: &[usize]) -> #orm_ident::Result<()> {
+                    for (row_field_id, column_id) in columns.into_iter().enumerate() {
+                        match *column_id {
+                            #(#fields_as_update_from_db,)*
+                            _ => panic!("Unknown column index: {}", column_id),
+                        }
+                    }
+
+                    Ok(())
+                }
+
+                fn get_values(&self, columns: &[usize]) -> Vec<&dyn #orm_ident::ToDbFieldValue> {
                     columns
                         .iter()
                         .map(|&column| match column {
@@ -177,6 +203,15 @@ impl ModelBuilder {
                             _ => panic!("Unknown column index: {}", column),
                         })
                         .collect()
+                }
+
+                async fn get_by_primary_key<DB: #orm_ident::DatabaseBackend>(
+                    db: &DB,
+                    pk: Self::PrimaryKey,
+                ) -> #orm_ident::Result<Option<Self>> {
+                    #orm_ident::query!(Self, $#pk_field_name == pk)
+                        .get(db)
+                        .await
                 }
             }
         }

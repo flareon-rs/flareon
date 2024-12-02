@@ -15,7 +15,9 @@ macro_rules! impl_sea_query_db_backend {
             pub(super) async fn new(url: &str) -> crate::db::Result<Self> {
                 let db_connection = <$pool_ty>::connect(url).await?;
 
-                Ok(Self { db_connection })
+                let db = Self { db_connection };
+                db.init();
+                Ok(db)
             }
 
             pub(super) async fn close(&self) -> crate::db::Result<()> {
@@ -88,6 +90,7 @@ macro_rules! impl_sea_query_db_backend {
                 let result = sqlx_statement.execute(&self.db_connection).await?;
                 let result = crate::db::StatementResult {
                     rows_affected: crate::db::RowsNum(result.rows_affected()),
+                    last_inserted_row_id: Self::last_inserted_row_id_for(&result),
                 };
 
                 tracing::debug!("Rows affected: {}", result.rows_affected.0);

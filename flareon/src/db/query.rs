@@ -4,7 +4,10 @@ use derive_more::Debug;
 use sea_query::IntoColumnRef;
 
 use crate::db;
-use crate::db::{DatabaseBackend, FromDbValue, Identifier, Model, StatementResult, ToDbValue};
+use crate::db::{
+    Auto, DatabaseBackend, DbFieldValue, DbValue, ForeignKey, FromDbValue, Identifier, Model,
+    StatementResult, ToDbFieldValue,
+};
 
 /// A query that can be executed on a database. Can be used to filter, update,
 /// or delete rows.
@@ -131,7 +134,7 @@ impl<T: Model> Query<T> {
 #[derive(Debug)]
 pub enum Expr {
     Field(Identifier),
-    Value(#[debug("{}", _0.to_sea_query_value())] Box<dyn ToDbValue>),
+    Value(DbValue),
     And(Box<Expr>, Box<Expr>),
     Or(Box<Expr>, Box<Expr>),
     Eq(Box<Expr>, Box<Expr>),
@@ -169,8 +172,11 @@ impl Expr {
     /// let expr = Expr::value(30);
     /// ```
     #[must_use]
-    pub fn value<T: ToDbValue + 'static>(value: T) -> Self {
-        Self::Value(Box::new(value))
+    pub fn value<T: ToDbFieldValue>(value: T) -> Self {
+        match value.to_db_field_value() {
+            DbFieldValue::Value(value) => Self::Value(value),
+            _ => panic!("Cannot create query with a non-value field"),
+        }
     }
 
     /// Create a new `AND` expression.
@@ -299,7 +305,7 @@ impl Expr {
     pub fn as_sea_query_expr(&self) -> sea_query::SimpleExpr {
         match self {
             Self::Field(identifier) => (*identifier).into_column_ref().into(),
-            Self::Value(value) => value.to_sea_query_value().into(),
+            Self::Value(value) => (*value).clone().into(),
             Self::And(lhs, rhs) => lhs.as_sea_query_expr().and(rhs.as_sea_query_expr()),
             Self::Or(lhs, rhs) => lhs.as_sea_query_expr().or(rhs.as_sea_query_expr()),
             Self::Eq(lhs, rhs) => lhs.as_sea_query_expr().eq(rhs.as_sea_query_expr()),
@@ -323,7 +329,7 @@ pub struct FieldRef<T> {
     phantom_data: PhantomData<T>,
 }
 
-impl<T: FromDbValue + ToDbValue> FieldRef<T> {
+impl<T: FromDbValue + ToDbFieldValue> FieldRef<T> {
     /// Create a new field reference.
     #[must_use]
     pub const fn new(identifier: Identifier) -> Self {
@@ -344,18 +350,18 @@ impl<T> FieldRef<T> {
 
 /// A trait for types that can be compared in database expressions.
 pub trait ExprEq<T> {
-    fn eq<V: Into<T>>(self, other: V) -> Expr;
+    fn eq<V: IntoField<T>>(self, other: V) -> Expr;
 
-    fn ne<V: Into<T>>(self, other: V) -> Expr;
+    fn ne<V: IntoField<T>>(self, other: V) -> Expr;
 }
 
-impl<T: ToDbValue + 'static> ExprEq<T> for FieldRef<T> {
-    fn eq<V: Into<T>>(self, other: V) -> Expr {
-        Expr::eq(self.as_expr(), Expr::value(other.into()))
+impl<T: ToDbFieldValue + 'static> ExprEq<T> for FieldRef<T> {
+    fn eq<V: IntoField<T>>(self, other: V) -> Expr {
+        Expr::eq(self.as_expr(), Expr::value(other.into_field()))
     }
 
-    fn ne<V: Into<T>>(self, other: V) -> Expr {
-        Expr::ne(self.as_expr(), Expr::value(other.into()))
+    fn ne<V: IntoField<T>>(self, other: V) -> Expr {
+        Expr::ne(self.as_expr(), Expr::value(other.into_field()))
     }
 }
 
@@ -408,6 +414,40 @@ impl_num_expr!(u32);
 impl_num_expr!(u64);
 impl_num_expr!(f32);
 impl_num_expr!(f64);
+
+trait IntoField<T> {
+    fn into_field(self) -> T;
+}
+
+impl<T: ToDbFieldValue> IntoField<T> for T {
+    fn into_field(self) -> T {
+        self
+    }
+}
+
+impl<T> IntoField<Auto<T>> for T {
+    fn into_field(self) -> Auto<T> {
+        Auto::fixed(self)
+    }
+}
+
+impl IntoField<String> for &str {
+    fn into_field(self) -> String {
+        self.to_string()
+    }
+}
+
+impl<T: Model + Send + Sync> IntoField<ForeignKey<T>> for T {
+    fn into_field(self) -> ForeignKey<T> {
+        ForeignKey::from(self)
+    }
+}
+
+impl<T: Model + Send + Sync> IntoField<ForeignKey<T>> for &T {
+    fn into_field(self) -> ForeignKey<T> {
+        ForeignKey::from(self)
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -505,7 +545,7 @@ mod tests {
     fn test_expr_value() {
         let expr = Expr::value(30);
         if let Expr::Value(value) = expr {
-            assert_eq!(value.to_sea_query_value().to_string(), "30");
+            assert_eq!(value.to_string(), "30");
         } else {
             panic!("Expected Expr::Value");
         }

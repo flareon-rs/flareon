@@ -1,0 +1,5 @@
+error: accessing members of values that reference database fields is unsupported
+  --> tests/ui/func_query_method_call_on_db_field.rs:13:21
+   |
+13 |     query!(MyModel, $name.len);
+   |                     ^^^^^

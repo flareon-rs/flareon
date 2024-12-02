@@ -16,6 +16,8 @@ fn attr_model() {
     t.compile_fail("tests/ui/attr_model_tuple.rs");
     t.compile_fail("tests/ui/attr_model_enum.rs");
     t.compile_fail("tests/ui/attr_model_generic.rs");
+    t.compile_fail("tests/ui/attr_model_no_pk.rs");
+    t.compile_fail("tests/ui/attr_model_multiple_pks.rs");
 }
 
 #[rustversion::attr(not(nightly), ignore)]
@@ -28,6 +30,7 @@ fn func_query() {
     t.compile_fail("tests/ui/func_query_starting_op.rs");
     t.compile_fail("tests/ui/func_query_double_field.rs");
     t.compile_fail("tests/ui/func_query_invalid_field.rs");
+    t.compile_fail("tests/ui/func_query_method_call_on_db_field.rs");
 }
 
 #[rustversion::attr(not(nightly), ignore)]
