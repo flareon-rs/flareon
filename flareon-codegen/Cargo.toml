@@ -11,9 +11,14 @@ workspace = true
 [dependencies]
 convert_case.workspace = true
 darling.workspace = true
+log = { workspace = true, optional = true }
 proc-macro2.workspace = true
 quote.workspace = true
 syn.workspace = true
 
 [dev-dependencies]
 proc-macro2 = { workspace = true, features = ["span-locations"] }
+
+[features]
+default = []
+symbol-resolver = ["dep:log"]

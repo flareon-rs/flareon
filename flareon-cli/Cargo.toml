@@ -17,7 +17,7 @@ clap-verbosity-flag.workspace = true
 darling.workspace = true
 env_logger.workspace = true
 flareon.workspace = true
-flareon_codegen.workspace = true
+flareon_codegen = { workspace = true, features = ["symbol-resolver"] }
 glob.workspace = true
 log.workspace = true
 prettyplease.workspace = true

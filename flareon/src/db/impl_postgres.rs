@@ -3,6 +3,10 @@ use crate::db::sea_query_db::impl_sea_query_db_backend;
 impl_sea_query_db_backend!(DatabasePostgres: sqlx::postgres::Postgres, sqlx::postgres::PgPool, PostgresRow, PostgresValueRef, sea_query::PostgresQueryBuilder);
 
 impl DatabasePostgres {
+    async fn init(&self) -> crate::db::Result<()> {
+        Ok(())
+    }
+
     fn prepare_values(values: &mut sea_query_binder::SqlxValues) {
         for value in &mut values.0 .0 {
             Self::tinyint_to_smallint(value);
@@ -32,6 +36,10 @@ impl DatabasePostgres {
         } else if let sea_query::Value::BigUnsigned(num) = value {
             *value = sea_query::Value::BigInt(num.map(|v| v as i64));
         }
+    }
+
+    fn last_inserted_row_id_for(result: &sqlx::postgres::PgQueryResult) -> Option<u64> {
+        None
     }
 
     pub(super) fn sea_query_column_type_for(
