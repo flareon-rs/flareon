@@ -15,7 +15,9 @@ macro_rules! impl_sea_query_db_backend {
             pub(super) async fn new(url: &str) -> crate::db::Result<Self> {
                 let db_connection = <$pool_ty>::connect(url).await?;
 
-                Ok(Self { db_connection })
+                let db = Self { db_connection };
+                db.init();
+                Ok(db)
             }
 
             pub(super) async fn close(&self) -> crate::db::Result<()> {

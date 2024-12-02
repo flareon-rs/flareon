@@ -60,7 +60,7 @@ impl ModelOpts {
     /// Returns an error if the model name does not start with an underscore
     /// when the model type is [`ModelType::Migration`].
     pub fn as_model(&self, args: &ModelArgs) -> Result<Model, syn::Error> {
-        let fields = self.fields().iter().map(|field| field.as_field()).collect();
+        let fields: Vec<_> = self.fields().iter().map(|field| field.as_field()).collect();
 
         let mut original_name = self.ident.to_string();
         if args.model_type == ModelType::Migration {
@@ -80,13 +80,35 @@ impl ModelOpts {
             original_name.to_string().to_case(Case::Snake)
         };
 
+        let primary_key_field = self.get_primary_key_field(&fields)?;
+
         Ok(Model {
             name: self.ident.clone(),
             original_name,
             model_type: args.model_type,
             table_name,
+            pk_field: primary_key_field.clone(),
             fields,
         })
+    }
+
+    fn get_primary_key_field<'a>(&self, fields: &'a [Field]) -> Result<&'a Field, syn::Error> {
+        let pks: Vec<_> = fields.iter().filter(|field| field.primary_key).collect();
+        if pks.is_empty() {
+            return Err(syn::Error::new(
+                self.ident.span(),
+                "models must have a primary key field, either named `id` \
+                or annotated with the `#[model(primary_key)]` attribute",
+            ));
+        }
+        if pks.len() > 1 {
+            return Err(syn::Error::new(
+                pks[1].field_name.span(),
+                "composite primary keys are not supported; only one primary key field is allowed",
+            ));
+        }
+
+        Ok(pks[0])
     }
 }
 
@@ -95,6 +117,7 @@ impl ModelOpts {
 pub struct FieldOpts {
     pub ident: Option<syn::Ident>,
     pub ty: syn::Type,
+    pub primary_key: darling::util::Flag,
     pub unique: darling::util::Flag,
 }
 
@@ -111,8 +134,7 @@ impl FieldOpts {
         let column_name = name.to_string();
         // TODO define a separate type for auto fields
         let is_auto = column_name == "id";
-        // TODO define #[model(primary_key)] attribute
-        let is_primary_key = column_name == "id";
+        let is_primary_key = column_name == "id" || self.primary_key.is_present();
 
         Field {
             field_name: name.clone(),
@@ -132,6 +154,7 @@ pub struct Model {
     pub original_name: String,
     pub model_type: ModelType,
     pub table_name: String,
+    pub pk_field: Field,
     pub fields: Vec<Field>,
 }
 
@@ -219,6 +242,60 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "migration model names must start with an underscore"
+        );
+    }
+
+    #[test]
+    fn model_opts_as_model_pk_attr() {
+        let input: syn::DeriveInput = parse_quote! {
+            #[model]
+            struct TestModel {
+                #[model(primary_key)]
+                name: i32,
+            }
+        };
+        let opts = ModelOpts::new_from_derive_input(&input).unwrap();
+        let args = ModelArgs::default();
+        let model = opts.as_model(&args).unwrap();
+        assert_eq!(model.fields.len(), 1);
+        assert_eq!(model.fields[0].primary_key, true);
+    }
+
+    #[test]
+    fn model_opts_as_model_no_pk() {
+        let input: syn::DeriveInput = parse_quote! {
+            #[model]
+            struct TestModel {
+                name: String,
+            }
+        };
+        let opts = ModelOpts::new_from_derive_input(&input).unwrap();
+        let args = ModelArgs::default();
+        let err = opts.as_model(&args).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "models must have a primary key field, either named `id` \
+            or annotated with the `#[model(primary_key)]` attribute"
+        );
+    }
+
+    #[test]
+    fn model_opts_as_model_multiple_pks() {
+        let input: syn::DeriveInput = parse_quote! {
+            #[model]
+            struct TestModel {
+                id: i64,
+                #[model(primary_key)]
+                id_2: i64,
+                name: String,
+            }
+        };
+        let opts = ModelOpts::new_from_derive_input(&input).unwrap();
+        let args = ModelArgs::default();
+        let err = opts.as_model(&args).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "composite primary keys are not supported; only one primary key field is allowed"
         );
     }
 

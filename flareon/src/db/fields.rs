@@ -8,7 +8,8 @@ use crate::db::impl_postgres::PostgresValueRef;
 #[cfg(feature = "sqlite")]
 use crate::db::impl_sqlite::SqliteValueRef;
 use crate::db::{
-    ColumnType, DatabaseError, FromDbValue, LimitedString, Result, SqlxValueRef, ToDbValue,
+    ColumnType, DatabaseError, DbValue, ForeignKey, FromDbValue, LimitedString, Model, PrimaryKey,
+    Result, SqlxValueRef, ToDbValue,
 };
 
 macro_rules! impl_from_sqlite_default {
@@ -41,13 +42,13 @@ macro_rules! impl_from_mysql_default {
 macro_rules! impl_to_db_value_default {
     ($ty:ty) => {
         impl ToDbValue for $ty {
-            fn to_sea_query_value(&self) -> Value {
+            fn to_db_value(&self) -> DbValue {
                 self.clone().into()
             }
         }
 
         impl ToDbValue for Option<$ty> {
-            fn to_sea_query_value(&self) -> Value {
+            fn to_db_value(&self) -> DbValue {
                 self.clone().into()
             }
         }
@@ -136,7 +137,7 @@ impl_db_field!(String, Text);
 impl_db_field!(Vec<u8>, Blob);
 
 impl ToDbValue for &str {
-    fn to_sea_query_value(&self) -> Value {
+    fn to_db_value(&self) -> DbValue {
         (*self).to_string().into()
     }
 }
@@ -171,7 +172,7 @@ impl FromDbValue for Option<chrono::DateTime<chrono::FixedOffset>> {
 impl_to_db_value_default!(chrono::DateTime<chrono::FixedOffset>);
 
 impl ToDbValue for Option<&str> {
-    fn to_sea_query_value(&self) -> Value {
+    fn to_db_value(&self) -> DbValue {
         self.map(ToString::to_string).into()
     }
 }
@@ -209,13 +210,45 @@ impl<const LIMIT: u32> FromDbValue for LimitedString<LIMIT> {
 }
 
 impl<const LIMIT: u32> ToDbValue for LimitedString<LIMIT> {
-    fn to_sea_query_value(&self) -> Value {
+    fn to_db_value(&self) -> DbValue {
         self.0.clone().into()
     }
 }
 
 impl<const LIMIT: u32> ToDbValue for Option<LimitedString<LIMIT>> {
-    fn to_sea_query_value(&self) -> Value {
+    fn to_db_value(&self) -> DbValue {
         self.clone().map(|s| s.0).into()
     }
 }
+
+impl<T: Model + Send + Sync> DatabaseField for ForeignKey<T> {
+    const NULLABLE: bool = T::PrimaryKey::NULLABLE;
+    const TYPE: ColumnType = T::PrimaryKey::TYPE;
+}
+
+impl<T: Model + Send + Sync> FromDbValue for ForeignKey<T> {
+    #[cfg(feature = "sqlite")]
+    fn from_sqlite(value: SqliteValueRef) -> Result<Self> {
+        T::PrimaryKey::from_sqlite(value).map(ForeignKey::PrimaryKey)
+    }
+
+    #[cfg(feature = "postgres")]
+    fn from_postgres(value: PostgresValueRef) -> Result<Self> {
+        T::PrimaryKey::from_postgres(value).map(ForeignKey::PrimaryKey)
+    }
+
+    #[cfg(feature = "mysql")]
+    fn from_mysql(value: MySqlValueRef) -> Result<Self> {
+        T::PrimaryKey::from_mysql(value).map(ForeignKey::PrimaryKey)
+    }
+}
+
+impl<T: Model + Send + Sync> ToDbValue for ForeignKey<T> {
+    fn to_db_value(&self) -> DbValue {
+        self.primary_key().to_db_value()
+    }
+}
+
+impl PrimaryKey for i32 {}
+
+impl PrimaryKey for i64 {}

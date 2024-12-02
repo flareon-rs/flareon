@@ -1,8 +1,21 @@
+use sea_query_binder::SqlxValues;
+use sqlx::Executor;
+
 use crate::db::sea_query_db::impl_sea_query_db_backend;
 
 impl_sea_query_db_backend!(DatabaseSqlite: sqlx::sqlite::Sqlite, sqlx::sqlite::SqlitePool, SqliteRow, SqliteValueRef, sea_query::SqliteQueryBuilder);
 
 impl DatabaseSqlite {
+    async fn init(&self) -> crate::db::Result<()> {
+        self.raw("PRAGMA foreign_keys = ON").await?;
+        Ok(())
+    }
+
+    async fn raw(&self, sql: &str) -> crate::db::Result<crate::db::StatementResult> {
+        self.raw_with(sql, SqlxValues(sea_query::Values(Vec::new())))
+            .await
+    }
+
     fn prepare_values(_values: &mut sea_query_binder::SqlxValues) {
         // No changes are needed for SQLite
     }
