@@ -133,7 +133,7 @@ pub struct FieldOpts {
 
 impl FieldOpts {
     #[must_use]
-    fn find_type(&self, type_to_check: &str, symbol_resolver: &SymbolResolver) -> bool {
+    fn has_type(&self, type_to_check: &str, symbol_resolver: &SymbolResolver) -> bool {
         let mut ty = self.ty.clone();
         symbol_resolver.resolve(&mut ty);
         Self::inner_type_names(&ty)
@@ -171,6 +171,54 @@ impl FieldOpts {
         }
     }
 
+    fn find_type(&self, type_to_find: &str, symbol_resolver: &SymbolResolver) -> Option<syn::Type> {
+        let mut ty = self.ty.clone();
+        symbol_resolver.resolve(&mut ty);
+        Self::find_type_resolved(&ty, type_to_find)
+    }
+
+    fn find_type_resolved(ty: &syn::Type, type_to_find: &str) -> Option<syn::Type> {
+        if let syn::Type::Path(type_path) = ty {
+            let name = type_path
+                .path
+                .segments
+                .iter()
+                .map(|s| s.ident.to_string())
+                .collect::<Vec<_>>()
+                .join("::");
+
+            if name == type_to_find {
+                return Some(ty.clone());
+            }
+
+            for arg in &type_path.path.segments {
+                if let syn::PathArguments::AngleBracketed(arg) = &arg.arguments {
+                    if let Some(ty) = Self::find_type_in_generics(arg, type_to_find) {
+                        return Some(ty);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn find_type_in_generics(
+        arg: &syn::AngleBracketedGenericArguments,
+        type_to_find: &str,
+    ) -> Option<syn::Type> {
+        arg.args
+            .iter()
+            .filter_map(|arg| {
+                if let syn::GenericArgument::Type(ty) = arg {
+                    Self::find_type_resolved(ty, type_to_find)
+                } else {
+                    None
+                }
+            })
+            .next()
+    }
+
     /// Convert the field options into a field.
     ///
     /// # Panics
@@ -183,10 +231,13 @@ impl FieldOpts {
         let column_name = name.to_string();
         let (auto_value, foreign_key) = match symbol_resolver {
             Some(resolver) => (
-                Some(self.find_type("flareon::db::Auto", resolver)),
-                Some(self.find_type("flareon::db::ForeignKey", resolver)),
+                MaybeUnknown::Determined(self.find_type("flareon::db::Auto", resolver).is_some()),
+                MaybeUnknown::Determined(
+                    self.find_type("flareon::db::ForeignKey", resolver)
+                        .map(ForeignKeySpec::from),
+                ),
             ),
-            None => (None, None),
+            None => (MaybeUnknown::Unknown, MaybeUnknown::Unknown),
         };
         let is_primary_key = column_name == "id" || self.primary_key.is_present();
 
@@ -224,19 +275,65 @@ pub struct Field {
     pub field_name: syn::Ident,
     pub column_name: String,
     pub ty: syn::Type,
-    /// Whether the field is an auto field (e.g. `id`); `None` if it could not
-    /// be determined.
-    pub auto_value: Option<bool>,
+    /// Whether the field is an auto field (e.g. `id`);
+    /// [`MaybeUnknown::Unknown`] if this `Field` instance was not resolved with
+    /// a [`SymbolResolver`].
+    pub auto_value: MaybeUnknown<bool>,
     pub primary_key: bool,
-    /// Whether the field is a foreign key; `None` if it could not be
-    /// determined.
-    pub foreign_key: Option<bool>,
+    /// [`Some`] wrapped in [`MaybeUnknown::Determined`] if this field is a
+    /// foreign key; [`None`] wrapped in [`MaybeUnknown::Determined`] if this
+    /// field is determined not to be a foreign key; [`MaybeUnknown::Unknown`]
+    /// if this `Field` instance was not resolved with a [`SymbolResolver`].
+    pub foreign_key: MaybeUnknown<Option<ForeignKeySpec>>,
     pub unique: bool,
+}
+
+/// Wraps a type whose value may or may not be possible to be determined using
+/// the information available.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum MaybeUnknown<T> {
+    /// Indicates that this instance is determined to be a certain value
+    /// (possibly [`None`] if wrapping an [`Option`]).
+    Determined(T),
+    /// Indicates that the value is unknown.
+    Unknown,
+}
+
+impl<T> MaybeUnknown<T> {
+    pub fn unwrap(self) -> T {
+        match self {
+            MaybeUnknown::Determined(value) => value,
+            MaybeUnknown::Unknown => {
+                panic!("called `MaybeUnknown::unwrap()` on an `Unknown` value")
+            }
+        }
+    }
+
+    pub fn expect(self, msg: &str) -> T {
+        match self {
+            MaybeUnknown::Determined(value) => value,
+            MaybeUnknown::Unknown => {
+                panic!("{}", msg)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ForeignKeySpec {
+    pub ty: syn::Type,
+}
+
+impl From<syn::Type> for ForeignKeySpec {
+    fn from(value: syn::Type) -> Self {
+        todo!()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use syn::parse_quote;
+    use syn::TraitBoundModifier::Maybe;
 
     use super::*;
     #[cfg(feature = "symbol-resolver")]
@@ -371,8 +468,8 @@ mod tests {
         assert_eq!(field.column_name, "name");
         assert_eq!(field.ty, parse_quote!(String));
         assert!(field.unique);
-        assert_eq!(field.auto_value, None);
-        assert_eq!(field.foreign_key, None);
+        assert_eq!(field.auto_value, MaybeUnknown::Unknown);
+        assert_eq!(field.foreign_key, MaybeUnknown::Unknown);
     }
 
     #[test]
@@ -403,9 +500,9 @@ mod tests {
             unique: Default::default(),
         };
 
-        assert!(opts.find_type("my_crate::MyContainer", &resolver));
-        assert!(opts.find_type("std::string::String", &resolver));
-        assert!(!opts.find_type("MyContainer", &resolver));
-        assert!(!opts.find_type("String", &resolver));
+        assert!(opts.has_type("my_crate::MyContainer", &resolver));
+        assert!(opts.has_type("std::string::String", &resolver));
+        assert!(!opts.has_type("MyContainer", &resolver));
+        assert!(!opts.has_type("String", &resolver));
     }
 }

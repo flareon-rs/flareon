@@ -27,19 +27,21 @@ fn create_model_state_test() {
         assert_eq!(field.column_name, "id");
         assert!(field.primary_key);
         assert!(field.auto_value.unwrap());
-        assert!(!field.foreign_key.unwrap());
+        assert!(field.foreign_key.clone().unwrap().is_none());
 
         let field = &fields[1];
         assert_eq!(field.column_name, "field_1");
         assert!(!field.primary_key);
         assert!(!field.auto_value.unwrap());
-        assert!(!field.foreign_key.unwrap());
+        assert!(field.foreign_key.clone().unwrap().is_none());
 
         let field = &fields[2];
         assert_eq!(field.column_name, "field_2");
         assert!(!field.primary_key);
         assert!(!field.auto_value.unwrap());
-        assert!(!field.foreign_key.unwrap());
+        assert!(field.foreign_key.clone().unwrap().is_none());
+    } else {
+        panic!("Expected a create model operation");
     }
 }
 
