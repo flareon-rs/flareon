@@ -1,5 +1,7 @@
+//! `DatabaseField` implementations for common types.
+
 use flareon::db::DatabaseField;
-use sea_query::Value;
+use log::debug;
 
 #[cfg(feature = "mysql")]
 use crate::db::impl_mysql::MySqlValueRef;
@@ -8,7 +10,8 @@ use crate::db::impl_postgres::PostgresValueRef;
 #[cfg(feature = "sqlite")]
 use crate::db::impl_sqlite::SqliteValueRef;
 use crate::db::{
-    ColumnType, DatabaseError, FromDbValue, LimitedString, Result, SqlxValueRef, ToDbValue,
+    Auto, ColumnType, DatabaseError, DbFieldValue, DbValue, ForeignKey, FromDbValue, LimitedString,
+    Model, PrimaryKey, Result, SqlxValueRef, ToDbFieldValue, ToDbValue,
 };
 
 macro_rules! impl_from_sqlite_default {
@@ -41,13 +44,13 @@ macro_rules! impl_from_mysql_default {
 macro_rules! impl_to_db_value_default {
     ($ty:ty) => {
         impl ToDbValue for $ty {
-            fn to_sea_query_value(&self) -> Value {
+            fn to_db_value(&self) -> DbValue {
                 self.clone().into()
             }
         }
 
         impl ToDbValue for Option<$ty> {
-            fn to_sea_query_value(&self) -> Value {
+            fn to_db_value(&self) -> DbValue {
                 self.clone().into()
             }
         }
@@ -136,7 +139,7 @@ impl_db_field!(String, Text);
 impl_db_field!(Vec<u8>, Blob);
 
 impl ToDbValue for &str {
-    fn to_sea_query_value(&self) -> Value {
+    fn to_db_value(&self) -> DbValue {
         (*self).to_string().into()
     }
 }
@@ -171,14 +174,14 @@ impl FromDbValue for Option<chrono::DateTime<chrono::FixedOffset>> {
 impl_to_db_value_default!(chrono::DateTime<chrono::FixedOffset>);
 
 impl ToDbValue for Option<&str> {
-    fn to_sea_query_value(&self) -> Value {
+    fn to_db_value(&self) -> DbValue {
         self.map(ToString::to_string).into()
     }
 }
 
 impl<T: DatabaseField> DatabaseField for Option<T>
 where
-    Option<T>: ToDbValue + FromDbValue,
+    Option<T>: ToDbFieldValue + FromDbValue,
 {
     const NULLABLE: bool = true;
     const TYPE: ColumnType = T::TYPE;
@@ -209,13 +212,154 @@ impl<const LIMIT: u32> FromDbValue for LimitedString<LIMIT> {
 }
 
 impl<const LIMIT: u32> ToDbValue for LimitedString<LIMIT> {
-    fn to_sea_query_value(&self) -> Value {
+    fn to_db_value(&self) -> DbValue {
         self.0.clone().into()
     }
 }
 
 impl<const LIMIT: u32> ToDbValue for Option<LimitedString<LIMIT>> {
-    fn to_sea_query_value(&self) -> Value {
+    fn to_db_value(&self) -> DbValue {
         self.clone().map(|s| s.0).into()
     }
 }
+
+impl<T: Model + Send + Sync> DatabaseField for ForeignKey<T> {
+    const NULLABLE: bool = T::PrimaryKey::NULLABLE;
+    const TYPE: ColumnType = T::PrimaryKey::TYPE;
+}
+
+impl<T: Model + Send + Sync> FromDbValue for ForeignKey<T> {
+    #[cfg(feature = "sqlite")]
+    fn from_sqlite(value: SqliteValueRef) -> Result<Self> {
+        T::PrimaryKey::from_sqlite(value).map(ForeignKey::PrimaryKey)
+    }
+
+    #[cfg(feature = "postgres")]
+    fn from_postgres(value: PostgresValueRef) -> Result<Self> {
+        T::PrimaryKey::from_postgres(value).map(ForeignKey::PrimaryKey)
+    }
+
+    #[cfg(feature = "mysql")]
+    fn from_mysql(value: MySqlValueRef) -> Result<Self> {
+        T::PrimaryKey::from_mysql(value).map(ForeignKey::PrimaryKey)
+    }
+}
+
+impl<T: Model + Send + Sync> ToDbFieldValue for ForeignKey<T> {
+    fn to_db_field_value(&self) -> DbFieldValue {
+        self.primary_key().to_db_field_value()
+    }
+}
+
+impl<T: Model + Send + Sync> FromDbValue for Option<ForeignKey<T>>
+where
+    Option<T::PrimaryKey>: FromDbValue,
+{
+    #[cfg(feature = "sqlite")]
+    fn from_sqlite(value: SqliteValueRef) -> Result<Self> {
+        Ok(<Option<T::PrimaryKey>>::from_sqlite(value)?.map(ForeignKey::PrimaryKey))
+    }
+
+    #[cfg(feature = "postgres")]
+    fn from_postgres(value: PostgresValueRef) -> Result<Self> {
+        Ok(<Option<T::PrimaryKey>>::from_postgres(value)?.map(ForeignKey::PrimaryKey))
+    }
+
+    #[cfg(feature = "mysql")]
+    fn from_mysql(value: MySqlValueRef) -> Result<Self> {
+        Ok(<Option<T::PrimaryKey>>::from_mysql(value)?.map(ForeignKey::PrimaryKey))
+    }
+}
+
+impl<T: Model + Send + Sync> ToDbFieldValue for Option<ForeignKey<T>>
+where
+    Option<T::PrimaryKey>: ToDbFieldValue,
+{
+    fn to_db_field_value(&self) -> DbFieldValue {
+        match self {
+            Some(foreign_key) => foreign_key.to_db_field_value(),
+            None => <Option<T::PrimaryKey>>::None.to_db_field_value(),
+        }
+    }
+}
+
+impl<T: DatabaseField> DatabaseField for Auto<T> {
+    const NULLABLE: bool = T::NULLABLE;
+    const TYPE: ColumnType = T::TYPE;
+}
+
+impl<T: DatabaseField> FromDbValue for Auto<T> {
+    fn from_sqlite(value: SqliteValueRef) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(Self::fixed(T::from_sqlite(value)?))
+    }
+
+    fn from_postgres(value: PostgresValueRef) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(Self::fixed(T::from_postgres(value)?))
+    }
+
+    fn from_mysql(value: MySqlValueRef) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(Self::fixed(T::from_mysql(value)?))
+    }
+}
+
+impl<T: DatabaseField> ToDbFieldValue for Auto<T> {
+    fn to_db_field_value(&self) -> DbFieldValue {
+        match self {
+            Self::Fixed(value) => value.to_db_field_value(),
+            Self::Auto => DbFieldValue::Auto,
+        }
+    }
+}
+
+impl<T: DatabaseField> FromDbValue for Option<Auto<T>>
+where
+    Option<T>: FromDbValue,
+{
+    fn from_sqlite(value: SqliteValueRef) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        <Option<T>>::from_sqlite(value).map(|value| value.map(Auto::fixed))
+    }
+
+    fn from_postgres(value: PostgresValueRef) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        <Option<T>>::from_postgres(value).map(|value| value.map(Auto::fixed))
+    }
+
+    fn from_mysql(value: MySqlValueRef) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        <Option<T>>::from_mysql(value).map(|value| value.map(Auto::fixed))
+    }
+}
+
+impl<T: DatabaseField> ToDbFieldValue for Option<Auto<T>>
+where
+    Option<T>: ToDbFieldValue,
+{
+    fn to_db_field_value(&self) -> DbFieldValue {
+        match self {
+            Some(auto) => auto.to_db_field_value(),
+            None => <Option<T>>::None.to_db_field_value(),
+        }
+    }
+}
+
+impl<T: PrimaryKey> PrimaryKey for Auto<T> {}
+
+impl PrimaryKey for i32 {}
+
+impl PrimaryKey for i64 {}

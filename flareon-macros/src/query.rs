@@ -40,23 +40,33 @@ pub(super) fn expr_to_tokens(model_name: &syn::Type, expr: Expr) -> TokenStream 
 
     let crate_name = flareon_ident();
     match expr {
-        Expr::FieldRef(name) => {
-            quote!(<#model_name as #crate_name::db::Model>::Fields::#name.as_expr())
+        Expr::FieldRef { field_name, .. } => {
+            quote!(<#model_name as #crate_name::db::Model>::Fields::#field_name.as_expr())
         }
         Expr::Value(value) => {
             quote!(#crate_name::db::query::Expr::value(#value))
         }
-        Expr::MethodCall {
-            called_on,
-            method_name,
-            args,
-        } => match *called_on {
-            Expr::Value(syn_expr) => {
-                quote!(#crate_name::db::query::Expr::value(#syn_expr.#method_name(#(#args),*)))
+        Expr::MemberAccess {
+            parent,
+            member_name,
+            ..
+        } => match parent.as_tokens() {
+            Some(tokens) => {
+                quote!(#crate_name::db::query::Expr::value(#tokens.#member_name))
             }
-            _ => syn::Error::new(
-                method_name.span(),
-                "only method calls on values are supported",
+            None => syn::Error::new_spanned(
+                parent.as_tokens_full(),
+                "accessing members of values that reference database fields is unsupported",
+            )
+            .to_compile_error(),
+        },
+        Expr::FunctionCall { function, args } => match function.as_tokens() {
+            Some(tokens) => {
+                quote!(#crate_name::db::query::Expr::value(#tokens(#(#args),*)))
+            }
+            None => syn::Error::new_spanned(
+                function.as_tokens_full(),
+                "calling functions that reference database fields is unsupported",
             )
             .to_compile_error(),
         },
@@ -90,9 +100,9 @@ fn handle_binary_comparison(
     let bin_fn = format_ident!("{}", bin_fn);
     let bin_trait = format_ident!("{}", bin_trait);
 
-    if let Expr::FieldRef(ref field) = lhs {
+    if let Expr::FieldRef { ref field_name, .. } = lhs {
         if let Some(rhs_tokens) = rhs.as_tokens() {
-            return quote!(#crate_name::db::query::#bin_trait::#bin_fn(<#model_name as #crate_name::db::Model>::Fields::#field, #rhs_tokens));
+            return quote!(#crate_name::db::query::#bin_trait::#bin_fn(<#model_name as #crate_name::db::Model>::Fields::#field_name, #rhs_tokens));
         }
     }
 
