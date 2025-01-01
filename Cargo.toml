@@ -22,7 +22,7 @@ all = "deny"
 pedantic = "warn"
 
 [workspace.dependencies]
-anyhow = "1.0.93"
+anyhow = "1.0.95"
 askama = "0.12.1"
 askama_derive = "0.12.5"
 askama_parser = "0.2.1"
@@ -78,6 +78,6 @@ tempfile = "3"
 thiserror = "2"
 time = { version = "0.3.35", default-features = false }
 tokio = { version = "1.41", default-features = false }
-tower = "0.5.1"
+tower = "0.5.2"
 tower-sessions = { version = "0.13", default-features = false }
 trybuild = { version = "1", features = ["diff"] }
