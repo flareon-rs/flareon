@@ -40,8 +40,7 @@ darling = "0.20"
 derive_builder = "0.20"
 derive_more = "1"
 env_logger = "0.11"
-# TODO: replace with upstream when https://github.com/cksac/fake-rs/pull/204 is merged and released
-fake = { git = "https://github.com/m4tx/fake-rs.git" }
+fake = "3.1"
 flareon = { path = "flareon" }
 flareon_codegen = { path = "flareon-codegen" }
 flareon_macros = { path = "flareon-macros" }
