@@ -1,9 +1,11 @@
 extern crate self as flareon_codegen;
 
 pub mod expr;
+mod maybe_unknown;
 pub mod model;
 #[cfg(feature = "symbol-resolver")]
 pub mod symbol_resolver;
+
 #[cfg(not(feature = "symbol-resolver"))]
 pub mod symbol_resolver {
     /// Dummy SymbolResolver for use in contexts when it's not useful (e.g.

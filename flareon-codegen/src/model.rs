@@ -1,6 +1,8 @@
 use convert_case::{Case, Casing};
 use darling::{FromDeriveInput, FromField, FromMeta};
+use syn::spanned::Spanned;
 
+use crate::maybe_unknown::MaybeUnknown;
 use crate::symbol_resolver::SymbolResolver;
 
 #[allow(clippy::module_name_repetitions)]
@@ -66,11 +68,11 @@ impl ModelOpts {
         args: &ModelArgs,
         symbol_resolver: Option<&SymbolResolver>,
     ) -> Result<Model, syn::Error> {
-        let fields: Vec<_> = self
+        let fields = self
             .fields()
             .iter()
             .map(|field| field.as_field(symbol_resolver))
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
         let mut original_name = self.ident.to_string();
         if args.model_type == ModelType::Migration {
@@ -132,45 +134,6 @@ pub struct FieldOpts {
 }
 
 impl FieldOpts {
-    #[must_use]
-    fn has_type(&self, type_to_check: &str, symbol_resolver: &SymbolResolver) -> bool {
-        let mut ty = self.ty.clone();
-        symbol_resolver.resolve(&mut ty);
-        Self::inner_type_names(&ty)
-            .iter()
-            .any(|name| name == type_to_check)
-    }
-
-    #[must_use]
-    fn inner_type_names(ty: &syn::Type) -> Vec<String> {
-        let mut names = Vec::new();
-        Self::inner_type_names_impl(ty, &mut names);
-        names
-    }
-
-    fn inner_type_names_impl(ty: &syn::Type, names: &mut Vec<String>) {
-        if let syn::Type::Path(type_path) = ty {
-            let name = type_path
-                .path
-                .segments
-                .iter()
-                .map(|s| s.ident.to_string())
-                .collect::<Vec<_>>()
-                .join("::");
-            names.push(name);
-
-            for arg in &type_path.path.segments {
-                if let syn::PathArguments::AngleBracketed(arg) = &arg.arguments {
-                    for arg in &arg.args {
-                        if let syn::GenericArgument::Type(ty) = arg {
-                            Self::inner_type_names_impl(ty, names);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     fn find_type(&self, type_to_find: &str, symbol_resolver: &SymbolResolver) -> Option<syn::Type> {
         let mut ty = self.ty.clone();
         symbol_resolver.resolve(&mut ty);
@@ -225,23 +188,24 @@ impl FieldOpts {
     ///
     /// Panics if the field does not have an identifier (i.e. it is a tuple
     /// struct).
-    #[must_use]
-    pub fn as_field(&self, symbol_resolver: Option<&SymbolResolver>) -> Field {
+    pub fn as_field(&self, symbol_resolver: Option<&SymbolResolver>) -> Result<Field, syn::Error> {
         let name = self.ident.as_ref().unwrap();
         let column_name = name.to_string();
+
         let (auto_value, foreign_key) = match symbol_resolver {
             Some(resolver) => (
                 MaybeUnknown::Determined(self.find_type("flareon::db::Auto", resolver).is_some()),
                 MaybeUnknown::Determined(
                     self.find_type("flareon::db::ForeignKey", resolver)
-                        .map(ForeignKeySpec::from),
+                        .map(ForeignKeySpec::try_from)
+                        .transpose()?,
                 ),
             ),
             None => (MaybeUnknown::Unknown, MaybeUnknown::Unknown),
         };
         let is_primary_key = column_name == "id" || self.primary_key.is_present();
 
-        Field {
+        Ok(Field {
             field_name: name.clone(),
             column_name,
             ty: self.ty.clone(),
@@ -249,7 +213,7 @@ impl FieldOpts {
             primary_key: is_primary_key,
             foreign_key,
             unique: self.unique.is_present(),
-        }
+        })
     }
 }
 
@@ -288,52 +252,60 @@ pub struct Field {
     pub unique: bool,
 }
 
-/// Wraps a type whose value may or may not be possible to be determined using
-/// the information available.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum MaybeUnknown<T> {
-    /// Indicates that this instance is determined to be a certain value
-    /// (possibly [`None`] if wrapping an [`Option`]).
-    Determined(T),
-    /// Indicates that the value is unknown.
-    Unknown,
-}
-
-impl<T> MaybeUnknown<T> {
-    pub fn unwrap(self) -> T {
-        match self {
-            MaybeUnknown::Determined(value) => value,
-            MaybeUnknown::Unknown => {
-                panic!("called `MaybeUnknown::unwrap()` on an `Unknown` value")
-            }
-        }
-    }
-
-    pub fn expect(self, msg: &str) -> T {
-        match self {
-            MaybeUnknown::Determined(value) => value,
-            MaybeUnknown::Unknown => {
-                panic!("{}", msg)
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ForeignKeySpec {
-    pub ty: syn::Type,
+    pub to_model: syn::Type,
 }
 
-impl From<syn::Type> for ForeignKeySpec {
-    fn from(value: syn::Type) -> Self {
-        todo!()
+impl TryFrom<syn::Type> for ForeignKeySpec {
+    type Error = syn::Error;
+
+    fn try_from(ty: syn::Type) -> Result<Self, Self::Error> {
+        let type_path = if let syn::Type::Path(type_path) = &ty {
+            type_path
+        } else {
+            panic!("Expected a path type for a foreign key");
+        };
+
+        let args = if let syn::PathArguments::AngleBracketed(args) = &type_path
+            .path
+            .segments
+            .last()
+            .expect("type path must have at least one segment")
+            .arguments
+        {
+            args
+        } else {
+            return Err(syn::Error::new(
+                ty.span(),
+                "expected ForeignKey to have angle-bracketed generic arguments",
+            ));
+        };
+
+        if args.args.len() != 1 {
+            return Err(syn::Error::new(
+                ty.span(),
+                "expected ForeignKey to have only one generic parameter",
+            ));
+        }
+
+        let inner = &args.args[0];
+        if let syn::GenericArgument::Type(ty) = inner {
+            Ok(Self {
+                to_model: ty.clone(),
+            })
+        } else {
+            Err(syn::Error::new(
+                ty.span(),
+                "expected ForeignKey to have a type generic argument",
+            ))
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use syn::parse_quote;
-    use syn::TraitBoundModifier::Maybe;
 
     use super::*;
     #[cfg(feature = "symbol-resolver")]
@@ -463,7 +435,7 @@ mod tests {
             name: String
         };
         let field_opts = FieldOpts::from_field(&input).unwrap();
-        let field = field_opts.as_field(None);
+        let field = field_opts.as_field(None).unwrap();
         assert_eq!(field.field_name.to_string(), "name");
         assert_eq!(field.column_name, "name");
         assert_eq!(field.ty, parse_quote!(String));
@@ -473,19 +445,18 @@ mod tests {
     }
 
     #[test]
-    fn inner_type_names() {
+    fn find_type_resolved() {
         let input: syn::Type =
             parse_quote! { ::my_crate::MyContainer<'a, Vec<std::string::String>> };
-        let names = FieldOpts::inner_type_names(&input);
-        assert_eq!(
-            names,
-            vec!["my_crate::MyContainer", "Vec", "std::string::String"]
-        );
+        assert!(FieldOpts::find_type_resolved(&input, "my_crate::MyContainer").is_some());
+        assert!(FieldOpts::find_type_resolved(&input, "Vec").is_some());
+        assert!(FieldOpts::find_type_resolved(&input, "std::string::String").is_some());
+        assert!(!FieldOpts::find_type_resolved(&input, "OtherType").is_some());
     }
 
     #[cfg(feature = "symbol-resolver")]
     #[test]
-    fn contains_type() {
+    fn find_type() {
         let symbols = vec![VisibleSymbol::new(
             "MyContainer",
             "my_crate::MyContainer",
@@ -500,9 +471,9 @@ mod tests {
             unique: Default::default(),
         };
 
-        assert!(opts.has_type("my_crate::MyContainer", &resolver));
-        assert!(opts.has_type("std::string::String", &resolver));
-        assert!(!opts.has_type("MyContainer", &resolver));
-        assert!(!opts.has_type("String", &resolver));
+        assert!(opts.find_type("my_crate::MyContainer", &resolver).is_some());
+        assert!(opts.find_type("std::string::String", &resolver).is_some());
+        assert!(!opts.find_type("MyContainer", &resolver).is_none());
+        assert!(!opts.find_type("String", &resolver).is_none());
     }
 }

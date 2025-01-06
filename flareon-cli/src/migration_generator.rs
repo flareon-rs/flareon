@@ -761,6 +761,15 @@ pub enum DynOperation {
     },
 }
 
+impl DynOperation {
+    fn foreign_keys_added(&self) -> Vec<&syn::Type> {
+        match self {
+            DynOperation::CreateModel { fields, .. } => {}
+            DynOperation::AddField { field, .. } => {}
+        }
+    }
+}
+
 impl Repr for DynOperation {
     fn repr(&self) -> TokenStream {
         match self {
