@@ -4,7 +4,7 @@
 pub enum MaybeUnknown<T> {
     /// Indicates that this instance is determined to be a certain value
     /// (possibly [`None`] if wrapping an [`Option`]).
-    Determined(T),
+    Known(T),
     /// Indicates that the value is unknown.
     Unknown,
 }
@@ -16,7 +16,7 @@ impl<T> MaybeUnknown<T> {
 
     pub fn expect(self, msg: &str) -> T {
         match self {
-            MaybeUnknown::Determined(value) => value,
+            MaybeUnknown::Known(value) => value,
             MaybeUnknown::Unknown => {
                 panic!("{}", msg)
             }
@@ -30,8 +30,14 @@ mod tests {
 
     #[test]
     fn maybe_unknown_determined() {
-        let value = MaybeUnknown::Determined(42);
+        let value = MaybeUnknown::Known(42);
         assert_eq!(value.unwrap(), 42);
+    }
+
+    #[test]
+    fn maybe_unknown_known_none() {
+        let value = MaybeUnknown::Known(None::<()>);
+        assert!(value.unwrap().is_none());
     }
 
     #[test]
@@ -43,7 +49,7 @@ mod tests {
 
     #[test]
     fn maybe_unknown_expect() {
-        let value = MaybeUnknown::Determined(42);
+        let value = MaybeUnknown::Known(42);
         assert_eq!(value.expect("value should be determined"), 42);
     }
 

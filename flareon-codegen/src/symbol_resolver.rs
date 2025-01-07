@@ -1,13 +1,10 @@
-#![cfg(feature = "symbol-resolver")]
-
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::iter::FromIterator;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use log::warn;
-use quote::quote;
-use syn::{parse_quote, UseTree};
+use syn::UseTree;
+use tracing::warn;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SymbolResolver {
@@ -28,6 +25,7 @@ impl SymbolResolver {
         }
     }
 
+    #[must_use]
     pub fn from_file(file: &syn::File, module_path: &Path) -> Self {
         let imports = Self::get_imports(file, &ModulePath::from_fs_path(module_path));
         Self::new(imports)
@@ -330,7 +328,8 @@ impl Display for ModulePath {
 #[cfg(test)]
 mod tests {
     use flareon_codegen::symbol_resolver::VisibleSymbolKind;
-    use quote::ToTokens;
+    use quote::{quote, ToTokens};
+    use syn::parse_quote;
 
     use super::*;
 

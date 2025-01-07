@@ -4,12 +4,13 @@ use flareon::db::migrations::MigrationDependency;
 use thiserror::Error;
 
 use crate::db::migrations::{DynMigration, MigrationDependencyInner, OperationInner};
+use crate::utils::graph::{apply_permutation, Graph};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[non_exhaustive]
 pub enum MigrationSorterError {
     #[error("Cycle detected in migrations")]
-    CycleDetected,
+    CycleDetected(#[from] flareon::utils::graph::CycleDetected),
     #[error("Dependency not found: {}", format_migration_dependency(.0))]
     InvalidDependency(MigrationDependency),
     #[error("Migration defined twice: {app_name}::{migration_name}")]
@@ -17,10 +18,10 @@ pub enum MigrationSorterError {
         app_name: String,
         migration_name: String,
     },
-    #[error("Migration creating model defined twice: {app_name}::{model_name}")]
+    #[error("Migration creating model defined twice: {app_name}::{table_name}")]
     DuplicateModel {
         app_name: String,
-        model_name: String,
+        table_name: String,
     },
 }
 
@@ -31,8 +32,8 @@ fn format_migration_dependency(dependency: &MigrationDependency) -> String {
         MigrationDependencyInner::Migration { app, migration } => {
             format!("migration {app}::{migration}")
         }
-        MigrationDependencyInner::Model { app, model_name } => {
-            format!("model {app}::{model_name}")
+        MigrationDependencyInner::Model { app, table_name } => {
+            format!("model {app}::{table_name}")
         }
     }
 }
@@ -52,7 +53,7 @@ impl<'a, T: DynMigration> MigrationSorter<'a, T> {
     pub(super) fn sort(&mut self) -> Result<()> {
         // Sort by names to ensure that the order is deterministic
         self.migrations
-            .sort_by(|a, b| (b.app_name(), b.name()).cmp(&(a.app_name(), a.name())));
+            .sort_by(|a, b| (a.app_name(), a.name()).cmp(&(b.app_name(), b.name())));
 
         self.toposort()?;
         Ok(())
@@ -96,12 +97,12 @@ impl<'a, T: DynMigration> MigrationSorter<'a, T> {
                 if let OperationInner::CreateModel { table_name, .. } = operation.inner {
                     let app_and_model = MigrationLookup::ByAppAndModel {
                         app: migration.app_name(),
-                        model: table_name.0,
+                        table_name: table_name.0,
                     };
                     if map.insert(app_and_model, index).is_some() {
                         return Err(MigrationSorterError::DuplicateModel {
                             app_name: migration.app_name().to_owned(),
-                            model_name: table_name.0.to_owned(),
+                            table_name: table_name.0.to_owned(),
                         });
                     }
                 }
@@ -112,28 +113,10 @@ impl<'a, T: DynMigration> MigrationSorter<'a, T> {
     }
 }
 
-fn apply_permutation<T>(migrations: &mut [T], order: &mut [usize]) {
-    for i in 0..order.len() {
-        let mut current = i;
-        let mut next = order[current];
-
-        while next != i {
-            // process the cycle
-            migrations.swap(current, next);
-            order[current] = current;
-
-            current = next;
-            next = order[current];
-        }
-
-        order[current] = current;
-    }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum MigrationLookup<'a> {
     ByAppAndName { app: &'a str, name: &'a str },
-    ByAppAndModel { app: &'a str, model: &'a str },
+    ByAppAndModel { app: &'a str, table_name: &'a str },
 }
 
 impl From<&MigrationDependency> for MigrationLookup<'_> {
@@ -145,82 +128,11 @@ impl From<&MigrationDependency> for MigrationLookup<'_> {
                     name: migration,
                 }
             }
-            MigrationDependencyInner::Model { app, model_name } => MigrationLookup::ByAppAndModel {
-                app,
-                model: model_name,
-            },
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct Graph {
-    vertex_edges: Vec<Vec<usize>>,
-}
-
-impl Graph {
-    #[must_use]
-    fn new(vertex_num: usize) -> Self {
-        Self {
-            vertex_edges: vec![Vec::new(); vertex_num],
-        }
-    }
-
-    fn add_edge(&mut self, from: usize, to: usize) {
-        self.vertex_edges[from].push(to);
-    }
-
-    #[must_use]
-    fn vertex_num(&self) -> usize {
-        self.vertex_edges.len()
-    }
-
-    fn toposort(&mut self) -> Result<Vec<usize>> {
-        let mut visited = vec![VisitedStatus::NotVisited; self.vertex_num()];
-        let mut sorted_indices_stack = Vec::with_capacity(self.vertex_num());
-
-        for index in 0..self.vertex_num() {
-            self.visit(index, &mut visited, &mut sorted_indices_stack)?;
-        }
-
-        assert_eq!(sorted_indices_stack.len(), self.vertex_num());
-
-        sorted_indices_stack.reverse();
-        Ok(sorted_indices_stack)
-    }
-
-    fn visit(
-        &self,
-        index: usize,
-        visited: &mut Vec<VisitedStatus>,
-        sorted_indices_stack: &mut Vec<usize>,
-    ) -> Result<()> {
-        match visited[index] {
-            VisitedStatus::Visited => return Ok(()),
-            VisitedStatus::Visiting => {
-                return Err(MigrationSorterError::CycleDetected);
+            MigrationDependencyInner::Model { app, table_name } => {
+                MigrationLookup::ByAppAndModel { app, table_name }
             }
-            VisitedStatus::NotVisited => {}
         }
-
-        visited[index] = VisitedStatus::Visiting;
-
-        for &neighbor in &self.vertex_edges[index] {
-            self.visit(neighbor, visited, sorted_indices_stack)?;
-        }
-
-        visited[index] = VisitedStatus::Visited;
-        sorted_indices_stack.push(index);
-
-        Ok(())
     }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-enum VisitedStatus {
-    NotVisited,
-    Visiting,
-    Visited,
 }
 
 #[cfg(test)]
@@ -229,24 +141,6 @@ mod tests {
     use crate::db::migrations::{MigrationDependency, Operation};
     use crate::db::Identifier;
     use crate::test::TestMigration;
-
-    #[test]
-    fn graph_toposort() {
-        let mut graph = Graph::new(8);
-        graph.add_edge(0, 3);
-        graph.add_edge(1, 3);
-        graph.add_edge(1, 4);
-        graph.add_edge(2, 4);
-        graph.add_edge(2, 7);
-        graph.add_edge(3, 5);
-        graph.add_edge(3, 6);
-        graph.add_edge(3, 7);
-        graph.add_edge(4, 6);
-
-        let sorted_indices = graph.toposort().unwrap();
-
-        assert_eq!(sorted_indices, vec![2, 1, 4, 0, 3, 7, 6, 5]);
-    }
 
     #[test]
     fn create_lookup_table() {
@@ -284,11 +178,11 @@ mod tests {
         }));
         assert!(lookup.contains_key(&MigrationLookup::ByAppAndModel {
             app: "app1",
-            model: "model1"
+            table_name: "model1"
         }));
         assert!(lookup.contains_key(&MigrationLookup::ByAppAndModel {
             app: "app1",
-            model: "model2"
+            table_name: "model2"
         }));
     }
 
@@ -341,12 +235,12 @@ mod tests {
             ("app2", "migration_before")
         );
         assert_eq!(
-            (migrations[1].app_name(), migrations[1].name()),
-            ("app1", "migration_before")
+            (migrations[1].app_name(), migrations[2].name()),
+            ("app2", "migration_before")
         );
         assert_eq!(
-            (migrations[2].app_name(), migrations[2].name()),
-            ("app2", "migration_after")
+            (migrations[2].app_name(), migrations[1].name()),
+            ("app1", "migration_after")
         );
         assert_eq!(
             (migrations[3].app_name(), migrations[3].name()),
@@ -371,6 +265,7 @@ mod tests {
         const MIGRATION_NUM: usize = 100;
 
         let mut migrations = Vec::new();
+        #[allow(clippy::needless_range_loop)]
         for i in 0..MIGRATION_NUM {
             let deps = (0..i)
                 .map(|i| MigrationDependency::migration("app1", MIGRATION_NAMES[i]))
@@ -411,10 +306,10 @@ mod tests {
         ];
 
         let mut sorter = MigrationSorter::new(&mut migrations);
-        assert_eq!(
+        assert!(matches!(
             sorter.toposort().unwrap_err(),
-            MigrationSorterError::CycleDetected
-        );
+            MigrationSorterError::CycleDetected(_)
+        ));
     }
 
     #[test]
@@ -462,7 +357,7 @@ mod tests {
             sorter.toposort().unwrap_err(),
             MigrationSorterError::DuplicateModel {
                 app_name: "app1".to_owned(),
-                model_name: "model1".to_owned()
+                table_name: "model1".to_owned()
             }
         );
     }

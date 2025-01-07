@@ -16,7 +16,7 @@ macro_rules! impl_sea_query_db_backend {
                 let db_connection = <$pool_ty>::connect(url).await?;
 
                 let db = Self { db_connection };
-                db.init();
+                db.init().await?;
                 Ok(db)
             }
 

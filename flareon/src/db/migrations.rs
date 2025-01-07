@@ -10,7 +10,7 @@ use tracing::info;
 
 use crate::db::migrations::sorter::{MigrationSorter, MigrationSorterError};
 use crate::db::relations::ForeignKeyOnDeletePolicy;
-use crate::db::{model, query, ColumnType, Database, DatabaseField, Identifier, Model, Result};
+use crate::db::{model, query, ColumnType, Database, DatabaseField, Identifier, Result};
 
 #[derive(Debug, Clone, Error)]
 #[non_exhaustive]
@@ -712,7 +712,7 @@ enum MigrationDependencyInner {
     },
     Model {
         app: &'static str,
-        model_name: &'static str,
+        table_name: &'static str,
     },
 }
 
@@ -734,11 +734,11 @@ impl MigrationDependency {
     /// Creates a dependency on a model.
     ///
     /// This ensures that the migration engine will apply the migration that
-    /// creates the model with the given app and model name before the current
+    /// creates the model with the given app and table name before the current
     /// migration.
     #[must_use]
-    pub const fn model(app: &'static str, model_name: &'static str) -> Self {
-        Self::new(MigrationDependencyInner::Model { app, model_name })
+    pub const fn model(app: &'static str, table_name: &'static str) -> Self {
+        Self::new(MigrationDependencyInner::Model { app, table_name })
     }
 }
 

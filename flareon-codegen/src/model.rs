@@ -94,9 +94,22 @@ impl ModelOpts {
 
         let primary_key_field = self.get_primary_key_field(&fields)?;
 
+        let ty = match symbol_resolver {
+            Some(symbol_resolver) => {
+                let mut ty = syn::Type::Path(syn::TypePath {
+                    qself: None,
+                    path: syn::Path::from(self.ident.clone()),
+                });
+                symbol_resolver.resolve(&mut ty);
+                Some(ty)
+            }
+            None => None,
+        };
+
         Ok(Model {
             name: self.ident.clone(),
             original_name,
+            resolved_ty: ty,
             model_type: args.model_type,
             table_name,
             pk_field: primary_key_field.clone(),
@@ -194,8 +207,8 @@ impl FieldOpts {
 
         let (auto_value, foreign_key) = match symbol_resolver {
             Some(resolver) => (
-                MaybeUnknown::Determined(self.find_type("flareon::db::Auto", resolver).is_some()),
-                MaybeUnknown::Determined(
+                MaybeUnknown::Known(self.find_type("flareon::db::Auto", resolver).is_some()),
+                MaybeUnknown::Known(
                     self.find_type("flareon::db::ForeignKey", resolver)
                         .map(ForeignKeySpec::try_from)
                         .transpose()?,
@@ -221,6 +234,9 @@ impl FieldOpts {
 pub struct Model {
     pub name: syn::Ident,
     pub original_name: String,
+    /// The type of the model, or [`None`] if the symbol resolver was not
+    /// enabled.
+    pub resolved_ty: Option<syn::Type>,
     pub model_type: ModelType,
     pub table_name: String,
     pub pk_field: Field,
@@ -244,8 +260,8 @@ pub struct Field {
     /// a [`SymbolResolver`].
     pub auto_value: MaybeUnknown<bool>,
     pub primary_key: bool,
-    /// [`Some`] wrapped in [`MaybeUnknown::Determined`] if this field is a
-    /// foreign key; [`None`] wrapped in [`MaybeUnknown::Determined`] if this
+    /// [`Some`] wrapped in [`MaybeUnknown::Known`] if this field is a
+    /// foreign key; [`None`] wrapped in [`MaybeUnknown::Known`] if this
     /// field is determined not to be a foreign key; [`MaybeUnknown::Unknown`]
     /// if this `Field` instance was not resolved with a [`SymbolResolver`].
     pub foreign_key: MaybeUnknown<Option<ForeignKeySpec>>,
@@ -451,7 +467,7 @@ mod tests {
         assert!(FieldOpts::find_type_resolved(&input, "my_crate::MyContainer").is_some());
         assert!(FieldOpts::find_type_resolved(&input, "Vec").is_some());
         assert!(FieldOpts::find_type_resolved(&input, "std::string::String").is_some());
-        assert!(!FieldOpts::find_type_resolved(&input, "OtherType").is_some());
+        assert!(FieldOpts::find_type_resolved(&input, "OtherType").is_none());
     }
 
     #[cfg(feature = "symbol-resolver")]
@@ -473,7 +489,7 @@ mod tests {
 
         assert!(opts.find_type("my_crate::MyContainer", &resolver).is_some());
         assert!(opts.find_type("std::string::String", &resolver).is_some());
-        assert!(!opts.find_type("MyContainer", &resolver).is_none());
-        assert!(!opts.find_type("String", &resolver).is_none());
+        assert!(opts.find_type("MyContainer", &resolver).is_none());
+        assert!(opts.find_type("String", &resolver).is_none());
     }
 }

@@ -1,5 +1,4 @@
 use sea_query_binder::SqlxValues;
-use sqlx::Executor;
 
 use crate::db::sea_query_db::impl_sea_query_db_backend;
 

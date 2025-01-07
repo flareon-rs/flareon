@@ -3,6 +3,7 @@ use crate::db::sea_query_db::impl_sea_query_db_backend;
 impl_sea_query_db_backend!(DatabasePostgres: sqlx::postgres::Postgres, sqlx::postgres::PgPool, PostgresRow, PostgresValueRef, sea_query::PostgresQueryBuilder);
 
 impl DatabasePostgres {
+    #[allow(clippy::unused_async)]
     async fn init(&self) -> crate::db::Result<()> {
         Ok(())
     }
@@ -38,7 +39,7 @@ impl DatabasePostgres {
         }
     }
 
-    fn last_inserted_row_id_for(result: &sqlx::postgres::PgQueryResult) -> Option<u64> {
+    fn last_inserted_row_id_for(_result: &sqlx::postgres::PgQueryResult) -> Option<u64> {
         None
     }
 

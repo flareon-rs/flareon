@@ -10,11 +10,13 @@ use cargo_toml::Manifest;
 use darling::FromMeta;
 use flareon::db::migrations::{DynMigration, MigrationEngine};
 use flareon_codegen::model::{Field, Model, ModelArgs, ModelOpts, ModelType};
-use flareon_codegen::symbol_resolver::{ModulePath, SymbolResolver, VisibleSymbol};
+use flareon_codegen::symbol_resolver::SymbolResolver;
+use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::visit::EdgeRef;
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
-use syn::{parse_quote, Attribute, Meta, UseTree};
-use tracing::{debug, info, warn};
+use quote::{format_ident, quote, ToTokens};
+use syn::{parse_quote, Attribute, Meta};
+use tracing::{debug, info, trace};
 
 use crate::utils::find_cargo_toml;
 
@@ -46,7 +48,6 @@ pub fn make_migrations(path: &Path, options: MigrationGeneratorOptions) -> anyho
 
 #[derive(Debug, Clone, Default)]
 pub struct MigrationGeneratorOptions {
-    pub app_name: Option<String>,
     pub output_dir: Option<PathBuf>,
 }
 
@@ -75,7 +76,7 @@ impl MigrationGenerator {
         let source_files = self.get_source_files()?;
 
         if let Some(migration) = self.generate_migrations_to_write(source_files)? {
-            self.write_migration(migration)?;
+            self.write_migration(&migration)?;
         }
 
         Ok(())
@@ -109,12 +110,19 @@ impl MigrationGenerator {
             let migration_name = migration_processor.next_migration_name()?;
             let dependencies = migration_processor.base_dependencies();
 
-            Ok(Some(GeneratedMigration {
+            let mut migration = GeneratedMigration {
                 migration_name,
                 modified_models,
                 dependencies,
                 operations,
-            }))
+            };
+            migration.remove_cycles();
+            migration.toposort_operations();
+            migration
+                .dependencies
+                .extend(migration.get_foreign_key_dependencies(&self.crate_name));
+
+            Ok(Some(migration))
         }
     }
 
@@ -187,6 +195,8 @@ impl MigrationGenerator {
         }: SourceFile,
         app_state: &mut AppState,
     ) -> anyhow::Result<()> {
+        trace!("Processing file: {:?}", &path);
+
         let symbol_resolver = SymbolResolver::from_file(&file, &path);
 
         let mut migration_models = Vec::new();
@@ -201,8 +211,20 @@ impl MigrationGenerator {
                             ModelInSource::from_item(item, &args, &symbol_resolver)?;
 
                         match args.model_type {
-                            ModelType::Application => app_state.models.push(model_in_source),
-                            ModelType::Migration => migration_models.push(model_in_source),
+                            ModelType::Application => {
+                                trace!(
+                                    "Found an Application model: {}",
+                                    model_in_source.model.name.to_string()
+                                );
+                                app_state.models.push(model_in_source);
+                            }
+                            ModelType::Migration => {
+                                trace!(
+                                    "Found a Migration model: {}",
+                                    model_in_source.model.name.to_string()
+                                );
+                                migration_models.push(model_in_source);
+                            }
                             ModelType::Internal => {}
                         }
 
@@ -297,6 +319,7 @@ impl MigrationGenerator {
     fn make_create_model_operation(app_model: &ModelInSource) -> DynOperation {
         DynOperation::CreateModel {
             table_name: app_model.model.table_name.clone(),
+            model_ty: app_model.model.resolved_ty.clone().expect("resolved_ty is expected to be present when parsing the entire file with symbol resolver"),
             fields: app_model.model.fields.clone(),
         }
     }
@@ -320,6 +343,7 @@ impl MigrationGenerator {
         }
 
         let mut all_field_names: Vec<_> = all_field_names.into_iter().collect();
+        // sort to ensure deterministic order
         all_field_names.sort();
 
         let mut operations = Vec::new();
@@ -357,6 +381,7 @@ impl MigrationGenerator {
     fn make_add_field_operation(app_model: &ModelInSource, field: &Field) -> DynOperation {
         DynOperation::AddField {
             table_name: app_model.model.table_name.clone(),
+            model_ty: app_model.model.resolved_ty.clone().expect("resolved_ty is expected to be present when parsing the entire file with symbol resolver"),
             field: field.clone(),
         }
     }
@@ -401,7 +426,7 @@ impl MigrationGenerator {
             .map(|dependency| dependency.repr())
             .collect();
 
-        let app_name = self.options.app_name.as_ref().unwrap_or(&self.crate_name);
+        let app_name = &self.crate_name;
         let migration_name = &migration.migration_name;
         let migration_def = quote! {
             #[derive(Debug, Copy, Clone)]
@@ -431,7 +456,7 @@ impl MigrationGenerator {
         Self::generate_migration(migration_def, models_def)
     }
 
-    fn write_migration(&self, migration: MigrationAsSource) -> anyhow::Result<()> {
+    fn write_migration(&self, migration: &MigrationAsSource) -> anyhow::Result<()> {
         let src_path = self
             .options
             .output_dir
@@ -640,6 +665,160 @@ pub struct GeneratedMigration {
     pub operations: Vec<DynOperation>,
 }
 
+impl GeneratedMigration {
+    fn get_foreign_key_dependencies(&self, crate_name: &str) -> Vec<DynDependency> {
+        let create_ops = self.get_create_ops_map();
+        let ops_adding_foreign_keys = self.get_ops_adding_foreign_keys();
+
+        let mut dependencies = Vec::new();
+        for (_index, dependency_ty) in &ops_adding_foreign_keys {
+            if !create_ops.contains_key(dependency_ty) {
+                dependencies.push(DynDependency::Model {
+                    model_type: dependency_ty.clone(),
+                });
+            }
+        }
+
+        dependencies
+    }
+
+    fn remove_cycles(&mut self) {
+        let graph = self.construct_dependency_graph();
+
+        let cycle_edges = petgraph::algo::feedback_arc_set::greedy_feedback_arc_set(&graph);
+        for edge_id in cycle_edges {
+            let (from, to) = graph.edge_endpoints(edge_id.id()).unwrap();
+
+            let to_op = self.operations[to.index()].clone();
+            let from_op = &mut self.operations[from.index()];
+            debug!(
+                "Removing cycle by removing operation {:?} that depends on {:?}",
+                from_op, to_op
+            );
+
+            let to_add = Self::remove_dependency(from_op, &to_op);
+            self.operations.extend(to_add);
+        }
+    }
+
+    #[must_use]
+    fn remove_dependency(from: &mut DynOperation, to: &DynOperation) -> Vec<DynOperation> {
+        match from {
+            DynOperation::CreateModel {
+                table_name,
+                model_ty,
+                fields,
+            } => {
+                let to_type = match to {
+                    DynOperation::CreateModel { model_ty, .. } => model_ty,
+                    DynOperation::AddField { .. } => {
+                        unreachable!("AddField operation shouldn't be a dependency of CreateModel because it doesn't create a new model")
+                    }
+                };
+                trace!(
+                    "Removing foreign keys from {} to {}",
+                    model_ty.to_token_stream().to_string(),
+                    to_type.into_token_stream().to_string()
+                );
+
+                let mut result = Vec::new();
+                let (fields_to_remove, fields_to_retain): (Vec<_>, Vec<_>) = std::mem::take(fields)
+                    .into_iter()
+                    .partition(|field| is_field_foreign_key_to(field, to_type));
+                *fields = fields_to_retain;
+
+                for field in fields_to_remove {
+                    result.push(DynOperation::AddField {
+                        table_name: table_name.clone(),
+                        model_ty: model_ty.clone(),
+                        field,
+                    });
+                }
+
+                result
+            }
+            DynOperation::AddField { .. } => {
+                // AddField only links two already existing models together, so
+                // removing it shouldn't ever affect whether a graph is cyclic
+                unreachable!("AddField operation should never create cycles")
+            }
+        }
+    }
+
+    fn toposort_operations(&mut self) {
+        let graph = self.construct_dependency_graph();
+
+        let sorted = petgraph::algo::toposort(&graph, None)
+            .expect("cycles shouldn't exist after removing them");
+        let mut sorted = sorted
+            .into_iter()
+            .map(petgraph::prelude::NodeIndex::index)
+            .collect::<Vec<_>>();
+        flareon::__private::apply_permutation(&mut self.operations, &mut sorted);
+    }
+
+    #[must_use]
+    fn construct_dependency_graph(&mut self) -> DiGraph<usize, (), usize> {
+        let create_ops = self.get_create_ops_map();
+        let ops_adding_foreign_keys = self.get_ops_adding_foreign_keys();
+
+        let mut graph = DiGraph::with_capacity(self.operations.len(), 0);
+
+        for i in 0..self.operations.len() {
+            graph.add_node(i);
+        }
+        for (i, dependency_ty) in &ops_adding_foreign_keys {
+            if let Some(&dependency) = create_ops.get(dependency_ty) {
+                graph.add_edge(NodeIndex::new(dependency), NodeIndex::new(*i), ());
+            }
+        }
+
+        graph
+    }
+
+    /// Return a map of (resolved) model types to the index of the
+    /// operation that creates given model.
+    #[must_use]
+    fn get_create_ops_map(&self) -> HashMap<syn::Type, usize> {
+        self.operations
+            .iter()
+            .enumerate()
+            .filter_map(|(i, op)| match op {
+                DynOperation::CreateModel { model_ty, .. } => Some((model_ty.clone(), i)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Return a list of operations that add foreign keys as tuples of
+    /// operation index and the type of the model that foreign key points to.
+    #[must_use]
+    fn get_ops_adding_foreign_keys(&self) -> Vec<(usize, syn::Type)> {
+        self.operations
+            .iter()
+            .enumerate()
+            .flat_map(|(i, op)| match op {
+                DynOperation::CreateModel { fields, .. } => fields
+                    .iter()
+                    .filter_map(foreign_key_for_field)
+                    .map(|to_model| (i, to_model))
+                    .collect::<Vec<(usize, syn::Type)>>(),
+                DynOperation::AddField {
+                    field, model_ty, ..
+                } => {
+                    let mut ops = vec![(i, model_ty.clone())];
+
+                    if let Some(to_type) = foreign_key_for_field(field) {
+                        ops.push((i, to_type));
+                    }
+
+                    ops
+                }
+            })
+            .collect()
+    }
+}
+
 /// A migration represented as a generated and ready to write Rust source code.
 #[derive(Debug, Clone)]
 pub struct MigrationAsSource {
@@ -678,12 +857,24 @@ impl Repr for Field {
         };
         if self
             .auto_value
-            .expect("auto_value is expected to be present when parsing the entire file")
+            .expect("auto_value is expected to be present when parsing the entire file with symbol resolver")
         {
             tokens = quote! { #tokens.auto() }
         }
         if self.primary_key {
             tokens = quote! { #tokens.primary_key() }
+        }
+        if let Some(fk_spec) = self.foreign_key.clone().expect("foreign_key is expected to be present when parsing the entire file with symbol resolver") {
+            let to_model = &fk_spec.to_model;
+
+            tokens = quote! {
+                #tokens.foreign_key(
+                    <#to_model as ::flareon::db::Model>::TABLE_NAME,
+                    <#to_model as ::flareon::db::Model>::PRIMARY_KEY_NAME,
+                    ::flareon::db::ForeignKeyOnDeletePolicy::Restrict,
+                    ::flareon::db::ForeignKeyOnUpdatePolicy::Restrict,
+                )
+            }
         }
         tokens = quote! { #tokens.set_null(<#ty as ::flareon::db::DatabaseField>::NULLABLE) };
         if self.unique {
@@ -725,7 +916,7 @@ impl DynMigration for Migration {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DynDependency {
     Migration { app: String, migration: String },
-    Model { app: String, model_name: String },
+    Model { model_type: syn::Type },
 }
 
 impl Repr for DynDependency {
@@ -736,9 +927,12 @@ impl Repr for DynDependency {
                     ::flareon::db::migrations::MigrationDependency::migration(#app, #migration)
                 }
             }
-            Self::Model { app, model_name } => {
+            Self::Model { model_type } => {
                 quote! {
-                    ::flareon::db::migrations::MigrationDependency::model(#app, #model_name)
+                    ::flareon::db::migrations::MigrationDependency::model(
+                        <#model_type as ::flareon::db::Model>::APP_NAME,
+                        <#model_type as ::flareon::db::Model>::TABLE_NAME
+                    )
                 }
             }
         }
@@ -753,27 +947,50 @@ impl Repr for DynDependency {
 pub enum DynOperation {
     CreateModel {
         table_name: String,
+        model_ty: syn::Type,
         fields: Vec<Field>,
     },
     AddField {
         table_name: String,
+        model_ty: syn::Type,
         field: Field,
     },
 }
 
-impl DynOperation {
-    fn foreign_keys_added(&self) -> Vec<&syn::Type> {
-        match self {
-            DynOperation::CreateModel { fields, .. } => {}
-            DynOperation::AddField { field, .. } => {}
-        }
+/// Returns whether given [`Field`] is a foreign key to given type.
+fn is_field_foreign_key_to(field: &Field, ty: &syn::Type) -> bool {
+    foreign_key_for_field(field).is_some_and(|to_model| &to_model == ty)
+}
+
+/// Returns the type of the model that the given field is a foreign key to.
+/// Returns [`None`] if the field is not a foreign key.
+fn foreign_key_for_field(field: &Field) -> Option<syn::Type> {
+    match field.foreign_key.clone().expect(
+        "foreign_key is expected to be present when parsing the entire file with symbol resolver",
+    ) {
+        None => None,
+        Some(foreign_key_spec) => Some(foreign_key_spec.to_model),
     }
 }
 
 impl Repr for DynOperation {
     fn repr(&self) -> TokenStream {
         match self {
-            Self::CreateModel { table_name, fields } => {
+            Self::CreateModel {
+                table_name,
+                model_ty,
+                fields,
+                ..
+            } => {
+                let model_name = match model_ty {
+                    syn::Type::Path(syn::TypePath { path, .. }) => path
+                        .segments
+                        .last()
+                        .expect("TypePath must have at least one segment")
+                        .ident
+                        .to_string(),
+                    _ => unreachable!("model_ty is expected to be a TypePath"),
+                };
                 let fields = fields.iter().map(Repr::repr).collect::<Vec<_>>();
                 quote! {
                     ::flareon::db::migrations::Operation::create_model()
@@ -784,7 +1001,9 @@ impl Repr for DynOperation {
                         .build()
                 }
             }
-            Self::AddField { table_name, field } => {
+            Self::AddField {
+                table_name, field, ..
+            } => {
                 let field = field.repr();
                 quote! {
                     ::flareon::db::migrations::Operation::add_field()
@@ -835,6 +1054,9 @@ impl Error for ParsingError {}
 
 #[cfg(test)]
 mod tests {
+    use flareon_codegen::maybe_unknown::MaybeUnknown;
+    use flareon_codegen::model::ForeignKeySpec;
+
     use super::*;
 
     #[test]
@@ -872,5 +1094,261 @@ mod tests {
                 migration: "m0001_initial".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn toposort_operations() {
+        let mut migration = GeneratedMigration {
+            migration_name: "test_migration".to_string(),
+            modified_models: vec![],
+            dependencies: vec![],
+            operations: vec![
+                DynOperation::AddField {
+                    table_name: "table2".to_string(),
+                    model_ty: parse_quote!(Table2),
+                    field: Field {
+                        field_name: format_ident!("field1"),
+                        column_name: "field1".to_string(),
+                        ty: parse_quote!(i32),
+                        auto_value: MaybeUnknown::Known(false),
+                        primary_key: false,
+                        unique: false,
+                        foreign_key: MaybeUnknown::Known(Some(ForeignKeySpec {
+                            to_model: parse_quote!(Table1),
+                        })),
+                    },
+                },
+                DynOperation::CreateModel {
+                    table_name: "table1".to_string(),
+                    model_ty: parse_quote!(Table1),
+                    fields: vec![],
+                },
+            ],
+        };
+
+        migration.toposort_operations();
+
+        assert_eq!(migration.operations.len(), 2);
+        if let DynOperation::CreateModel { table_name, .. } = &migration.operations[0] {
+            assert_eq!(table_name, "table1");
+        } else {
+            panic!("Expected CreateModel operation");
+        }
+        if let DynOperation::AddField { table_name, .. } = &migration.operations[1] {
+            assert_eq!(table_name, "table2");
+        } else {
+            panic!("Expected AddField operation");
+        }
+    }
+
+    #[test]
+    fn remove_cycles() {
+        let mut migration = GeneratedMigration {
+            migration_name: "test_migration".to_string(),
+            modified_models: vec![],
+            dependencies: vec![],
+            operations: vec![
+                DynOperation::CreateModel {
+                    table_name: "table1".to_string(),
+                    model_ty: parse_quote!(Table1),
+                    fields: vec![Field {
+                        field_name: format_ident!("field1"),
+                        column_name: "field1".to_string(),
+                        ty: parse_quote!(ForeignKey<Table2>),
+                        auto_value: MaybeUnknown::Known(false),
+                        primary_key: false,
+                        unique: false,
+                        foreign_key: MaybeUnknown::Known(Some(ForeignKeySpec {
+                            to_model: parse_quote!(Table2),
+                        })),
+                    }],
+                },
+                DynOperation::CreateModel {
+                    table_name: "table2".to_string(),
+                    model_ty: parse_quote!(Table2),
+                    fields: vec![Field {
+                        field_name: format_ident!("field1"),
+                        column_name: "field1".to_string(),
+                        ty: parse_quote!(ForeignKey<Table1>),
+                        auto_value: MaybeUnknown::Known(false),
+                        primary_key: false,
+                        unique: false,
+                        foreign_key: MaybeUnknown::Known(Some(ForeignKeySpec {
+                            to_model: parse_quote!(Table1),
+                        })),
+                    }],
+                },
+            ],
+        };
+
+        migration.remove_cycles();
+
+        assert_eq!(migration.operations.len(), 3);
+        if let DynOperation::CreateModel {
+            table_name, fields, ..
+        } = &migration.operations[0]
+        {
+            assert_eq!(table_name, "table1");
+            assert!(!fields.is_empty());
+        } else {
+            panic!("Expected CreateModel operation");
+        }
+        if let DynOperation::CreateModel {
+            table_name, fields, ..
+        } = &migration.operations[1]
+        {
+            assert_eq!(table_name, "table2");
+            assert!(fields.is_empty());
+        } else {
+            panic!("Expected CreateModel operation");
+        }
+        if let DynOperation::AddField { table_name, .. } = &migration.operations[2] {
+            assert_eq!(table_name, "table2");
+        } else {
+            panic!("Expected AddField operation");
+        }
+    }
+
+    #[test]
+    fn remove_dependency() {
+        let mut create_model_op = DynOperation::CreateModel {
+            table_name: "table1".to_string(),
+            model_ty: parse_quote!(Table1),
+            fields: vec![Field {
+                field_name: format_ident!("field1"),
+                column_name: "field1".to_string(),
+                ty: parse_quote!(ForeignKey<Table2>),
+                auto_value: MaybeUnknown::Known(false),
+                primary_key: false,
+                unique: false,
+                foreign_key: MaybeUnknown::Known(Some(ForeignKeySpec {
+                    to_model: parse_quote!(Table2),
+                })),
+            }],
+        };
+
+        let add_field_op = DynOperation::CreateModel {
+            table_name: "table2".to_string(),
+            model_ty: parse_quote!(Table2),
+            fields: vec![],
+        };
+
+        let additional_ops =
+            GeneratedMigration::remove_dependency(&mut create_model_op, &add_field_op);
+
+        match create_model_op {
+            DynOperation::CreateModel { fields, .. } => {
+                assert_eq!(fields.len(), 0);
+            }
+            _ => {
+                panic!("Expected from operation not to change type");
+            }
+        }
+        assert_eq!(additional_ops.len(), 1);
+        if let DynOperation::AddField { table_name, .. } = &additional_ops[0] {
+            assert_eq!(table_name, "table1");
+        } else {
+            panic!("Expected AddField operation");
+        }
+    }
+
+    #[test]
+    fn get_foreign_key_dependencies_no_foreign_keys() {
+        let migration = GeneratedMigration {
+            migration_name: "test_migration".to_string(),
+            modified_models: vec![],
+            dependencies: vec![],
+            operations: vec![DynOperation::CreateModel {
+                table_name: "table1".to_string(),
+                model_ty: parse_quote!(Table1),
+                fields: vec![],
+            }],
+        };
+
+        let external_dependencies = migration.get_foreign_key_dependencies("my_crate");
+        assert!(external_dependencies.is_empty());
+    }
+
+    #[test]
+    fn get_foreign_key_dependencies_with_foreign_keys() {
+        let migration = GeneratedMigration {
+            migration_name: "test_migration".to_string(),
+            modified_models: vec![],
+            dependencies: vec![],
+            operations: vec![DynOperation::CreateModel {
+                table_name: "table1".to_string(),
+                model_ty: parse_quote!(Table1),
+                fields: vec![Field {
+                    field_name: format_ident!("field1"),
+                    column_name: "field1".to_string(),
+                    ty: parse_quote!(ForeignKey<Table2>),
+                    auto_value: MaybeUnknown::Known(false),
+                    primary_key: false,
+                    unique: false,
+                    foreign_key: MaybeUnknown::Known(Some(ForeignKeySpec {
+                        to_model: parse_quote!(crate::Table2),
+                    })),
+                }],
+            }],
+        };
+
+        let external_dependencies = migration.get_foreign_key_dependencies("my_crate");
+        assert_eq!(external_dependencies.len(), 1);
+        assert_eq!(
+            external_dependencies[0],
+            DynDependency::Model {
+                model_type: parse_quote!(crate::Table2),
+            }
+        );
+    }
+
+    #[test]
+    fn get_foreign_key_dependencies_with_multiple_foreign_keys() {
+        let migration = GeneratedMigration {
+            migration_name: "test_migration".to_string(),
+            modified_models: vec![],
+            dependencies: vec![],
+            operations: vec![
+                DynOperation::CreateModel {
+                    table_name: "table1".to_string(),
+                    model_ty: parse_quote!(Table1),
+                    fields: vec![Field {
+                        field_name: format_ident!("field1"),
+                        column_name: "field1".to_string(),
+                        ty: parse_quote!(ForeignKey<Table2>),
+                        auto_value: MaybeUnknown::Known(false),
+                        primary_key: false,
+                        unique: false,
+                        foreign_key: MaybeUnknown::Known(Some(ForeignKeySpec {
+                            to_model: parse_quote!(my_crate::Table2),
+                        })),
+                    }],
+                },
+                DynOperation::CreateModel {
+                    table_name: "table3".to_string(),
+                    model_ty: parse_quote!(Table3),
+                    fields: vec![Field {
+                        field_name: format_ident!("field2"),
+                        column_name: "field2".to_string(),
+                        ty: parse_quote!(ForeignKey<Table4>),
+                        auto_value: MaybeUnknown::Known(false),
+                        primary_key: false,
+                        unique: false,
+                        foreign_key: MaybeUnknown::Known(Some(ForeignKeySpec {
+                            to_model: parse_quote!(crate::Table4),
+                        })),
+                    }],
+                },
+            ],
+        };
+
+        let external_dependencies = migration.get_foreign_key_dependencies("my_crate");
+        assert_eq!(external_dependencies.len(), 2);
+        assert!(external_dependencies.contains(&DynDependency::Model {
+            model_type: parse_quote!(my_crate::Table2),
+        }));
+        assert!(external_dependencies.contains(&DynDependency::Model {
+            model_type: parse_quote!(crate::Table4),
+        }));
     }
 }

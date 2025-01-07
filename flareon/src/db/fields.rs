@@ -1,7 +1,6 @@
 //! `DatabaseField` implementations for common types.
 
 use flareon::db::DatabaseField;
-use log::debug;
 
 #[cfg(feature = "mysql")]
 use crate::db::impl_mysql::MySqlValueRef;

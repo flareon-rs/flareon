@@ -64,6 +64,7 @@ pub mod response;
 pub mod router;
 pub mod static_files;
 pub mod test;
+pub(crate) mod utils;
 
 use std::fmt::Formatter;
 use std::future::{poll_fn, Future};

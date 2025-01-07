@@ -3,7 +3,7 @@
 #[derive(Debug, Copy, Clone)]
 pub(super) struct Migration;
 impl ::flareon::db::migrations::Migration for Migration {
-    const APP_NAME: &'static str = "flareon_auth";
+    const APP_NAME: &'static str = "flareon";
     const MIGRATION_NAME: &'static str = "m_0001_initial";
     const DEPENDENCIES: &'static [::flareon::db::migrations::MigrationDependency] = &[];
     const OPERATIONS: &'static [::flareon::db::migrations::Operation] = &[

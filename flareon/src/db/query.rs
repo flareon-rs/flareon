@@ -175,7 +175,7 @@ impl Expr {
     pub fn value<T: ToDbFieldValue>(value: T) -> Self {
         match value.to_db_field_value() {
             DbFieldValue::Value(value) => Self::Value(value),
-            _ => panic!("Cannot create query with a non-value field"),
+            DbFieldValue::Auto => panic!("Cannot create query with a non-value field"),
         }
     }
 
@@ -415,7 +415,7 @@ impl_num_expr!(u64);
 impl_num_expr!(f32);
 impl_num_expr!(f64);
 
-trait IntoField<T> {
+pub trait IntoField<T> {
     fn into_field(self) -> T;
 }
 

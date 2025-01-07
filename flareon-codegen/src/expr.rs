@@ -123,7 +123,6 @@ impl Parse for MemberAccessParser {
 
 #[derive(Debug)]
 struct FunctionCallParser {
-    paren_token: syn::token::Paren,
     args: syn::punctuated::Punctuated<syn::Expr, Token![,]>,
 }
 
@@ -137,8 +136,8 @@ impl FunctionCallParser {
 impl Parse for FunctionCallParser {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let args_content;
+        syn::parenthesized!(args_content in input);
         Ok(Self {
-            paren_token: syn::parenthesized!(args_content in input),
             args: args_content.parse_terminated(syn::Expr::parse, Token![,])?,
         })
     }

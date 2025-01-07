@@ -317,13 +317,13 @@ async fn foreign_keys_option(db: &mut TestDatabase) {
                 Identifier::new("parent"),
                 <Option<ForeignKey<Parent>> as DatabaseField>::TYPE,
             )
+            .set_null(<Option<ForeignKey<Parent>> as DatabaseField>::NULLABLE)
             .foreign_key(
                 <Parent as Model>::TABLE_NAME,
                 <Parent as Model>::PRIMARY_KEY_NAME,
-                ForeignKeyOnDeletePolicy::Restrict,
-                ForeignKeyOnUpdatePolicy::Restrict,
-            )
-            .set_null(<Option<ForeignKey<Parent>> as DatabaseField>::NULLABLE),
+                ForeignKeyOnDeletePolicy::SetNone,
+                ForeignKeyOnUpdatePolicy::SetNone,
+            ),
         ])
         .build();
 
@@ -337,7 +337,7 @@ async fn foreign_keys_option(db: &mut TestDatabase) {
     };
     child.save(&**db).await.unwrap();
 
-    let mut child = Child::objects().all(&**db).await.unwrap()[0].clone();
+    let child = Child::objects().all(&**db).await.unwrap()[0].clone();
     assert_eq!(child.parent, None);
 
     query!(Child, $id == child.id).delete(&**db).await.unwrap();
@@ -352,8 +352,85 @@ async fn foreign_keys_option(db: &mut TestDatabase) {
     };
     child.save(&**db).await.unwrap();
 
-    let mut child = Child::objects().all(&**db).await.unwrap()[0].clone();
+    let child = Child::objects().all(&**db).await.unwrap()[0].clone();
     let mut parent_fk = child.parent.unwrap();
     let parent_from_db = parent_fk.get(&**db).await.unwrap();
     assert_eq!(parent_from_db, &parent);
+
+    // Check none policy
+    query!(Parent, $id == parent.id)
+        .delete(&**db)
+        .await
+        .unwrap();
+    let child = Child::objects().all(&**db).await.unwrap()[0].clone();
+    assert_eq!(child.parent, None);
+}
+
+#[flareon_macros::dbtest]
+async fn foreign_keys_cascade(db: &mut TestDatabase) {
+    #[derive(Debug, Clone, PartialEq)]
+    #[model]
+    struct Parent {
+        id: Auto<i32>,
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    #[model]
+    struct Child {
+        id: Auto<i32>,
+        parent: Option<ForeignKey<Parent>>,
+    }
+
+    const CREATE_PARENT: Operation = Operation::create_model()
+        .table_name(Identifier::new("parent"))
+        .fields(&[
+            Field::new(Identifier::new("id"), <Auto<i32> as DatabaseField>::TYPE)
+                .primary_key()
+                .auto(),
+        ])
+        .build();
+    const CREATE_CHILD: Operation = Operation::create_model()
+        .table_name(Identifier::new("child"))
+        .fields(&[
+            Field::new(Identifier::new("id"), <Auto<i32> as DatabaseField>::TYPE)
+                .primary_key()
+                .auto(),
+            Field::new(
+                Identifier::new("parent"),
+                <Option<ForeignKey<Parent>> as DatabaseField>::TYPE,
+            )
+            .set_null(<Option<ForeignKey<Parent>> as DatabaseField>::NULLABLE)
+            .foreign_key(
+                <Parent as Model>::TABLE_NAME,
+                <Parent as Model>::PRIMARY_KEY_NAME,
+                ForeignKeyOnDeletePolicy::Cascade,
+                ForeignKeyOnUpdatePolicy::Cascade,
+            ),
+        ])
+        .build();
+
+    CREATE_PARENT.forwards(db).await.unwrap();
+    CREATE_CHILD.forwards(db).await.unwrap();
+
+    // with parent
+    let mut parent = Parent { id: Auto::auto() };
+    parent.save(&**db).await.unwrap();
+
+    let mut child = Child {
+        id: Auto::auto(),
+        parent: Some(ForeignKey::from(&parent)),
+    };
+    child.save(&**db).await.unwrap();
+
+    let child = Child::objects().all(&**db).await.unwrap()[0].clone();
+    let mut parent_fk = child.parent.unwrap();
+    let parent_from_db = parent_fk.get(&**db).await.unwrap();
+    assert_eq!(parent_from_db, &parent);
+
+    // Check cascade policy
+    query!(Parent, $id == parent.id)
+        .delete(&**db)
+        .await
+        .unwrap();
+    assert!(Child::objects().all(&**db).await.unwrap().is_empty());
 }

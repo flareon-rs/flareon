@@ -2,9 +2,17 @@ use flareon::db::DatabaseError;
 
 use crate::db::{DatabaseBackend, Model, Result};
 
+/// A foreign key to another model.
+///
+/// Internally, this is represented either as a primary key (in case the
+/// model has not been retrieved from the database) or as the model itself.
 #[derive(Debug, Clone)]
 pub enum ForeignKey<T: Model> {
+    /// The primary key of the referenced model; used when the model has not
+    /// been retrieved from the database yet or when it's unnecessary to
+    /// store the entire model instance.
     PrimaryKey(T::PrimaryKey),
+    /// The referenced model.
     Model(Box<T>),
 }
 
@@ -19,14 +27,14 @@ impl<T: Model> ForeignKey<T> {
     pub fn model(&self) -> Option<&T> {
         match self {
             Self::Model(model) => Some(model),
-            _ => None,
+            Self::PrimaryKey(_) => None,
         }
     }
 
     pub fn unwrap(self) -> T {
         match self {
             Self::Model(model) => *model,
-            _ => panic!("object has not been retrieved from the database"),
+            Self::PrimaryKey(_) => panic!("object has not been retrieved from the database"),
         }
     }
 
@@ -68,6 +76,14 @@ impl<T: Model> From<&T> for ForeignKey<T> {
     }
 }
 
+/// A foreign key on delete constraint.
+///
+/// This is used to define the behavior of a foreign key when the referenced row
+/// is deleted.
+///
+/// # See also
+///
+/// - [`ForeignKeyOnUpdatePolicy`]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum ForeignKeyOnDeletePolicy {
     NoAction,
@@ -88,6 +104,14 @@ impl From<ForeignKeyOnDeletePolicy> for sea_query::ForeignKeyAction {
     }
 }
 
+/// A foreign key on delete constraint.
+///
+/// This is used to define the behavior of a foreign key when the referenced row
+/// is updated.
+///
+/// # See also
+///
+/// - [`ForeignKeyOnDeletePolicy`]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum ForeignKeyOnUpdatePolicy {
     NoAction,
