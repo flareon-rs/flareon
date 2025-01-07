@@ -23,9 +23,8 @@ use subtle::ConstantTimeEq;
 use thiserror::Error;
 
 use crate::config::SecretKey;
-use crate::db::DbValue;
 #[cfg(feature = "db")]
-use crate::db::{ColumnType, DatabaseField, FromDbValue, SqlxValueRef, ToDbValue};
+use crate::db::{ColumnType, DatabaseField, DbValue, FromDbValue, SqlxValueRef, ToDbValue};
 use crate::request::{Request, RequestExt};
 
 #[derive(Debug, Error)]

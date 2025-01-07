@@ -120,7 +120,7 @@ impl MigrationGenerator {
             migration.toposort_operations();
             migration
                 .dependencies
-                .extend(migration.get_foreign_key_dependencies(&self.crate_name));
+                .extend(migration.get_foreign_key_dependencies());
 
             Ok(Some(migration))
         }
@@ -527,7 +527,7 @@ pub struct SourceFile {
 
 impl SourceFile {
     #[must_use]
-    pub fn new(path: PathBuf, content: syn::File) -> Self {
+    fn new(path: PathBuf, content: syn::File) -> Self {
         assert!(
             path.is_relative(),
             "path must be relative to the src directory"
@@ -666,7 +666,7 @@ pub struct GeneratedMigration {
 }
 
 impl GeneratedMigration {
-    fn get_foreign_key_dependencies(&self, crate_name: &str) -> Vec<DynDependency> {
+    fn get_foreign_key_dependencies(&self) -> Vec<DynDependency> {
         let create_ops = self.get_create_ops_map();
         let ops_adding_foreign_keys = self.get_ops_adding_foreign_keys();
 
@@ -977,20 +977,8 @@ impl Repr for DynOperation {
     fn repr(&self) -> TokenStream {
         match self {
             Self::CreateModel {
-                table_name,
-                model_ty,
-                fields,
-                ..
+                table_name, fields, ..
             } => {
-                let model_name = match model_ty {
-                    syn::Type::Path(syn::TypePath { path, .. }) => path
-                        .segments
-                        .last()
-                        .expect("TypePath must have at least one segment")
-                        .ident
-                        .to_string(),
-                    _ => unreachable!("model_ty is expected to be a TypePath"),
-                };
                 let fields = fields.iter().map(Repr::repr).collect::<Vec<_>>();
                 quote! {
                     ::flareon::db::migrations::Operation::create_model()
@@ -1265,7 +1253,7 @@ mod tests {
             }],
         };
 
-        let external_dependencies = migration.get_foreign_key_dependencies("my_crate");
+        let external_dependencies = migration.get_foreign_key_dependencies();
         assert!(external_dependencies.is_empty());
     }
 
@@ -1292,7 +1280,7 @@ mod tests {
             }],
         };
 
-        let external_dependencies = migration.get_foreign_key_dependencies("my_crate");
+        let external_dependencies = migration.get_foreign_key_dependencies();
         assert_eq!(external_dependencies.len(), 1);
         assert_eq!(
             external_dependencies[0],
@@ -1342,7 +1330,7 @@ mod tests {
             ],
         };
 
-        let external_dependencies = migration.get_foreign_key_dependencies("my_crate");
+        let external_dependencies = migration.get_foreign_key_dependencies();
         assert_eq!(external_dependencies.len(), 2);
         assert!(external_dependencies.contains(&DynDependency::Model {
             model_type: parse_quote!(my_crate::Table2),

@@ -104,7 +104,7 @@ impl From<ForeignKeyOnDeletePolicy> for sea_query::ForeignKeyAction {
     }
 }
 
-/// A foreign key on delete constraint.
+/// A foreign key on update constraint.
 ///
 /// This is used to define the behavior of a foreign key when the referenced row
 /// is updated.

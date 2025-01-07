@@ -288,6 +288,7 @@ impl<T: DatabaseField> DatabaseField for Auto<T> {
 }
 
 impl<T: DatabaseField> FromDbValue for Auto<T> {
+    #[cfg(feature = "sqlite")]
     fn from_sqlite(value: SqliteValueRef) -> Result<Self>
     where
         Self: Sized,
@@ -295,6 +296,7 @@ impl<T: DatabaseField> FromDbValue for Auto<T> {
         Ok(Self::fixed(T::from_sqlite(value)?))
     }
 
+    #[cfg(feature = "postgres")]
     fn from_postgres(value: PostgresValueRef) -> Result<Self>
     where
         Self: Sized,
@@ -302,6 +304,7 @@ impl<T: DatabaseField> FromDbValue for Auto<T> {
         Ok(Self::fixed(T::from_postgres(value)?))
     }
 
+    #[cfg(feature = "mysql")]
     fn from_mysql(value: MySqlValueRef) -> Result<Self>
     where
         Self: Sized,
@@ -323,6 +326,7 @@ impl<T: DatabaseField> FromDbValue for Option<Auto<T>>
 where
     Option<T>: FromDbValue,
 {
+    #[cfg(feature = "sqlite")]
     fn from_sqlite(value: SqliteValueRef) -> Result<Self>
     where
         Self: Sized,
@@ -330,6 +334,7 @@ where
         <Option<T>>::from_sqlite(value).map(|value| value.map(Auto::fixed))
     }
 
+    #[cfg(feature = "postgres")]
     fn from_postgres(value: PostgresValueRef) -> Result<Self>
     where
         Self: Sized,
@@ -337,6 +342,7 @@ where
         <Option<T>>::from_postgres(value).map(|value| value.map(Auto::fixed))
     }
 
+    #[cfg(feature = "mysql")]
     fn from_mysql(value: MySqlValueRef) -> Result<Self>
     where
         Self: Sized,
