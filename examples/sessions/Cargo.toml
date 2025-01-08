@@ -6,5 +6,5 @@ description = "Sessions - Flareon example."
 edition = "2021"
 
 [dependencies]
-askama = "0.12.1"
 flareon = { path = "../../flareon" }
+rinja = "0.3.5"

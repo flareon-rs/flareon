@@ -1,6 +1,5 @@
 mod migrations;
 
-use askama::Template;
 use flareon::config::{DatabaseConfig, ProjectConfig};
 use flareon::db::migrations::DynMigration;
 use flareon::db::{model, query, Model};
@@ -9,6 +8,7 @@ use flareon::request::{Request, RequestExt};
 use flareon::response::{Response, ResponseExt};
 use flareon::router::{Route, Router};
 use flareon::{reverse, Body, FlareonApp, FlareonProject, StatusCode};
+use rinja::Template;
 
 #[derive(Debug, Clone)]
 #[model]

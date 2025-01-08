@@ -2,7 +2,7 @@ use std::any::Any;
 use std::panic::PanicHookInfo;
 use std::sync::Arc;
 
-use askama::Template;
+use rinja::Template;
 use tracing::error;
 
 use crate::error::backtrace::{Backtrace, __flareon_create_backtrace};

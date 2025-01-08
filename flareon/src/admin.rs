@@ -5,10 +5,10 @@
 
 use std::marker::PhantomData;
 
-use askama::Template;
 use async_trait::async_trait;
 use bytes::Bytes;
 use derive_more::Debug;
+use rinja::Template;
 
 use crate::auth::AuthRequestExt;
 use crate::forms::fields::Password;

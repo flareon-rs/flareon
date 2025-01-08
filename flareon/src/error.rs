@@ -60,13 +60,13 @@ macro_rules! impl_error_from_repr {
     };
 }
 
-impl From<Error> for askama::Error {
+impl From<Error> for rinja::Error {
     fn from(value: Error) -> Self {
-        askama::Error::Custom(Box::new(value))
+        rinja::Error::Custom(Box::new(value))
     }
 }
 
-impl_error_from_repr!(askama::Error);
+impl_error_from_repr!(rinja::Error);
 impl_error_from_repr!(crate::router::path::ReverseError);
 #[cfg(feature = "db")]
 impl_error_from_repr!(crate::db::DatabaseError);
@@ -105,7 +105,7 @@ pub(crate) enum ErrorRepr {
     ReverseError(#[from] crate::router::path::ReverseError),
     /// An error occurred while trying to render a template.
     #[error("Failed to render template: {0}")]
-    TemplateRender(#[from] askama::Error),
+    TemplateRender(#[from] rinja::Error),
     /// An error occurred while communicating with the database.
     #[error("Database error: {0}")]
     #[cfg(feature = "db")]

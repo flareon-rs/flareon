@@ -1,10 +1,10 @@
-use askama::Template;
 use flareon::forms::Form;
 use flareon::middleware::SessionMiddleware;
 use flareon::request::{Request, RequestExt};
 use flareon::response::{Response, ResponseExt};
 use flareon::router::{Route, Router};
 use flareon::{reverse, Body, FlareonApp, FlareonProject, StatusCode};
+use rinja::Template;
 
 #[derive(Debug, Template)]
 #[template(path = "index.html")]
