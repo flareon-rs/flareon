@@ -4,9 +4,9 @@ use std::fmt;
 use std::fmt::{Debug, Formatter};
 
 use flareon_macros::{model, query};
-use log::info;
 use sea_query::{ColumnDef, StringLen};
 use thiserror::Error;
+use tracing::info;
 
 use crate::db::migrations::sorter::{MigrationSorter, MigrationSorterError};
 use crate::db::{ColumnType, Database, DatabaseField, Identifier, Result};

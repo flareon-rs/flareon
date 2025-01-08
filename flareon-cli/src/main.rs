@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::Verbosity;
+use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::migration_generator::{make_migrations, MigrationGeneratorOptions};
 
@@ -37,8 +38,12 @@ enum Commands {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    env_logger::Builder::new()
-        .filter_level(cli.verbose.log_level_filter())
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(cli.verbose.tracing_level_filter().into()),
+        )
+        .finish()
         .init();
 
     match cli.command {

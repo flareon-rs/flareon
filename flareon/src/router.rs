@@ -11,7 +11,7 @@ use axum::http::StatusCode;
 use bytes::Bytes;
 use derive_more::Debug;
 use flareon::request::PathParams;
-use log::debug;
+use tracing::debug;
 
 use crate::error::ErrorRepr;
 use crate::error_page::ErrorPageTrigger;

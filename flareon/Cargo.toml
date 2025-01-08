@@ -25,11 +25,10 @@ form_urlencoded.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
 hmac.workspace = true
-http.workspace = true
-http-body.workspace = true
 http-body-util.workspace = true
+http-body.workspace = true
+http.workspace = true
 indexmap.workspace = true
-log.workspace = true
 mime_guess.workspace = true
 password-auth = { workspace = true, features = ["std", "argon2"] }
 pin-project-lite.workspace = true
@@ -46,6 +45,7 @@ time.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower = { workspace = true, features = ["util"] }
 tower-sessions = { workspace = true, features = ["memory-store"] }
+tracing.workspace = true
 
 [dev-dependencies]
 async-stream.workspace = true

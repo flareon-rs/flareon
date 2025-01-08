@@ -13,17 +13,17 @@ anyhow.workspace = true
 cargo_toml.workspace = true
 chrono.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
-clap-verbosity-flag.workspace = true
+clap-verbosity-flag = { workspace = true, features = ["tracing"] }
 darling.workspace = true
-env_logger.workspace = true
 flareon.workspace = true
 flareon_codegen.workspace = true
 glob.workspace = true
-log.workspace = true
 prettyplease.workspace = true
 proc-macro2 = { workspace = true, features = ["span-locations"] }
 quote.workspace = true
 syn.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [dev-dependencies]
 tempfile.workspace = true

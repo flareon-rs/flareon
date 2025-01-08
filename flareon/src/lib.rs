@@ -82,12 +82,12 @@ use futures_core::Stream;
 use futures_util::FutureExt;
 use http::request::Parts;
 use http_body::{Frame, SizeHint};
-use log::info;
 use request::Request;
 use router::{Route, Router};
 use sync_wrapper::SyncWrapper;
 use tower::util::BoxCloneService;
 use tower::Service;
+use tracing::info;
 
 use crate::admin::AdminModelManager;
 #[cfg(feature = "db")]

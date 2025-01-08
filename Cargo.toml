@@ -34,12 +34,11 @@ bytes = "1.9"
 cargo_toml = "0.20"
 chrono = { version = "0.4", default-features = false }
 clap = "4"
-clap-verbosity-flag = "2"
+clap-verbosity-flag = { version = "3", default-features = false }
 convert_case = "0.6"
 darling = "0.20"
 derive_builder = "0.20"
 derive_more = "1"
-env_logger = "0.11"
 fake = "3.1"
 flareon = { path = "flareon" }
 flareon_codegen = { path = "flareon-codegen" }
@@ -54,7 +53,6 @@ http = "1.1"
 http-body = "1"
 http-body-util = "0.1"
 indexmap = "2"
-log = "0.4"
 mime_guess = { version = "2", default-features = false }
 mockall = "0.13"
 password-auth = { version = "1.1.0-pre.1", default-features = false }
@@ -79,4 +77,6 @@ time = { version = "0.3.35", default-features = false }
 tokio = { version = "1.41", default-features = false }
 tower = "0.5.2"
 tower-sessions = { version = "0.13", default-features = false }
+tracing = { version = "0.1", default-features = false }
+tracing-subscriber = "0.3"
 trybuild = { version = "1", features = ["diff"] }

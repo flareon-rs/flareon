@@ -65,7 +65,7 @@ macro_rules! impl_sea_query_db_backend {
                 statement: T,
             ) -> crate::db::Result<crate::db::StatementResult> {
                 let sql = statement.build($query_builder);
-                log::debug!("Schema modification: {}", sql);
+                tracing::debug!("Schema modification: {}", sql);
 
                 self.execute_sqlx(sqlx::query(&sql)).await
             }
@@ -90,7 +90,7 @@ macro_rules! impl_sea_query_db_backend {
                     rows_affected: crate::db::RowsNum(result.rows_affected()),
                 };
 
-                log::debug!("Rows affected: {}", result.rows_affected.0);
+                tracing::debug!("Rows affected: {}", result.rows_affected.0);
                 Ok(result)
             }
 
@@ -108,7 +108,7 @@ macro_rules! impl_sea_query_db_backend {
                 mut values: sea_query_binder::SqlxValues,
             ) -> sqlx::query::Query<'_, $sqlx_db_ty, sea_query_binder::SqlxValues> {
                 Self::prepare_values(&mut values);
-                log::debug!("Query: `{}` (values: {:?})", sql, values);
+                tracing::debug!("Query: `{}` (values: {:?})", sql, values);
 
                 sqlx::query_with(sql, values)
             }

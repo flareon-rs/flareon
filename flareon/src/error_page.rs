@@ -3,7 +3,7 @@ use std::panic::PanicHookInfo;
 use std::sync::Arc;
 
 use askama::Template;
-use log::error;
+use tracing::error;
 
 use crate::error::backtrace::{Backtrace, __flareon_create_backtrace};
 use crate::error::{Error, ErrorRepr};

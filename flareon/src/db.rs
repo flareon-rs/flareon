@@ -20,7 +20,6 @@ use std::hash::Hash;
 use async_trait::async_trait;
 use derive_more::{Debug, Deref, Display};
 pub use flareon_macros::{model, query};
-use log::debug;
 #[cfg(test)]
 use mockall::automock;
 use query::Query;
@@ -28,6 +27,7 @@ use sea_query::{Iden, SchemaStatementBuilder, SimpleExpr};
 use sea_query_binder::{SqlxBinder, SqlxValues};
 use sqlx::{Type, TypeInfo};
 use thiserror::Error;
+use tracing::debug;
 
 #[cfg(feature = "mysql")]
 use crate::db::impl_mysql::{DatabaseMySql, MySqlRow, MySqlValueRef};

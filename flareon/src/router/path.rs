@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 
-use log::debug;
 use thiserror::Error;
+use tracing::debug;
 
 #[derive(Debug, Clone)]
 pub(super) struct PathMatcher {

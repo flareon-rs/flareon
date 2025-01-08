@@ -10,10 +10,10 @@ use cargo_toml::Manifest;
 use darling::FromMeta;
 use flareon::db::migrations::{DynMigration, MigrationEngine};
 use flareon_codegen::model::{Field, Model, ModelArgs, ModelOpts, ModelType};
-use log::{debug, info, warn};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_quote, Attribute, Meta, UseTree};
+use tracing::{debug, info, warn};
 
 use crate::utils::find_cargo_toml;
 
