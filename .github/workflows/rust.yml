@@ -50,7 +50,7 @@ jobs:
         run: cargo +${{ matrix.rust }} build
 
       - name: Test
-        run: cargo +${{ matrix.rust }} nextest run
+        run: cargo +${{ matrix.rust }} nextest run --all-features
 
       # Nextest does not support doc tests as in stable Rust
       # they are not exposed in the same way as normal tests.
@@ -79,7 +79,43 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run clippy
-        run: cargo clippy --no-deps -- -Dclippy::all -Wclippy::pedantic
+        run: cargo clippy --no-deps --
+
+  external-deps:
+    if: github.event_name == 'push' || github.event_name == 'schedule' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+
+    name: Test with external dependencies
+    runs-on: ubuntu-latest
+    needs: ["build"]
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
+      - name: Cache Cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      - name: Build
+        run: cargo build
+
+      - name: Run the external dependencies
+        run: docker compose up -d
+
+      - name: Test
+        run: cargo nextest run --all-features -- --include-ignored
+
+      - name: Test docs
+        run: cargo test --doc
 
   coverage:
     if: github.event_name == 'push' || github.event_name == 'schedule' ||
@@ -101,8 +137,11 @@ jobs:
       - name: Cache Cargo registry
         uses: Swatinem/rust-cache@v2
 
+      - name: Run the external dependencies
+        run: docker compose up -d
+
       - name: Test
-        run: cargo test --all-features --no-fail-fast
+        run: cargo test --all-features --no-fail-fast -- --include-ignored
         env:
           RUSTFLAGS: "-Cinstrument-coverage"
 
@@ -116,7 +155,7 @@ jobs:
       - name: Run grcov
         run: grcov . --binary-path target/debug/deps/ -s . -t lcov --branch --ignore-not-existing --ignore '../**' --ignore '/*' --ignore 'examples/**' -o coverage.lcov
 
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v5
         with:
           files: ./coverage.lcov
           flags: rust
@@ -199,3 +238,61 @@ jobs:
           # Update Cargo.lock to minimal version dependencies.
           cargo update -Z minimal-versions
           cargo hack check --all-features --ignore-private
+
+  build-feature-power-set:
+    if: github.event_name == 'push' || github.event_name == 'schedule' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+
+    name: Build with each feature combination
+    runs-on: ubuntu-latest
+    needs: ["build"]
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+
+      - name: Cache Cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run cargo check with every combination of features
+        run: cargo hack check --feature-powerset --exclude-features db --no-dev-deps
+
+  miri:
+    if: github.event_name == 'push' || github.event_name == 'schedule' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+
+    name: Miri test
+    runs-on: ubuntu-latest
+    needs: ["build"]
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: miri
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      - name: Cache Cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Miri setup
+        run: cargo miri setup
+
+      - name: Miri test
+        run: cargo miri nextest run --no-fail-fast --all-features
+        env:
+          MIRIFLAGS: -Zmiri-disable-isolation

@@ -6,6 +6,7 @@
 //!
 //! For the default way to store users in the database, see the [`db`] module.
 
+#[cfg(feature = "db")]
 pub mod db;
 
 use std::any::Any;
@@ -14,7 +15,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
-use flareon::config::SecretKey;
 #[cfg(test)]
 use mockall::automock;
 use password_auth::VerifyError;
@@ -22,7 +22,8 @@ use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 
-use crate::db::impl_sqlite::SqliteValueRef;
+use crate::config::SecretKey;
+#[cfg(feature = "db")]
 use crate::db::{ColumnType, DatabaseField, FromDbValue, SqlxValueRef, ToDbValue};
 use crate::request::{Request, RequestExt};
 
@@ -285,7 +286,12 @@ impl PasswordHash {
     /// Returns an error if the password hash is invalid.
     pub fn new<T: Into<String>>(hash: T) -> Result<Self> {
         let hash = hash.into();
+
+        if hash.len() > MAX_PASSWORD_HASH_LENGTH as usize {
+            return Err(AuthError::PasswordHashInvalid);
+        }
         password_auth::is_hash_obsolete(&hash).map_err(|_| AuthError::PasswordHashInvalid)?;
+
         Ok(Self(hash))
     }
 
@@ -303,6 +309,8 @@ impl PasswordHash {
     #[must_use]
     pub fn from_password(password: &Password) -> Self {
         let hash = password_auth::generate_hash(password.as_str());
+
+        assert!(hash.len() <= MAX_PASSWORD_HASH_LENGTH as usize);
         Self(hash)
     }
 
@@ -393,17 +401,37 @@ impl Debug for PasswordHash {
     }
 }
 
+const MAX_PASSWORD_HASH_LENGTH: u32 = 128;
+
+#[cfg(feature = "db")]
 impl DatabaseField for PasswordHash {
-    // TODO change to length-limiting type
-    const TYPE: ColumnType = ColumnType::Text;
+    const TYPE: ColumnType = ColumnType::String(MAX_PASSWORD_HASH_LENGTH);
 }
 
+#[cfg(feature = "db")]
 impl FromDbValue for PasswordHash {
-    fn from_sqlite(value: SqliteValueRef) -> flareon::db::Result<Self> {
+    #[cfg(feature = "sqlite")]
+    fn from_sqlite(value: crate::db::impl_sqlite::SqliteValueRef) -> flareon::db::Result<Self> {
+        PasswordHash::new(value.get::<String>()?).map_err(flareon::db::DatabaseError::value_decode)
+    }
+
+    #[cfg(feature = "postgres")]
+    fn from_postgres(
+        value: crate::db::impl_postgres::PostgresValueRef,
+    ) -> flareon::db::Result<Self> {
+        PasswordHash::new(value.get::<String>()?).map_err(flareon::db::DatabaseError::value_decode)
+    }
+
+    #[cfg(feature = "mysql")]
+    fn from_mysql(value: crate::db::impl_mysql::MySqlValueRef) -> crate::db::Result<Self>
+    where
+        Self: Sized,
+    {
         PasswordHash::new(value.get::<String>()?).map_err(flareon::db::DatabaseError::value_decode)
     }
 }
 
+#[cfg(feature = "db")]
 impl ToDbValue for PasswordHash {
     fn to_sea_query_value(&self) -> sea_query::Value {
         self.0.clone().into()
@@ -697,6 +725,28 @@ pub trait AuthBackend: Send + Sync {
     ) -> Result<Option<Box<dyn User + Send + Sync>>>;
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct NoAuthBackend;
+
+#[async_trait]
+impl AuthBackend for NoAuthBackend {
+    async fn authenticate(
+        &self,
+        _request: &Request,
+        _credentials: &(dyn Any + Send + Sync),
+    ) -> Result<Option<Box<dyn User + Send + Sync>>> {
+        Ok(None)
+    }
+
+    async fn get_by_id(
+        &self,
+        _request: &Request,
+        _id: UserId,
+    ) -> Result<Option<Box<dyn User + Send + Sync>>> {
+        Ok(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -706,27 +756,6 @@ mod tests {
     use super::*;
     use crate::config::ProjectConfig;
     use crate::test::TestRequestBuilder;
-
-    struct NoUserAuthBackend;
-
-    #[async_trait]
-    impl AuthBackend for NoUserAuthBackend {
-        async fn authenticate(
-            &self,
-            _request: &Request,
-            _credentials: &(dyn Any + Send + Sync),
-        ) -> Result<Option<Box<dyn User + Send + Sync>>> {
-            Ok(None)
-        }
-
-        async fn get_by_id(
-            &self,
-            _request: &Request,
-            _id: UserId,
-        ) -> Result<Option<Box<dyn User + Send + Sync>>> {
-            Ok(None)
-        }
-    }
 
     struct MockAuthBackend<F> {
         return_user: F,
@@ -813,6 +842,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn password_hash() {
         let password = Password::new("password".to_string());
         let hash = PasswordHash::from_password(&password);
@@ -844,6 +874,7 @@ mod tests {
     const TEST_PASSWORD_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$QAAI3EMU1eTLT9NzzBhQjg$khq4zuHsEyk9trGjuqMBFYnTbpqkmn0wXGxFn1nkPBc";
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn password_hash_debug() {
         let hash = PasswordHash::new(TEST_PASSWORD_HASH).unwrap();
         assert_eq!(
@@ -853,6 +884,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn password_hash_verify() {
         let password = Password::new("password");
         let hash = PasswordHash::from_password(&password);
@@ -869,6 +901,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn password_hash_str() {
         let hash = PasswordHash::new(TEST_PASSWORD_HASH).unwrap();
         assert_eq!(hash.as_str(), TEST_PASSWORD_HASH);
@@ -881,7 +914,7 @@ mod tests {
 
     #[tokio::test]
     async fn user_anonymous() {
-        let mut request = test_request_with_auth_backend(NoUserAuthBackend {});
+        let mut request = test_request_with_auth_backend(NoAuthBackend {});
 
         let user = request.user().await.unwrap();
         assert!(!user.is_authenticated());
@@ -942,7 +975,7 @@ mod tests {
     /// session (can happen if the user is deleted from the database)
     #[tokio::test]
     async fn logout_on_invalid_user_id_in_session() {
-        let mut request = test_request_with_auth_backend(NoUserAuthBackend {});
+        let mut request = test_request_with_auth_backend(NoAuthBackend {});
 
         request
             .session_mut()

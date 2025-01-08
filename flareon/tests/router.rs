@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use flareon::request::{Request, RequestExt};
 use flareon::response::{Response, ResponseExt};
-use flareon::router::{Route, Router, RouterService};
+use flareon::router::{Route, Router};
 use flareon::test::Client;
 use flareon::{Body, FlareonApp, FlareonProject, StatusCode};
 
@@ -19,6 +19,7 @@ async fn parameterized(request: Request) -> flareon::Result<Response> {
 }
 
 #[tokio::test]
+#[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
 async fn test_index() {
     let mut client = Client::new(project().await);
 
@@ -31,6 +32,7 @@ async fn test_index() {
 }
 
 #[tokio::test]
+#[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
 async fn path_params() {
     let mut client = Client::new(project().await);
 
@@ -43,7 +45,7 @@ async fn path_params() {
 }
 
 #[must_use]
-async fn project() -> FlareonProject<RouterService> {
+async fn project() -> FlareonProject {
     struct RouterApp;
     impl FlareonApp for RouterApp {
         fn name(&self) -> &'static str {

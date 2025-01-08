@@ -41,9 +41,11 @@
     unused_import_braces,
     unused_qualifications
 )]
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 extern crate self as flareon;
 
+#[cfg(feature = "db")]
 pub mod db;
 mod error;
 pub mod forms;
@@ -75,8 +77,7 @@ use axum::handler::HandlerWithoutStateExt;
 use bytes::Bytes;
 use derive_more::{Debug, Deref, Display, From};
 pub use error::Error;
-use flareon::config::DatabaseConfig;
-use flareon::router::RouterService;
+pub use flareon_macros::main;
 use futures_core::Stream;
 use futures_util::FutureExt;
 use http::request::Parts;
@@ -85,15 +86,21 @@ use log::info;
 use request::Request;
 use router::{Route, Router};
 use sync_wrapper::SyncWrapper;
+use tower::util::BoxCloneService;
 use tower::Service;
 
 use crate::admin::AdminModelManager;
+#[cfg(feature = "db")]
+use crate::config::DatabaseConfig;
 use crate::config::ProjectConfig;
+#[cfg(feature = "db")]
 use crate::db::migrations::{DynMigration, MigrationEngine};
+#[cfg(feature = "db")]
 use crate::db::Database;
 use crate::error::ErrorRepr;
 use crate::error_page::{ErrorPageTrigger, FlareonDiagnostics};
 use crate::response::Response;
+use crate::router::RouterService;
 
 /// A type alias for a result that can return a `flareon::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -153,6 +160,7 @@ pub trait FlareonApp: Send + Sync {
         Router::empty()
     }
 
+    #[cfg(feature = "db")]
     fn migrations(&self) -> Vec<Box<dyn DynMigration>> {
         vec![]
     }
@@ -332,12 +340,13 @@ impl http_body::Body for Body {
     }
 }
 
+pub type BoxedHandler = BoxCloneService<Request, Response, Error>;
+
 /// A Flareon project, ready to be run.
 #[derive(Debug)]
-// TODO add Middleware type?
-pub struct FlareonProject<S> {
+pub struct FlareonProject {
     context: AppContext,
-    handler: S,
+    handler: BoxedHandler,
 }
 
 /// A part of [`FlareonProject`] that contains the shared context and configs
@@ -348,6 +357,7 @@ pub struct AppContext {
     #[debug("...")]
     apps: Vec<Box<dyn FlareonApp>>,
     router: Arc<Router>,
+    #[cfg(feature = "db")]
     database: Option<Arc<Database>>,
 }
 
@@ -357,12 +367,13 @@ impl AppContext {
         config: Arc<ProjectConfig>,
         apps: Vec<Box<dyn FlareonApp>>,
         router: Arc<Router>,
-        database: Option<Arc<Database>>,
+        #[cfg(feature = "db")] database: Option<Arc<Database>>,
     ) -> Self {
         Self {
             config,
             apps,
             router,
+            #[cfg(feature = "db")]
             database,
         }
     }
@@ -383,11 +394,13 @@ impl AppContext {
     }
 
     #[must_use]
+    #[cfg(feature = "db")]
     pub fn try_database(&self) -> Option<&Arc<Database>> {
         self.database.as_ref()
     }
 
     #[must_use]
+    #[cfg(feature = "db")]
     pub fn database(&self) -> &Database {
         self.try_database().expect(
             "Database missing. Did you forget to add the database when configuring FlareonProject?",
@@ -415,6 +428,7 @@ impl FlareonProjectBuilder<Uninitialized> {
                 config: Arc::new(ProjectConfig::default()),
                 apps: vec![],
                 router: Arc::new(Router::default()),
+                #[cfg(feature = "db")]
                 database: None,
             },
             urls: Vec::new(),
@@ -465,7 +479,7 @@ impl FlareonProjectBuilder<Uninitialized> {
     }
 
     /// Builds the Flareon project instance.
-    pub async fn build(self) -> Result<FlareonProject<RouterService>> {
+    pub async fn build(self) -> Result<FlareonProject> {
         self.into_builder_with_service().build().await
     }
 
@@ -482,7 +496,11 @@ impl FlareonProjectBuilder<Uninitialized> {
     }
 }
 
-impl<S: Service<Request>> FlareonProjectBuilder<S> {
+impl<S> FlareonProjectBuilder<S>
+where
+    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
+    S::Future: Send,
+{
     #[must_use]
     pub fn middleware<M: tower::Layer<S>>(
         self,
@@ -509,16 +527,20 @@ impl<S: Service<Request>> FlareonProjectBuilder<S> {
     }
 
     /// Builds the Flareon project instance.
-    pub async fn build(mut self) -> Result<FlareonProject<S>> {
-        let database = Self::init_database(self.context.config.database_config()).await?;
-        self.context.database = Some(database);
+    pub async fn build(mut self) -> Result<FlareonProject> {
+        #[cfg(feature = "db")]
+        {
+            let database = Self::init_database(self.context.config.database_config()).await?;
+            self.context.database = Some(database);
+        }
 
         Ok(FlareonProject {
             context: self.context,
-            handler: self.handler,
+            handler: BoxedHandler::new(self.handler),
         })
     }
 
+    #[cfg(feature = "db")]
     async fn init_database(config: &DatabaseConfig) -> Result<Arc<Database>> {
         let database = Database::new(config.url()).await?;
         Ok(Arc::new(database))
@@ -531,19 +553,14 @@ impl Default for FlareonProjectBuilder<Uninitialized> {
     }
 }
 
-impl FlareonProject<()> {
+impl FlareonProject {
     #[must_use]
     pub fn builder() -> FlareonProjectBuilder<Uninitialized> {
         FlareonProjectBuilder::default()
     }
-}
 
-impl<S> FlareonProject<S>
-where
-    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
-{
     #[must_use]
-    pub fn into_context(self) -> (AppContext, S) {
+    pub fn into_context(self) -> (AppContext, BoxedHandler) {
         (self.context, self.handler)
     }
 }
@@ -556,11 +573,7 @@ where
 /// # Errors
 ///
 /// This function returns an error if the server fails to start.
-pub async fn run<S>(project: FlareonProject<S>, address_str: &str) -> Result<()>
-where
-    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
-    S::Future: Send,
-{
+pub async fn run(project: FlareonProject, address_str: &str) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(address_str)
         .await
         .map_err(|e| ErrorRepr::StartServer { source: e })?;
@@ -581,19 +594,16 @@ where
 /// # Errors
 ///
 /// This function returns an error if the server fails to start.
-pub async fn run_at<S>(project: FlareonProject<S>, listener: tokio::net::TcpListener) -> Result<()>
-where
-    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
-    S::Future: Send,
-{
+pub async fn run_at(project: FlareonProject, listener: tokio::net::TcpListener) -> Result<()> {
     let (mut context, mut project_handler) = project.into_context();
 
+    #[cfg(feature = "db")]
     if let Some(database) = &context.database {
         let mut migrations: Vec<Box<dyn DynMigration>> = Vec::new();
         for app in &context.apps {
             migrations.extend(app.migrations());
         }
-        let migration_engine = MigrationEngine::new(migrations);
+        let migration_engine = MigrationEngine::new(migrations)?;
         migration_engine.run(database).await?;
     }
 
@@ -606,6 +616,8 @@ where
     context.apps = apps;
 
     let context = Arc::new(context);
+    #[cfg(feature = "db")]
+    let context_cleanup = context.clone();
 
     let handler = |axum_request: axum::extract::Request| async move {
         let request = request_axum_to_flareon(axum_request, Arc::clone(&context));
@@ -664,7 +676,18 @@ where
     if config::REGISTER_PANIC_HOOK {
         let _ = std::panic::take_hook();
     }
+    #[cfg(feature = "db")]
+    if let Some(database) = &context_cleanup.database {
+        database.close().await?;
+    }
 
+    Ok(())
+}
+
+pub async fn run_cli(project: FlareonProject) -> Result<()> {
+    // TODO: we want to have a (extensible) CLI interface soon, but for simplicity
+    // we just run the server now
+    run(project, "127.0.0.1:8080").await?;
     Ok(())
 }
 
@@ -692,11 +715,10 @@ pub(crate) fn prepare_request(request: &mut Request, context: Arc<AppContext>) {
     request.extensions_mut().insert(context);
 }
 
-async fn pass_to_axum<S>(request: Request, handler: &mut S) -> Result<axum::response::Response>
-where
-    S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
-    S::Future: Send,
-{
+async fn pass_to_axum(
+    request: Request,
+    handler: &mut BoxedHandler,
+) -> Result<axum::response::Response> {
     poll_fn(|cx| handler.poll_ready(cx)).await?;
     let response = handler.call(request).await?;
 
@@ -752,6 +774,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
     async fn flareon_project_builder() {
         let project = FlareonProject::builder()
             .register_app_with_views(MockFlareonApp {}, "/app")
@@ -763,6 +786,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
     async fn flareon_project_router() {
         let project = FlareonProject::builder()
             .register_app_with_views(MockFlareonApp {}, "/app")

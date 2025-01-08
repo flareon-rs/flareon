@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use flareon_macros::model;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha512;
+use thiserror::Error;
 
 use crate::admin::{AdminModel, AdminModelManager, DefaultAdminModelManager};
 use crate::auth::{
@@ -17,24 +18,34 @@ use crate::auth::{
 };
 use crate::config::SecretKey;
 use crate::db::migrations::DynMigration;
-use crate::db::{query, DatabaseBackend, Model};
+use crate::db::{query, DatabaseBackend, LimitedString, Model};
 use crate::request::{Request, RequestExt};
 use crate::FlareonApp;
 
 pub mod migrations;
+
+pub(crate) const MAX_USERNAME_LENGTH: u32 = 255;
 
 /// A user stored in the database.
 #[derive(Debug, Clone)]
 #[model]
 pub struct DatabaseUser {
     id: i64,
-    username: String,
+    #[model(unique)]
+    username: LimitedString<MAX_USERNAME_LENGTH>,
     password: PasswordHash,
+}
+
+#[derive(Debug, Clone, Error)]
+#[non_exhaustive]
+pub enum CreateUserError {
+    #[error("username is too long (max {MAX_USERNAME_LENGTH} characters, got {0})")]
+    UsernameTooLong(usize),
 }
 
 impl DatabaseUser {
     #[must_use]
-    pub fn new(id: i64, username: String, password: &Password) -> Self {
+    pub fn new(id: i64, username: LimitedString<MAX_USERNAME_LENGTH>, password: &Password) -> Self {
         Self {
             id,
             username,
@@ -73,13 +84,14 @@ impl DatabaseUser {
     ///
     /// # #[tokio::main]
     /// # async fn main() -> flareon::Result<()> {
-    /// #     use flareon::test::{TestDatabaseBuilder, TestRequestBuilder};
+    /// #     use flareon::test::{TestDatabase, TestRequestBuilder};
+    /// #     let mut test_database = TestDatabase::new_sqlite().await?;
+    /// #     test_database.with_auth().run_migrations().await;
     /// #     let request = TestRequestBuilder::get("/")
-    /// #         .with_db_auth(std::sync::Arc::new(
-    /// #             TestDatabaseBuilder::new().with_auth().build().await,
-    /// #         ))
+    /// #         .with_db_auth(test_database.database())
     /// #         .build();
     /// #     view(&request).await?;
+    /// #     test_database.cleanup().await?;
     /// #     Ok(())
     /// # }
     /// ```
@@ -88,7 +100,13 @@ impl DatabaseUser {
         username: T,
         password: U,
     ) -> Result<Self> {
-        let mut user = Self::new(0, username.into(), &password.into());
+        let username = username.into();
+        let username_length = username.len();
+        let username = LimitedString::<MAX_USERNAME_LENGTH>::new(username).map_err(|_| {
+            AuthError::backend_error(CreateUserError::UsernameTooLong(username_length))
+        })?;
+
+        let mut user = Self::new(0, username, &password.into());
         user.save(db).await.map_err(AuthError::backend_error)?;
 
         Ok(user)
@@ -105,11 +123,31 @@ impl DatabaseUser {
         Ok(db_user)
     }
 
+    pub async fn get_by_username<DB: DatabaseBackend>(
+        db: &DB,
+        username: &str,
+    ) -> Result<Option<Self>> {
+        let username = LimitedString::<MAX_USERNAME_LENGTH>::new(username).map_err(|_| {
+            AuthError::backend_error(CreateUserError::UsernameTooLong(username.len()))
+        })?;
+        let db_user = query!(DatabaseUser, $username == username)
+            .get(db)
+            .await
+            .map_err(AuthError::backend_error)?;
+
+        Ok(db_user)
+    }
+
     pub async fn authenticate<DB: DatabaseBackend>(
         db: &DB,
         credentials: &DatabaseUserCredentials,
     ) -> Result<Option<Self>> {
-        let user = query!(DatabaseUser, $username == credentials.username())
+        let username = credentials.username();
+        let username_limited = LimitedString::<MAX_USERNAME_LENGTH>::new(username.to_string())
+            .map_err(|_| {
+                AuthError::backend_error(CreateUserError::UsernameTooLong(username.len()))
+            })?;
+        let user = query!(DatabaseUser, $username == username_limited)
             .get(db)
             .await
             .map_err(AuthError::backend_error)?;
@@ -338,8 +376,13 @@ mod tests {
     use crate::db::MockDatabaseBackend;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn session_auth_hash() {
-        let user = DatabaseUser::new(1, "testuser".to_string(), &Password::new("password123"));
+        let user = DatabaseUser::new(
+            1,
+            LimitedString::new("testuser").unwrap(),
+            &Password::new("password123"),
+        );
         let secret_key = SecretKey::new(b"supersecretkey");
 
         let hash = user.session_auth_hash(&secret_key);
@@ -347,8 +390,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn database_user_traits() {
-        let user = DatabaseUser::new(1, "testuser".to_string(), &Password::new("password123"));
+        let user = DatabaseUser::new(
+            1,
+            LimitedString::new("testuser").unwrap(),
+            &Password::new("password123"),
+        );
         let user_ref: &dyn User = &user;
         assert_eq!(user_ref.id(), Some(UserId::Int(1)));
         assert_eq!(user_ref.username(), Some("testuser"));
@@ -360,6 +408,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn create_user() {
         let mut mock_db = MockDatabaseBackend::new();
         mock_db
@@ -376,9 +425,14 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn get_by_id() {
         let mut mock_db = MockDatabaseBackend::new();
-        let user = DatabaseUser::new(1, "testuser".to_string(), &Password::new("password123"));
+        let user = DatabaseUser::new(
+            1,
+            LimitedString::new("testuser").unwrap(),
+            &Password::new("password123"),
+        );
 
         mock_db
             .expect_get::<DatabaseUser>()
@@ -392,9 +446,14 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn authenticate() {
         let mut mock_db = MockDatabaseBackend::new();
-        let user = DatabaseUser::new(1, "testuser".to_string(), &Password::new("password123"));
+        let user = DatabaseUser::new(
+            1,
+            LimitedString::new("testuser").unwrap(),
+            &Password::new("password123"),
+        );
 
         mock_db
             .expect_get::<DatabaseUser>()
@@ -410,6 +469,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn authenticate_non_existing() {
         let mut mock_db = MockDatabaseBackend::new();
 
@@ -426,9 +486,14 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore)]
     async fn authenticate_invalid_password() {
         let mut mock_db = MockDatabaseBackend::new();
-        let user = DatabaseUser::new(1, "testuser".to_string(), &Password::new("password123"));
+        let user = DatabaseUser::new(
+            1,
+            LimitedString::new("testuser").unwrap(),
+            &Password::new("password123"),
+        );
 
         mock_db
             .expect_get::<DatabaseUser>()

@@ -8,5 +8,3 @@ edition = "2021"
 [dependencies]
 askama = "0.12.1"
 flareon = { path = "../../flareon" }
-tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
-env_logger = "0.11.5"

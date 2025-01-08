@@ -82,16 +82,13 @@ impl FlareonApp for HelloApp {
     }
 }
 
-#[tokio::main]
-async fn main() {
+#[flareon::main]
+async fn main() -> flareon::Result<FlareonProject> {
     let flareon_project = FlareonProject::builder()
         .register_app_with_views(HelloApp, "")
         .middleware(SessionMiddleware::new())
         .build()
-        .await
-        .unwrap();
+        .await?;
 
-    flareon::run(flareon_project, "127.0.0.1:8000")
-        .await
-        .unwrap();
+    Ok(flareon_project)
 }

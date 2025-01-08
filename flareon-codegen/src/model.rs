@@ -23,10 +23,22 @@ pub enum ModelType {
 #[darling(forward_attrs(allow, doc, cfg), supports(struct_named))]
 pub struct ModelOpts {
     pub ident: syn::Ident,
+    pub generics: syn::Generics,
     pub data: darling::ast::Data<darling::util::Ignored, FieldOpts>,
 }
 
 impl ModelOpts {
+    pub fn new_from_derive_input(input: &syn::DeriveInput) -> Result<Self, darling::error::Error> {
+        let opts = Self::from_derive_input(input)?;
+        if !opts.generics.params.is_empty() {
+            return Err(
+                darling::Error::custom("generics in models are not supported")
+                    .with_span(&opts.generics),
+            );
+        }
+        Ok(opts)
+    }
+
     /// Get the fields of the struct.
     ///
     /// # Panics
@@ -79,10 +91,11 @@ impl ModelOpts {
 }
 
 #[derive(Debug, Clone, FromField)]
-#[darling(attributes(form))]
+#[darling(attributes(model))]
 pub struct FieldOpts {
     pub ident: Option<syn::Ident>,
     pub ty: syn::Type,
+    pub unique: darling::util::Flag,
 }
 
 impl FieldOpts {
@@ -108,6 +121,7 @@ impl FieldOpts {
             auto_value: is_auto,
             primary_key: is_primary_key,
             null: false,
+            unique: self.unique.is_present(),
         }
     }
 }
@@ -136,4 +150,89 @@ pub struct Field {
     pub auto_value: bool,
     pub primary_key: bool,
     pub null: bool,
+    pub unique: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use syn::parse_quote;
+
+    use super::*;
+
+    #[test]
+    fn model_args_default() {
+        let args: ModelArgs = Default::default();
+        assert_eq!(args.model_type, ModelType::Application);
+        assert!(args.table_name.is_none());
+    }
+
+    #[test]
+    fn model_type_default() {
+        let model_type: ModelType = Default::default();
+        assert_eq!(model_type, ModelType::Application);
+    }
+
+    #[test]
+    fn model_opts_fields() {
+        let input: syn::DeriveInput = parse_quote! {
+            struct TestModel {
+                id: i32,
+                name: String,
+            }
+        };
+        let opts = ModelOpts::new_from_derive_input(&input).unwrap();
+        let fields = opts.fields();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].ident.as_ref().unwrap().to_string(), "id");
+        assert_eq!(fields[1].ident.as_ref().unwrap().to_string(), "name");
+    }
+
+    #[test]
+    fn model_opts_as_model() {
+        let input: syn::DeriveInput = parse_quote! {
+            struct TestModel {
+                id: i32,
+                name: String,
+            }
+        };
+        let opts = ModelOpts::new_from_derive_input(&input).unwrap();
+        let args = ModelArgs::default();
+        let model = opts.as_model(&args).unwrap();
+        assert_eq!(model.name.to_string(), "TestModel");
+        assert_eq!(model.table_name, "test_model");
+        assert_eq!(model.fields.len(), 2);
+        assert_eq!(model.field_count(), 2);
+    }
+
+    #[test]
+    fn model_opts_as_model_migration() {
+        let input: syn::DeriveInput = parse_quote! {
+            #[model(model_type = "migration")]
+            struct TestModel {
+                id: i32,
+                name: String,
+            }
+        };
+        let opts = ModelOpts::new_from_derive_input(&input).unwrap();
+        let args = ModelArgs::from_meta(&input.attrs.first().unwrap().meta).unwrap();
+        let err = opts.as_model(&args).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "migration model names must start with an underscore"
+        );
+    }
+
+    #[test]
+    fn field_opts_as_field() {
+        let input: syn::Field = parse_quote! {
+            #[model(unique)]
+            name: String
+        };
+        let field_opts = FieldOpts::from_field(&input).unwrap();
+        let field = field_opts.as_field();
+        assert_eq!(field.field_name.to_string(), "name");
+        assert_eq!(field.column_name, "name");
+        assert_eq!(field.ty, parse_quote!(String));
+        assert!(field.unique);
+    }
 }

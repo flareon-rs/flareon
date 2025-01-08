@@ -1,0 +1,5 @@
+error: generics in models are not supported
+ --> tests/ui/attr_model_generic.rs:4:15
+  |
+4 | struct MyModel<T> {
+  |               ^^^

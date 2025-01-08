@@ -4,9 +4,15 @@
 //! the error types that can occur when interacting with the database.
 
 mod fields;
+#[cfg(feature = "mysql")]
+pub mod impl_mysql;
+#[cfg(feature = "postgres")]
+pub mod impl_postgres;
+#[cfg(feature = "sqlite")]
 pub mod impl_sqlite;
 pub mod migrations;
 pub mod query;
+mod sea_query_db;
 
 use std::fmt::Write;
 use std::hash::Hash;
@@ -19,11 +25,17 @@ use log::debug;
 use mockall::automock;
 use query::Query;
 use sea_query::{Iden, SchemaStatementBuilder, SimpleExpr};
-use sea_query_binder::SqlxBinder;
+use sea_query_binder::{SqlxBinder, SqlxValues};
 use sqlx::{Type, TypeInfo};
 use thiserror::Error;
 
+#[cfg(feature = "mysql")]
+use crate::db::impl_mysql::{DatabaseMySql, MySqlRow, MySqlValueRef};
+#[cfg(feature = "postgres")]
+use crate::db::impl_postgres::{DatabasePostgres, PostgresRow, PostgresValueRef};
+#[cfg(feature = "sqlite")]
 use crate::db::impl_sqlite::{DatabaseSqlite, SqliteRow, SqliteValueRef};
+use crate::db::migrations::ColumnTypeMapper;
 
 /// An error that can occur when interacting with the database.
 #[derive(Debug, Error)]
@@ -42,6 +54,9 @@ pub enum DatabaseError {
     /// Error when decoding database value.
     #[error("Error when decoding database value: {0}")]
     ValueDecode(Box<dyn std::error::Error + 'static + Send + Sync>),
+    /// Error when applying migrations.
+    #[error("Error when applying migrations: {0}")]
+    MigrationError(#[from] migrations::MigrationEngineError),
 }
 
 impl DatabaseError {
@@ -161,6 +176,7 @@ impl Iden for &Identifier {
 pub struct Column {
     name: Identifier,
     auto_value: bool,
+    unique: bool,
     null: bool,
 }
 
@@ -171,6 +187,7 @@ impl Column {
         Self {
             name,
             auto_value: false,
+            unique: false,
             null: false,
         }
     }
@@ -179,6 +196,13 @@ impl Column {
     #[must_use]
     pub const fn auto(mut self) -> Self {
         self.auto_value = true;
+        self
+    }
+
+    /// Marks the column unique.
+    #[must_use]
+    pub const fn unique(mut self) -> Self {
+        self.unique = true;
         self
     }
 
@@ -192,9 +216,15 @@ impl Column {
 
 /// A row structure that holds the data of a single row retrieved from the
 /// database.
+#[non_exhaustive]
 #[derive(Debug)]
 pub enum Row {
+    #[cfg(feature = "sqlite")]
     Sqlite(SqliteRow),
+    #[cfg(feature = "postgres")]
+    Postgres(PostgresRow),
+    #[cfg(feature = "mysql")]
+    MySql(MySqlRow),
 }
 
 impl Row {
@@ -210,28 +240,80 @@ impl Row {
     /// returned by the database.
     pub fn get<T: FromDbValue>(&self, index: usize) -> Result<T> {
         let result = match self {
+            #[cfg(feature = "sqlite")]
             Row::Sqlite(sqlite_row) => sqlite_row
                 .get_raw(index)
                 .and_then(|value| T::from_sqlite(value))?,
+            #[cfg(feature = "postgres")]
+            Row::Postgres(postgres_row) => postgres_row
+                .get_raw(index)
+                .and_then(|value| T::from_postgres(value))?,
+            #[cfg(feature = "mysql")]
+            Row::MySql(mysql_row) => mysql_row
+                .get_raw(index)
+                .and_then(|value| T::from_mysql(value))?,
         };
 
         Ok(result)
     }
 }
 
+/// A trait denoting that some type can be used as a field in a database.
 pub trait DatabaseField: FromDbValue + ToDbValue {
+    const NULLABLE: bool = false;
+
+    /// The type of the column in the database as one of the variants of
+    /// the [`ColumnType`] enum.
+    ///
+    /// # Changing the column type after initial implementation
+    ///
+    /// Note that this should never be changed after the type is implemented.
+    /// The migration generator is unable to detect a change in the column type
+    /// and will not generate a migration for it. If the column type needs to
+    /// be changed, a manual migration should be written, or a new type should
+    /// be created.
+    ///
+    /// This is especially important for types that are stored as fixed-length
+    /// strings in the database, as the migration generator cannot detect a
+    /// change in the string length. For this reason, it's recommended to use
+    /// the [`LimitedString`] type for fixed-length strings (which uses const
+    /// generics, so each change in the length will be a new type) instead of
+    /// a custom type with a fixed length.
     const TYPE: ColumnType;
 }
 
 /// A trait for converting a database value to a Rust value.
 pub trait FromDbValue {
-    /// Converts the given `SQLite` database value to a Rust value.
+    /// Converts the given SQLite database value to a Rust value.
     ///
     /// # Errors
     ///
     /// This method can return an error if the value is not compatible with the
     /// Rust type.
+    #[cfg(feature = "sqlite")]
     fn from_sqlite(value: SqliteValueRef) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// Converts the given PostgreSQL database value to a Rust value.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the value is not compatible with the
+    /// Rust type.
+    #[cfg(feature = "postgres")]
+    fn from_postgres(value: PostgresValueRef) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// Converts the given MySQL database value to a Rust value.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the value is not compatible with the
+    /// Rust type.
+    #[cfg(feature = "mysql")]
+    fn from_mysql(value: MySqlValueRef) -> Result<Self>
     where
         Self: Sized;
 }
@@ -243,6 +325,12 @@ pub trait ToDbValue: Send + Sync {
     /// This method is used to convert the Rust value to a value that can be
     /// used in a query.
     fn to_sea_query_value(&self) -> sea_query::Value;
+}
+
+impl<T: ToDbValue + ?Sized> ToDbValue for &T {
+    fn to_sea_query_value(&self) -> sea_query::Value {
+        (*self).to_sea_query_value()
+    }
 }
 
 trait SqlxRowRef {
@@ -290,7 +378,12 @@ pub struct Database {
 
 #[derive(Debug)]
 enum DatabaseImpl {
+    #[cfg(feature = "sqlite")]
     Sqlite(DatabaseSqlite),
+    #[cfg(feature = "postgres")]
+    Postgres(DatabasePostgres),
+    #[cfg(feature = "mysql")]
+    MySql(DatabaseMySql),
 }
 
 impl Database {
@@ -318,17 +411,35 @@ impl Database {
     /// ```
     pub async fn new<T: Into<String>>(url: T) -> Result<Self> {
         let url = url.into();
-        let db = if url.starts_with("sqlite:") {
+
+        #[cfg(feature = "sqlite")]
+        if url.starts_with("sqlite:") {
             let inner = DatabaseSqlite::new(&url).await?;
-            Self {
+            return Ok(Self {
                 _url: url,
                 inner: DatabaseImpl::Sqlite(inner),
-            }
-        } else {
-            todo!("Other databases are not supported yet");
-        };
+            });
+        }
 
-        Ok(db)
+        #[cfg(feature = "postgres")]
+        if url.starts_with("postgresql:") {
+            let inner = DatabasePostgres::new(&url).await?;
+            return Ok(Self {
+                _url: url,
+                inner: DatabaseImpl::Postgres(inner),
+            });
+        }
+
+        #[cfg(feature = "mysql")]
+        if url.starts_with("mysql:") {
+            let inner = DatabaseMySql::new(&url).await?;
+            return Ok(Self {
+                _url: url,
+                inner: DatabaseImpl::MySql(inner),
+            });
+        }
+
+        panic!("Unsupported database URL: {url}");
     }
 
     /// Closes the database connection.
@@ -353,9 +464,14 @@ impl Database {
     ///     db.close().await.unwrap();
     /// }
     /// ```
-    pub async fn close(self) -> Result<()> {
-        match self.inner {
+    pub async fn close(&self) -> Result<()> {
+        match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner.close().await,
+            #[cfg(feature = "postgres")]
+            DatabaseImpl::Postgres(inner) => inner.close().await,
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.close().await,
         }
     }
 
@@ -393,13 +509,14 @@ impl Database {
                     .map(|value| SimpleExpr::Value(value.to_sea_query_value()))
                     .collect::<Vec<_>>(),
             )?
-            .returning_col(Identifier::new("id"))
             .to_owned();
 
-        let row = self.fetch_one(&insert_statement).await?;
-        let id = row.get::<i64>(0)?;
+        let statement_result = self.execute_statement(&insert_statement).await?;
 
-        debug!("Inserted row with id: {}", id);
+        debug!(
+            "Inserted row; rows affected: {}",
+            statement_result.rows_affected()
+        );
 
         Ok(())
     }
@@ -497,12 +614,28 @@ impl Database {
         self.execute_statement(&delete).await
     }
 
-    async fn fetch_one<T>(&self, statement: &T) -> Result<Row>
-    where
-        T: SqlxBinder,
-    {
+    pub async fn raw(&self, query: &str) -> Result<StatementResult> {
+        self.raw_with(query, &[]).await
+    }
+
+    pub async fn raw_with(
+        &self,
+        query: &str,
+        values: &[&(dyn ToDbValue)],
+    ) -> Result<StatementResult> {
+        let values = values
+            .iter()
+            .map(ToDbValue::to_sea_query_value)
+            .collect::<Vec<_>>();
+        let values = SqlxValues(sea_query::Values(values));
+
         let result = match &self.inner {
-            DatabaseImpl::Sqlite(inner) => Row::Sqlite(inner.fetch_one(statement).await?),
+            #[cfg(feature = "sqlite")]
+            DatabaseImpl::Sqlite(inner) => inner.raw_with(query, values).await?,
+            #[cfg(feature = "postgres")]
+            DatabaseImpl::Postgres(inner) => inner.raw_with(query, values).await?,
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.raw_with(query, values).await?,
         };
 
         Ok(result)
@@ -513,7 +646,14 @@ impl Database {
         T: SqlxBinder,
     {
         let result = match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner.fetch_option(statement).await?.map(Row::Sqlite),
+            #[cfg(feature = "postgres")]
+            DatabaseImpl::Postgres(inner) => {
+                inner.fetch_option(statement).await?.map(Row::Postgres)
+            }
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.fetch_option(statement).await?.map(Row::MySql),
         };
 
         Ok(result)
@@ -524,11 +664,26 @@ impl Database {
         T: SqlxBinder,
     {
         let result = match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner
                 .fetch_all(statement)
                 .await?
                 .into_iter()
                 .map(Row::Sqlite)
+                .collect(),
+            #[cfg(feature = "postgres")]
+            DatabaseImpl::Postgres(inner) => inner
+                .fetch_all(statement)
+                .await?
+                .into_iter()
+                .map(Row::Postgres)
+                .collect(),
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner
+                .fetch_all(statement)
+                .await?
+                .into_iter()
+                .map(Row::MySql)
                 .collect(),
         };
 
@@ -537,10 +692,15 @@ impl Database {
 
     async fn execute_statement<T>(&self, statement: &T) -> Result<StatementResult>
     where
-        T: SqlxBinder,
+        T: SqlxBinder + Sync,
     {
         let result = match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner.execute_statement(statement).await?,
+            #[cfg(feature = "postgres")]
+            DatabaseImpl::Postgres(inner) => inner.execute_statement(statement).await?,
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.execute_statement(statement).await?,
         };
 
         Ok(result)
@@ -551,10 +711,28 @@ impl Database {
         statement: T,
     ) -> Result<StatementResult> {
         let result = match &self.inner {
+            #[cfg(feature = "sqlite")]
             DatabaseImpl::Sqlite(inner) => inner.execute_schema(statement).await?,
+            #[cfg(feature = "postgres")]
+            DatabaseImpl::Postgres(inner) => inner.execute_schema(statement).await?,
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.execute_schema(statement).await?,
         };
 
         Ok(result)
+    }
+}
+
+impl ColumnTypeMapper for Database {
+    fn sea_query_column_type_for(&self, column_type: ColumnType) -> sea_query::ColumnType {
+        match &self.inner {
+            #[cfg(feature = "sqlite")]
+            DatabaseImpl::Sqlite(inner) => inner.sea_query_column_type_for(column_type),
+            #[cfg(feature = "postgres")]
+            DatabaseImpl::Postgres(inner) => inner.sea_query_column_type_for(column_type),
+            #[cfg(feature = "mysql")]
+            DatabaseImpl::MySql(inner) => inner.sea_query_column_type_for(column_type),
+        }
     }
 }
 
@@ -603,6 +781,7 @@ pub struct StatementResult {
 
 impl StatementResult {
     /// Creates a new statement result with the given number of rows affected.
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn new(rows_affected: RowsNum) -> Self {
         Self { rows_affected }
@@ -618,6 +797,106 @@ impl StatementResult {
 /// A structure that holds the number of rows.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deref, Display)]
 pub struct RowsNum(pub u64);
+
+/// A wrapper over a string that has a limited length.
+///
+/// This type is used to represent a string that has a limited length in the
+/// database. The length is specified as a const generic parameter. The string
+/// is stored as a normal string in memory, but it is checked when it is
+/// created to ensure that it is not longer than the specified limit.
+///
+/// # Database
+///
+/// This type is represented by the `VARCHAR` type in the database, with the
+/// maximum length same as the limit specified in the type.
+///
+/// # Examples
+///
+/// ```
+/// use flareon::db::LimitedString;
+///
+/// let limited_string = LimitedString::<5>::new("test").unwrap();
+/// assert_eq!(limited_string, "test");
+///
+/// let limited_string = LimitedString::<5>::new("too long");
+/// assert!(limited_string.is_err());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deref)]
+pub struct LimitedString<const LIMIT: u32>(String);
+
+impl<const LIMIT: u32> PartialEq<&str> for LimitedString<LIMIT> {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+impl<const LIMIT: u32> PartialEq<String> for LimitedString<LIMIT> {
+    fn eq(&self, other: &String) -> bool {
+        self.0 == *other
+    }
+}
+impl<const LIMIT: u32> PartialEq<LimitedString<LIMIT>> for &str {
+    fn eq(&self, other: &LimitedString<LIMIT>) -> bool {
+        *self == other.0
+    }
+}
+impl<const LIMIT: u32> PartialEq<LimitedString<LIMIT>> for String {
+    fn eq(&self, other: &LimitedString<LIMIT>) -> bool {
+        *self == other.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Error)]
+#[error("string is too long ({length} > {LIMIT})")]
+pub struct NewLimitedStringError<const LIMIT: u32> {
+    pub(crate) length: u32,
+}
+
+impl<const LIMIT: u32> LimitedString<LIMIT> {
+    pub fn new(
+        value: impl Into<String>,
+    ) -> std::result::Result<Self, NewLimitedStringError<LIMIT>> {
+        let value = value.into();
+        let length = value.len() as u32;
+
+        if length > LIMIT {
+            return Err(NewLimitedStringError { length });
+        }
+        Ok(Self(value))
+    }
+}
+
+#[cfg(feature = "fake")]
+impl<const LIMIT: u32> fake::Dummy<usize> for LimitedString<LIMIT> {
+    fn dummy_with_rng<R: fake::rand::Rng + ?Sized>(len: &usize, rng: &mut R) -> Self {
+        use fake::rand::Rng;
+
+        assert!(
+            *len <= LIMIT as usize,
+            concat!(
+                "len must be less than or equal to LIMIT (",
+                stringify!(LIMIT),
+                ")"
+            )
+        );
+
+        let str: String = rng
+            .sample_iter(&fake::rand::distributions::Alphanumeric)
+            .take(*len)
+            .map(char::from)
+            .collect();
+        Self::new(str).unwrap()
+    }
+}
+
+#[cfg(feature = "fake")]
+impl<const LIMIT: u32> fake::Dummy<fake::Faker> for LimitedString<LIMIT> {
+    fn dummy_with_rng<R: fake::rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+        use fake::Fake;
+
+        let len: usize = (0..LIMIT as usize).fake_with_rng(rng);
+        len.fake_with_rng(rng)
+    }
+}
 
 /// A type that represents a column type in the database.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -636,10 +915,10 @@ pub enum ColumnType {
     Time,
     Date,
     DateTime,
-    Timestamp,
-    TimestampWithTimeZone,
+    DateTimeWithTimeZone,
     Text,
     Blob,
+    String(u32),
 }
 
 #[cfg(test)]
@@ -664,5 +943,42 @@ mod tests {
 
         let column_null = column.null();
         assert!(column_null.null);
+    }
+
+    #[test]
+    fn limited_string_new_within_limit() {
+        let limited_string = LimitedString::<10>::new("short");
+        assert!(limited_string.is_ok());
+        assert_eq!(limited_string.unwrap(), "short");
+    }
+
+    #[test]
+    fn limited_string_new_exceeds_limit() {
+        let limited_string = LimitedString::<5>::new("too long");
+
+        assert!(limited_string.is_err());
+        let error = limited_string.unwrap_err();
+        assert_eq!(error.to_string(), "string is too long (8 > 5)");
+    }
+
+    #[test]
+    fn limited_string_new_exact_limit() {
+        let limited_string = LimitedString::<5>::new("exact");
+        assert!(limited_string.is_ok());
+        assert_eq!(limited_string.unwrap(), "exact");
+    }
+
+    #[test]
+    fn limited_string_eq() {
+        assert_eq!(LimitedString::<5>::new("test").unwrap(), "test");
+        assert_eq!("test", LimitedString::<5>::new("test").unwrap());
+        assert_eq!(
+            LimitedString::<5>::new("test").unwrap(),
+            String::from("test"),
+        );
+        assert_eq!(
+            String::from("test"),
+            LimitedString::<5>::new("test").unwrap(),
+        );
     }
 }

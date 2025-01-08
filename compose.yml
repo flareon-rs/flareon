@@ -1,0 +1,20 @@
+services:
+  mariadb:
+    image: docker.io/mariadb:11
+    container_name: flareon-mariadb
+    environment:
+      MARIADB_DATABASE: mysql
+      MARIADB_USER: flareon
+      MARIADB_PASSWORD: flareon
+      MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: 1
+    ports:
+      - "3306:3306"
+
+  postgres:
+    image: docker.io/postgres:17-alpine
+    container_name: flareon-postgres
+    environment:
+      POSTGRES_USER: flareon
+      POSTGRES_PASSWORD: flareon
+    ports:
+      - "5432:5432"

@@ -68,9 +68,12 @@ impl From<Error> for askama::Error {
 
 impl_error_from_repr!(askama::Error);
 impl_error_from_repr!(crate::router::path::ReverseError);
+#[cfg(feature = "db")]
 impl_error_from_repr!(crate::db::DatabaseError);
 impl_error_from_repr!(crate::forms::FormError);
 impl_error_from_repr!(crate::auth::AuthError);
+#[cfg(feature = "json")]
+impl_error_from_repr!(serde_json::Error);
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -85,7 +88,7 @@ pub(crate) enum ErrorRepr {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
     /// The request body had an invalid `Content-Type` header.
-    #[error("Invalid content type; expected {expected}, found {actual}")]
+    #[error("Invalid content type; expected `{expected}`, found `{actual}`")]
     InvalidContentType {
         expected: &'static str,
         actual: String,
@@ -105,6 +108,7 @@ pub(crate) enum ErrorRepr {
     TemplateRender(#[from] askama::Error),
     /// An error occurred while communicating with the database.
     #[error("Database error: {0}")]
+    #[cfg(feature = "db")]
     DatabaseError(#[from] crate::db::DatabaseError),
     /// An error occurred while parsing a form.
     #[error("Failed to process a form: {0}")]
@@ -112,6 +116,10 @@ pub(crate) enum ErrorRepr {
     /// An error occurred while trying to authenticate a user.
     #[error("Failed to authenticate user: {0}")]
     AuthenticationError(#[from] crate::auth::AuthError),
+    /// An error occurred while trying to serialize or deserialize JSON.
+    #[error("JSON error: {0}")]
+    #[cfg(feature = "json")]
+    JsonError(#[from] serde_json::Error),
 }
 
 #[cfg(test)]
@@ -143,7 +151,7 @@ mod tests {
 
         assert_eq!(
             display,
-            "Invalid content type; expected application/json, found text/html"
+            "Invalid content type; expected `application/json`, found `text/html`"
         );
     }
 

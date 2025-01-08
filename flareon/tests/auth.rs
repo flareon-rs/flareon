@@ -1,14 +1,12 @@
-use std::sync::Arc;
-
 use flareon::auth::db::{DatabaseUser, DatabaseUserCredentials};
 use flareon::auth::{AuthRequestExt, Password};
-use flareon::test::{TestDatabaseBuilder, TestRequestBuilder};
+use flareon::test::{TestDatabase, TestRequestBuilder};
 
-#[tokio::test]
-async fn database_user() {
-    let db = Arc::new(TestDatabaseBuilder::new().with_auth().build().await);
+#[flareon_macros::dbtest]
+async fn database_user(test_db: &mut TestDatabase) {
+    test_db.with_auth().run_migrations().await;
     let mut request_builder = TestRequestBuilder::get("/");
-    request_builder.with_db_auth(db.clone());
+    request_builder.with_db_auth(test_db.database());
 
     // Anonymous user
     let mut request = request_builder.clone().with_session().build();
@@ -16,9 +14,13 @@ async fn database_user() {
     assert!(!user.is_authenticated());
 
     // Authenticated user
-    DatabaseUser::create_user(&*db, "testuser".to_string(), &Password::new("password123"))
-        .await
-        .unwrap();
+    DatabaseUser::create_user(
+        &**test_db,
+        "testuser".to_string(),
+        &Password::new("password123"),
+    )
+    .await
+    .unwrap();
 
     let user = request
         .authenticate(&DatabaseUserCredentials::new(

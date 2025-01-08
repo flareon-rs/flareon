@@ -1,0 +1,4 @@
+[advisories]
+ignore = [
+    "RUSTSEC-2023-0071", # no fix available as of 2024-12-07: https://github.com/RustCrypto/RSA/issues/19
+]
