@@ -20,8 +20,7 @@ jobs:
   build:
     # Run on external PRs and pushes to branches on the repo
     # This is to avoid double running on PRs from internal branches
-    if: github.event_name == 'push' || github.event_name == 'schedule' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       matrix:
         rust: [stable, nightly]
@@ -59,8 +58,7 @@ jobs:
         run: cargo +${{ matrix.rust }} test --doc
 
   clippy:
-    if: github.event_name == 'push' || github.event_name == 'schedule' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
 
     name: Clippy lint checks
     runs-on: ubuntu-latest
@@ -82,8 +80,7 @@ jobs:
         run: cargo clippy --no-deps --
 
   external-deps:
-    if: github.event_name == 'push' || github.event_name == 'schedule' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
 
     name: Test with external dependencies
     runs-on: ubuntu-latest
@@ -118,8 +115,7 @@ jobs:
         run: cargo test --doc
 
   coverage:
-    if: github.event_name == 'push' || github.event_name == 'schedule' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
 
     name: Test coverage checks
     runs-on: ubuntu-latest
@@ -164,8 +160,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   rustfmt:
-    if: github.event_name == 'push' || github.event_name == 'schedule' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
 
     name: Code formatting checks
     runs-on: ubuntu-latest
@@ -187,8 +182,7 @@ jobs:
         run: cargo fmt --all -- --check
 
   machete:
-    if: github.event_name == 'push' || github.event_name == 'schedule' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
 
     name: Machete dependencies checks
     runs-on: ubuntu-latest
@@ -209,8 +203,7 @@ jobs:
         uses: bnjbvr/cargo-machete@v0.7.0
 
   minimal-versions:
-    if: github.event_name == 'push' || github.event_name == 'schedule' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
 
     name: Minimal dependency versions build
     runs-on: ubuntu-latest
@@ -240,8 +233,7 @@ jobs:
           cargo hack check --all-features --ignore-private
 
   build-feature-power-set:
-    if: github.event_name == 'push' || github.event_name == 'schedule' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
 
     name: Build with each feature combination
     runs-on: ubuntu-latest
@@ -265,8 +257,7 @@ jobs:
         run: cargo hack check --feature-powerset --exclude-features db --no-dev-deps
 
   miri:
-    if: github.event_name == 'push' || github.event_name == 'schedule' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
 
     name: Miri test
     runs-on: ubuntu-latest
