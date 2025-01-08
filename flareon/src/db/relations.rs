@@ -17,6 +17,7 @@ pub enum ForeignKey<T: Model> {
 }
 
 impl<T: Model> ForeignKey<T> {
+    /// Returns the primary key of the referenced model.
     pub fn primary_key(&self) -> &T::PrimaryKey {
         match self {
             Self::PrimaryKey(pk) => pk,
@@ -24,6 +25,8 @@ impl<T: Model> ForeignKey<T> {
         }
     }
 
+    /// Returns the model, if it has been stored in this [`ForeignKey`]
+    /// instance, or [`None`] otherwise.
     pub fn model(&self) -> Option<&T> {
         match self {
             Self::Model(model) => Some(model),
@@ -31,6 +34,11 @@ impl<T: Model> ForeignKey<T> {
         }
     }
 
+    /// Unwrap the foreign key, returning the model.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the model has not been stored in this [`ForeignKey`] instance.
     pub fn unwrap(self) -> T {
         match self {
             Self::Model(model) => *model,
@@ -39,6 +47,11 @@ impl<T: Model> ForeignKey<T> {
     }
 
     /// Retrieve the model from the database, if needed, and return it.
+    ///
+    /// If the model has already been retrieved, this method will return it.
+    ///
+    /// This method will replace the primary key with the model instance if
+    /// the primary key is stored in this [`ForeignKey`] instance.
     pub async fn get<DB: DatabaseBackend>(&mut self, db: &DB) -> Result<&T> {
         match self {
             Self::Model(model) => Ok(model),
@@ -129,5 +142,71 @@ impl From<ForeignKeyOnUpdatePolicy> for sea_query::ForeignKeyAction {
             ForeignKeyOnUpdatePolicy::Cascade => Self::Cascade,
             ForeignKeyOnUpdatePolicy::SetNone => Self::SetNull,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{model, Auto};
+
+    #[derive(Debug, Clone, PartialEq)]
+    #[model]
+    struct TestModel {
+        id: Auto<i32>,
+    }
+
+    #[test]
+    fn test_primary_key() {
+        let fk = ForeignKey::<TestModel>::PrimaryKey(Auto::fixed(1));
+
+        assert_eq!(fk.primary_key(), &Auto::fixed(1));
+    }
+
+    #[test]
+    fn test_model() {
+        let model = TestModel { id: Auto::fixed(1) };
+        let fk = ForeignKey::Model(Box::new(model.clone()));
+
+        assert_eq!(fk.model().unwrap(), &model);
+        assert_eq!(fk.primary_key(), &Auto::fixed(1));
+    }
+
+    #[test]
+    fn test_unwrap_model() {
+        let model = TestModel { id: Auto::fixed(1) };
+        let fk = ForeignKey::Model(Box::new(model.clone()));
+
+        assert_eq!(fk.unwrap(), model);
+    }
+
+    #[should_panic(expected = "object has not been retrieved from the database")]
+    fn test_unwrap_primary_key() {
+        let fk = ForeignKey::<TestModel>::PrimaryKey(Auto::fixed(1));
+        fk.unwrap();
+    }
+
+    #[test]
+    fn test_partial_eq() {
+        let fk1 = ForeignKey::<TestModel>::PrimaryKey(Auto::fixed(1));
+        let fk2 = ForeignKey::<TestModel>::PrimaryKey(Auto::fixed(1));
+
+        assert_eq!(fk1, fk2);
+    }
+
+    #[test]
+    fn test_from_model() {
+        let model = TestModel { id: Auto::fixed(1) };
+        let fk: ForeignKey<TestModel> = ForeignKey::from(model.clone());
+
+        assert_eq!(fk.model().unwrap(), &model);
+    }
+
+    #[test]
+    fn test_from_model_ref() {
+        let model = TestModel { id: Auto::fixed(1) };
+        let fk: ForeignKey<TestModel> = ForeignKey::from(&model);
+
+        assert_eq!(fk.primary_key(), &Auto::fixed(1));
     }
 }

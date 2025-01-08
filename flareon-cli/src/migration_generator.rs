@@ -48,6 +48,7 @@ pub fn make_migrations(path: &Path, options: MigrationGeneratorOptions) -> anyho
 
 #[derive(Debug, Clone, Default)]
 pub struct MigrationGeneratorOptions {
+    pub app_name: Option<String>,
     pub output_dir: Option<PathBuf>,
 }
 
@@ -82,6 +83,7 @@ impl MigrationGenerator {
         Ok(())
     }
 
+    /// Generate migrations as a ready-to-write source code.
     pub fn generate_migrations_to_write(
         &mut self,
         source_files: Vec<SourceFile>,
@@ -95,6 +97,8 @@ impl MigrationGenerator {
         }
     }
 
+    /// Generate migrations and return internal structures that can be used to
+    /// generate source code.
     pub fn generate_migrations(
         &mut self,
         source_files: Vec<SourceFile>,
@@ -319,7 +323,10 @@ impl MigrationGenerator {
     fn make_create_model_operation(app_model: &ModelInSource) -> DynOperation {
         DynOperation::CreateModel {
             table_name: app_model.model.table_name.clone(),
-            model_ty: app_model.model.resolved_ty.clone().expect("resolved_ty is expected to be present when parsing the entire file with symbol resolver"),
+            model_ty: app_model.model.resolved_ty.clone().expect(
+                "resolved_ty is expected to be present when \
+                parsing the entire file with symbol resolver",
+            ),
             fields: app_model.model.fields.clone(),
         }
     }
@@ -381,7 +388,10 @@ impl MigrationGenerator {
     fn make_add_field_operation(app_model: &ModelInSource, field: &Field) -> DynOperation {
         DynOperation::AddField {
             table_name: app_model.model.table_name.clone(),
-            model_ty: app_model.model.resolved_ty.clone().expect("resolved_ty is expected to be present when parsing the entire file with symbol resolver"),
+            model_ty: app_model.model.resolved_ty.clone().expect(
+                "resolved_ty is expected to be present \
+                when parsing the entire file with symbol resolver",
+            ),
             field: field.clone(),
         }
     }
@@ -426,7 +436,7 @@ impl MigrationGenerator {
             .map(|dependency| dependency.repr())
             .collect();
 
-        let app_name = &self.crate_name;
+        let app_name = self.options.app_name.as_ref().unwrap_or(&self.crate_name);
         let migration_name = &migration.migration_name;
         let migration_def = quote! {
             #[derive(Debug, Copy, Clone)]
@@ -666,6 +676,8 @@ pub struct GeneratedMigration {
 }
 
 impl GeneratedMigration {
+    /// Get the list of [`DynDependency`] for all foreign keys that point
+    /// to models that are **not** created in this migration.
     fn get_foreign_key_dependencies(&self) -> Vec<DynDependency> {
         let create_ops = self.get_create_ops_map();
         let ops_adding_foreign_keys = self.get_ops_adding_foreign_keys();
@@ -682,6 +694,16 @@ impl GeneratedMigration {
         dependencies
     }
 
+    /// Removes dependency cycles by removing operations that create cycles.
+    ///
+    /// This method tries to minimize the number of operations added by
+    /// calculating the minimum feedback arc set of the dependency graph.
+    ///
+    /// This method modifies the `operations` field in place.
+    ///
+    /// # See also
+    ///
+    /// * [`Self::remove_dependency`]
     fn remove_cycles(&mut self) {
         let graph = self.construct_dependency_graph();
 
@@ -701,6 +723,11 @@ impl GeneratedMigration {
         }
     }
 
+    /// Remove a dependency between two operations.
+    ///
+    /// This is done by removing foreign keys from the `from` operation that
+    /// point to the model created by `to` operation, and creating a new
+    /// `AddField` operation for each removed foreign key.
     #[must_use]
     fn remove_dependency(from: &mut DynOperation, to: &DynOperation) -> Vec<DynOperation> {
         match from {
@@ -712,7 +739,10 @@ impl GeneratedMigration {
                 let to_type = match to {
                     DynOperation::CreateModel { model_ty, .. } => model_ty,
                     DynOperation::AddField { .. } => {
-                        unreachable!("AddField operation shouldn't be a dependency of CreateModel because it doesn't create a new model")
+                        unreachable!(
+                            "AddField operation shouldn't be a dependency of CreateModel \
+                            because it doesn't create a new model"
+                        )
                     }
                 };
                 trace!(
@@ -745,6 +775,18 @@ impl GeneratedMigration {
         }
     }
 
+    /// Topologically sort operations in this migration.
+    ///
+    /// This is to ensure that operations will be applied in the correct order.
+    /// If there are no dependencies between operations, the order of operations
+    /// will not be modified.
+    ///
+    /// This method modifies the `operations` field in place.
+    ///
+    /// # Panics
+    ///
+    /// This method should be called after removing cycles; otherwise it will
+    /// panic.
     fn toposort_operations(&mut self) {
         let graph = self.construct_dependency_graph();
 
@@ -752,11 +794,17 @@ impl GeneratedMigration {
             .expect("cycles shouldn't exist after removing them");
         let mut sorted = sorted
             .into_iter()
-            .map(petgraph::prelude::NodeIndex::index)
+            .map(petgraph::graph::NodeIndex::index)
             .collect::<Vec<_>>();
         flareon::__private::apply_permutation(&mut self.operations, &mut sorted);
     }
 
+    /// Construct a graph that represents reverse dependencies between
+    /// operations in this migration.
+    ///
+    /// The graph is directed and has an edge from operation A to operation B
+    /// if operation B creates a foreign key that points to a model created by
+    /// operation A.
     #[must_use]
     fn construct_dependency_graph(&mut self) -> DiGraph<usize, (), usize> {
         let create_ops = self.get_create_ops_map();
@@ -769,7 +817,11 @@ impl GeneratedMigration {
         }
         for (i, dependency_ty) in &ops_adding_foreign_keys {
             if let Some(&dependency) = create_ops.get(dependency_ty) {
-                graph.add_edge(NodeIndex::new(dependency), NodeIndex::new(*i), ());
+                graph.add_edge(
+                    petgraph::graph::NodeIndex::new(dependency),
+                    petgraph::graph::NodeIndex::new(*i),
+                    (),
+                );
             }
         }
 
@@ -855,16 +907,19 @@ impl Repr for Field {
         let mut tokens = quote! {
             ::flareon::db::migrations::Field::new(::flareon::db::Identifier::new(#column_name), <#ty as ::flareon::db::DatabaseField>::TYPE)
         };
-        if self
-            .auto_value
-            .expect("auto_value is expected to be present when parsing the entire file with symbol resolver")
-        {
+        if self.auto_value.expect(
+            "auto_value is expected to be present \
+            when parsing the entire file with symbol resolver",
+        ) {
             tokens = quote! { #tokens.auto() }
         }
         if self.primary_key {
             tokens = quote! { #tokens.primary_key() }
         }
-        if let Some(fk_spec) = self.foreign_key.clone().expect("foreign_key is expected to be present when parsing the entire file with symbol resolver") {
+        if let Some(fk_spec) = self.foreign_key.clone().expect(
+            "foreign_key is expected to be present \
+            when parsing the entire file with symbol resolver",
+        ) {
             let to_model = &fk_spec.to_model;
 
             tokens = quote! {
@@ -966,7 +1021,8 @@ fn is_field_foreign_key_to(field: &Field, ty: &syn::Type) -> bool {
 /// Returns [`None`] if the field is not a foreign key.
 fn foreign_key_for_field(field: &Field) -> Option<syn::Type> {
     match field.foreign_key.clone().expect(
-        "foreign_key is expected to be present when parsing the entire file with symbol resolver",
+        "foreign_key is expected to be present \
+        when parsing the entire file with symbol resolver",
     ) {
         None => None,
         Some(foreign_key_spec) => Some(foreign_key_spec.to_model),
@@ -1338,5 +1394,60 @@ mod tests {
         assert!(external_dependencies.contains(&DynDependency::Model {
             model_type: parse_quote!(crate::Table4),
         }));
+    }
+
+    #[test]
+    fn make_add_field_operation() {
+        let app_model = ModelInSource {
+            model_item: parse_quote! {
+                struct TestModel {
+                    id: i32,
+                    field1: i32,
+                }
+            },
+            model: Model {
+                name: format_ident!("TestModel"),
+                original_name: "TestModel".to_string(),
+                resolved_ty: Some(parse_quote!(TestModel)),
+                model_type: Default::default(),
+                table_name: "test_model".to_string(),
+                pk_field: Field {
+                    field_name: format_ident!("id"),
+                    column_name: "id".to_string(),
+                    ty: parse_quote!(i32),
+                    auto_value: MaybeUnknown::Known(true),
+                    primary_key: true,
+                    unique: false,
+                    foreign_key: MaybeUnknown::Known(None),
+                },
+                fields: vec![],
+            },
+        };
+
+        let field = Field {
+            field_name: format_ident!("new_field"),
+            column_name: "new_field".to_string(),
+            ty: parse_quote!(i32),
+            auto_value: MaybeUnknown::Known(false),
+            primary_key: false,
+            unique: false,
+            foreign_key: MaybeUnknown::Known(None),
+        };
+
+        let operation = MigrationGenerator::make_add_field_operation(&app_model, &field);
+
+        match operation {
+            DynOperation::AddField {
+                table_name,
+                model_ty,
+                field: op_field,
+            } => {
+                assert_eq!(table_name, "test_model");
+                assert_eq!(model_ty, parse_quote!(TestModel));
+                assert_eq!(op_field.column_name, "new_field");
+                assert_eq!(op_field.ty, parse_quote!(i32));
+            }
+            _ => panic!("Expected AddField operation"),
+        }
     }
 }

@@ -120,7 +120,7 @@ fn create_models_foreign_key_cycle() {
 }
 
 #[test]
-fn create_models_foreign_two_migrations() {
+fn create_models_foreign_key_two_migrations() {
     let mut generator = test_generator();
 
     let src = include_str!("migration_generator/foreign_key_two_migrations/step_1.rs");

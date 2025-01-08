@@ -1,5 +1,3 @@
-extern crate core;
-
 mod migration_generator;
 mod utils;
 
@@ -27,6 +25,9 @@ enum Commands {
         /// Path to the crate directory to generate migrations for (default:
         /// current directory)
         path: Option<PathBuf>,
+        /// Name of the app to use in the migration (default: crate name)
+        #[arg(long)]
+        app_name: Option<String>,
         /// Directory to write the migrations to (default: migrations/ directory
         /// in the crate's src/ directory)
         #[arg(long)]
@@ -46,9 +47,16 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Commands::MakeMigrations { path, output_dir } => {
+        Commands::MakeMigrations {
+            path,
+            app_name,
+            output_dir,
+        } => {
             let path = path.unwrap_or_else(|| PathBuf::from("."));
-            let options = MigrationGeneratorOptions { output_dir };
+            let options = MigrationGeneratorOptions {
+                app_name,
+                output_dir,
+            };
             make_migrations(&path, options).with_context(|| "unable to create migrations")?;
         }
     }

@@ -1163,4 +1163,44 @@ mod tests {
             LimitedString::<5>::new("test").unwrap(),
         );
     }
+
+    #[test]
+    fn db_field_value_is_auto() {
+        let auto_value = DbFieldValue::Auto;
+        assert!(auto_value.is_auto());
+        assert!(!auto_value.is_value());
+    }
+
+    #[test]
+    fn db_field_value_is_value() {
+        let value = DbFieldValue::Value(42.into());
+        assert!(value.is_value());
+        assert!(!value.is_auto());
+    }
+
+    #[test]
+    fn db_field_value_unwrap() {
+        let value = DbFieldValue::Value(42.into());
+        assert_eq!(value.unwrap_value(), 42.into());
+    }
+
+    #[test]
+    #[should_panic(expected = "called DbValue::unwrap_value() on a wrong DbValue variant")]
+    fn db_field_value_unwrap_panic() {
+        let auto_value = DbFieldValue::Auto;
+        let _ = auto_value.unwrap_value();
+    }
+
+    #[test]
+    fn db_field_value_expect() {
+        let value = DbFieldValue::Value(42.into());
+        assert_eq!(value.expect_value("expected a value"), 42.into());
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a value")]
+    fn db_field_value_expect_panic() {
+        let auto_value = DbFieldValue::Auto;
+        let _ = auto_value.expect_value("expected a value");
+    }
 }

@@ -451,7 +451,7 @@ impl Field {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 struct ForeignKeyReference {
     model: Identifier,
     field: Identifier,
@@ -848,7 +848,7 @@ mod tests {
     }
 
     #[test]
-    fn test_field_new() {
+    fn field_new() {
         let field = Field::new(Identifier::new("id"), ColumnType::Integer)
             .primary_key()
             .auto()
@@ -859,6 +859,26 @@ mod tests {
         assert!(field.primary_key);
         assert!(field.auto_value);
         assert!(field.null);
+    }
+
+    #[test]
+    fn field_foreign_key() {
+        let field = Field::new(Identifier::new("parent"), ColumnType::Integer).foreign_key(
+            Identifier::new("testapp__parent"),
+            Identifier::new("id"),
+            ForeignKeyOnDeletePolicy::Restrict,
+            ForeignKeyOnUpdatePolicy::Restrict,
+        );
+
+        assert_eq!(
+            field.foreign_key,
+            Some(ForeignKeyReference {
+                model: Identifier::new("testapp__parent"),
+                field: Identifier::new("id"),
+                on_delete: ForeignKeyOnDeletePolicy::Restrict,
+                on_update: ForeignKeyOnUpdatePolicy::Restrict,
+            })
+        );
     }
 
     #[test]
