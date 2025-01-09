@@ -18,7 +18,7 @@ use crate::forms::{
 use crate::request::{Request, RequestExt};
 use crate::response::{Response, ResponseExt};
 use crate::router::Router;
-use crate::{reverse, static_files, Body, CotApp, Render, StatusCode};
+use crate::{reverse_redirect, static_files, Body, CotApp, Render, StatusCode};
 
 #[derive(Debug, Form)]
 struct LoginForm {
@@ -60,7 +60,7 @@ async fn index(mut request: Request) -> cot::Result<Response> {
             Body::fixed(template.render()?),
         ))
     } else {
-        Ok(reverse!(request, "login"))
+        Ok(reverse_redirect!(request, "login"))
     }
 }
 
@@ -72,7 +72,7 @@ async fn login(mut request: Request) -> cot::Result<Response> {
         match login_form {
             FormResult::Ok(login_form) => {
                 if authenticate(&mut request, login_form).await? {
-                    return Ok(reverse!(request, "index"));
+                    return Ok(reverse_redirect!(request, "index"));
                 }
 
                 let mut context = LoginForm::build_context(&mut request).await?;
@@ -139,7 +139,7 @@ async fn view_model(mut request: Request) -> cot::Result<Response> {
             Body::fixed(template.render()?),
         ))
     } else {
-        Ok(reverse!(request, "login"))
+        Ok(reverse_redirect!(request, "login"))
     }
 }
 

@@ -76,6 +76,8 @@ thiserror = "2"
 time = { version = "0.3.35", default-features = false }
 tokio = { version = "1.41", default-features = false }
 tower = "0.5.2"
+# TODO switch back to the published version when https://github.com/leotaku/tower-livereload/pull/24 is released
+tower-livereload = { git = "https://github.com/leotaku/tower-livereload.git", rev = "106cc96f91b11a1eca6d3dfc86be4e766a90a415" }
 tower-sessions = { version = "0.13", default-features = false }
 tracing = { version = "0.1", default-features = false }
 tracing-subscriber = "0.3"

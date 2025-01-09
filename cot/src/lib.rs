@@ -74,6 +74,7 @@ use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use axum::handler::HandlerWithoutStateExt;
+pub use bytes;
 use bytes::Bytes;
 pub use cot_macros::main;
 use derive_more::{Debug, Deref, Display, From};
@@ -82,11 +83,12 @@ use futures_core::Stream;
 use futures_util::FutureExt;
 use http::request::Parts;
 use http_body::{Frame, SizeHint};
+use http_body_util::combinators::BoxBody;
 use request::Request;
 use router::{Route, Router};
 use sync_wrapper::SyncWrapper;
 use tower::util::BoxCloneService;
-use tower::Service;
+use tower::{Layer, Service};
 use tracing::info;
 
 use crate::admin::AdminModelManager;
@@ -99,6 +101,7 @@ use crate::db::migrations::{DynMigration, MigrationEngine};
 use crate::db::Database;
 use crate::error::ErrorRepr;
 use crate::error_page::{CotDiagnostics, ErrorPageTrigger};
+use crate::middleware::{IntoCotError, IntoCotErrorLayer, IntoCotResponse, IntoCotResponseLayer};
 use crate::response::Response;
 use crate::router::RouterService;
 
@@ -169,6 +172,7 @@ pub trait CotApp: Send + Sync {
         vec![]
     }
 
+    /// Returns a list of static files that the app serves.
     fn static_files(&self) -> Vec<(String, Bytes)> {
         vec![]
     }
@@ -197,6 +201,7 @@ enum BodyInner {
     Fixed(Bytes),
     Streaming(SyncWrapper<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>>),
     Axum(SyncWrapper<axum::body::Body>),
+    Wrapper(BoxBody<Bytes, Error>),
 }
 
 impl Debug for BodyInner {
@@ -205,6 +210,7 @@ impl Debug for BodyInner {
             Self::Fixed(data) => f.debug_tuple("Fixed").field(data).finish(),
             Self::Streaming(_) => f.debug_tuple("Streaming").field(&"...").finish(),
             Self::Axum(axum_body) => f.debug_tuple("Axum").field(axum_body).finish(),
+            Self::Wrapper(_) => f.debug_tuple("Wrapper").field(&"...").finish(),
         }
     }
 }
@@ -280,6 +286,11 @@ impl Body {
     fn axum(inner: axum::body::Body) -> Self {
         Self::new(BodyInner::Axum(SyncWrapper::new(inner)))
     }
+
+    #[must_use]
+    pub(crate) fn wrapper(inner: BoxBody<Bytes, Error>) -> Self {
+        Self::new(BodyInner::Wrapper(inner))
+    }
 }
 
 impl Default for Body {
@@ -322,6 +333,14 @@ impl http_body::Body for Body {
                     .into()
                 })
             }
+            BodyInner::Wrapper(ref mut http_body) => {
+                Pin::new(http_body).poll_frame(cx).map_err(|error| {
+                    ErrorRepr::ReadRequestBody {
+                        source: Box::new(error),
+                    }
+                    .into()
+                })
+            }
         }
     }
 
@@ -329,6 +348,7 @@ impl http_body::Body for Body {
         match &self.inner {
             BodyInner::Fixed(data) => data.is_empty(),
             BodyInner::Streaming(_) | BodyInner::Axum(_) => false,
+            BodyInner::Wrapper(http_body) => http_body.is_end_stream(),
         }
     }
 
@@ -336,6 +356,7 @@ impl http_body::Body for Body {
         match &self.inner {
             BodyInner::Fixed(data) => SizeHint::with_exact(data.len() as u64),
             BodyInner::Streaming(_) | BodyInner::Axum(_) => SizeHint::new(),
+            BodyInner::Wrapper(http_body) => http_body.size_hint(),
         }
     }
 }
@@ -458,17 +479,23 @@ impl CotProjectBuilder<Uninitialized> {
     }
 
     #[must_use]
-    pub fn middleware<M: tower::Layer<RouterService>>(
+    pub fn middleware<M>(
         self,
         middleware: M,
-    ) -> CotProjectBuilder<M::Service> {
+    ) -> CotProjectBuilder<IntoCotError<IntoCotResponse<M::Service>>>
+    where
+        M: Layer<RouterService>,
+    {
         self.into_builder_with_service().middleware(middleware)
     }
 
     #[must_use]
-    pub fn middleware_with_context<M, F>(self, get_middleware: F) -> CotProjectBuilder<M::Service>
+    pub fn middleware_with_context<M, F>(
+        self,
+        get_middleware: F,
+    ) -> CotProjectBuilder<IntoCotError<IntoCotResponse<M::Service>>>
     where
-        M: tower::Layer<RouterService>,
+        M: Layer<RouterService>,
         F: FnOnce(&AppContext) -> M,
     {
         self.into_builder_with_service()
@@ -499,18 +526,33 @@ where
     S::Future: Send,
 {
     #[must_use]
-    pub fn middleware<M: tower::Layer<S>>(self, middleware: M) -> CotProjectBuilder<M::Service> {
+    pub fn middleware<M>(
+        self,
+        middleware: M,
+    ) -> CotProjectBuilder<IntoCotError<IntoCotResponse<<M as Layer<S>>::Service>>>
+    where
+        M: Layer<S>,
+    {
+        let layer = (
+            IntoCotErrorLayer::new(),
+            IntoCotResponseLayer::new(),
+            middleware,
+        );
+
         CotProjectBuilder {
             context: self.context,
             urls: vec![],
-            handler: middleware.layer(self.handler),
+            handler: layer.layer(self.handler),
         }
     }
 
     #[must_use]
-    pub fn middleware_with_context<M, F>(self, get_middleware: F) -> CotProjectBuilder<M::Service>
+    pub fn middleware_with_context<M, F>(
+        self,
+        get_middleware: F,
+    ) -> CotProjectBuilder<IntoCotError<IntoCotResponse<<M as Layer<S>>::Service>>>
     where
-        M: tower::Layer<S>,
+        M: Layer<S>,
         F: FnOnce(&AppContext) -> M,
     {
         let middleware = get_middleware(&self.context);
@@ -659,7 +701,12 @@ pub async fn run_at(project: CotProject, listener: tokio::net::TcpListener) -> R
             .map_err(|e| ErrorRepr::StartServer { source: e })?
     );
     if config::REGISTER_PANIC_HOOK {
-        std::panic::set_hook(Box::new(error_page::error_page_panic_hook));
+        let current_hook = std::panic::take_hook();
+        let new_hook = move |hook_info: &std::panic::PanicHookInfo| {
+            current_hook(hook_info);
+            error_page::error_page_panic_hook(hook_info);
+        };
+        std::panic::set_hook(Box::new(new_hook));
     }
     axum::serve(listener, handler.into_make_service())
         .await

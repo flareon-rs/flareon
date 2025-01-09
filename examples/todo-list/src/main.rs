@@ -7,7 +7,7 @@ use cot::forms::Form;
 use cot::request::{Request, RequestExt};
 use cot::response::{Response, ResponseExt};
 use cot::router::{Route, Router};
-use cot::{reverse, Body, CotApp, CotProject, StatusCode};
+use cot::{reverse_redirect, Body, CotApp, CotProject, StatusCode};
 use rinja::Template;
 
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ async fn add_todo(mut request: Request) -> cot::Result<Response> {
         .await?;
     }
 
-    Ok(reverse!(request, "index"))
+    Ok(reverse_redirect!(request, "index"))
 }
 
 async fn remove_todo(request: Request) -> cot::Result<Response> {
@@ -69,7 +69,7 @@ async fn remove_todo(request: Request) -> cot::Result<Response> {
             .await?;
     }
 
-    Ok(reverse!(request, "index"))
+    Ok(reverse_redirect!(request, "index"))
 }
 
 struct TodoApp;

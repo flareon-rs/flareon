@@ -11,4 +11,5 @@ pub use bytes::Bytes;
 pub use tokio;
 
 // used in the CLI
+#[cfg(feature = "db")]
 pub use crate::utils::graph::apply_permutation;

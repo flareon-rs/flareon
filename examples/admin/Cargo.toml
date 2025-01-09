@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 cot = { path = "../../cot" }
+rinja = "0.3.5"

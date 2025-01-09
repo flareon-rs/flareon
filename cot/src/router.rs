@@ -9,7 +9,7 @@ use std::task::{Context, Poll};
 
 use axum::http::StatusCode;
 use bytes::Bytes;
-use cot::request::PathParams;
+use cot::request::{PathParams, RouteName};
 use derive_more::Debug;
 use tracing::debug;
 
@@ -25,7 +25,7 @@ pub mod path;
 #[derive(Clone, Debug)]
 pub struct Router {
     urls: Vec<Route>,
-    names: HashMap<String, Arc<PathMatcher>>,
+    names: HashMap<RouteName, Arc<PathMatcher>>,
 }
 
 impl Router {
@@ -57,6 +57,9 @@ impl Router {
                 path_params.insert(key.clone(), value.clone());
             }
             request.extensions_mut().insert(path_params);
+            if let Some(name) = result.name {
+                request.extensions_mut().insert(name);
+            }
             result.handler.handle(request).await
         } else {
             debug!("Not found: {}", request_path);
@@ -74,6 +77,7 @@ impl Router {
                         if matches_fully {
                             return Some(HandlerFound {
                                 handler: &**handler,
+                                name: route.name.clone(),
                                 params: Self::matches_to_path_params(&matches, Vec::new()),
                             });
                         }
@@ -82,6 +86,7 @@ impl Router {
                         if let Some(result) = router.get_handler(matches.remaining_path) {
                             return Some(HandlerFound {
                                 handler: result.handler,
+                                name: result.name,
                                 params: Self::matches_to_path_params(&matches, result.params),
                             });
                         }
@@ -121,8 +126,8 @@ impl Router {
     /// Get a URL for a view by name.
     ///
     /// Instead of using this method directly, consider using the
-    /// [`reverse!`](crate::reverse) macro which provides much more
-    /// ergonomic way to call this.
+    /// [`reverse!`](crate::reverse) macro which provides much more ergonomic
+    /// way to call this.
     ///
     /// # Errors
     ///
@@ -147,7 +152,10 @@ impl Router {
     /// This method returns an error if the URL cannot be generated because of
     /// missing parameters.
     pub fn reverse_option(&self, name: &str, params: &ReverseParamMap) -> Result<Option<String>> {
-        let url = self.names.get(name).map(|matcher| matcher.reverse(params));
+        let url = self
+            .names
+            .get(&RouteName(String::from(name)))
+            .map(|matcher| matcher.reverse(params));
         if let Some(url) = url {
             return Ok(Some(url.map_err(ErrorRepr::from)?));
         }
@@ -185,6 +193,7 @@ impl Default for Router {
 struct HandlerFound<'a> {
     #[debug("handler(...)")]
     handler: &'a (dyn RequestHandler + Send + Sync),
+    name: Option<RouteName>,
     params: Vec<(String, String)>,
 }
 
@@ -219,7 +228,7 @@ impl tower::Service<Request> for RouterService {
 pub struct Route {
     url: Arc<PathMatcher>,
     view: RouteInner,
-    name: Option<String>,
+    name: Option<RouteName>,
 }
 
 impl Route {
@@ -241,7 +250,7 @@ impl Route {
         Self {
             url: Arc::new(PathMatcher::new(url)),
             view: RouteInner::Handler(Arc::new(view)),
-            name: Some(name.into()),
+            name: Some(RouteName(name.into())),
         }
     }
 
@@ -261,7 +270,7 @@ impl Route {
 
     #[must_use]
     pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
+        self.name.as_ref().map(|name| name.0.as_str())
     }
 
     #[must_use]
@@ -319,14 +328,14 @@ impl Debug for RouteInner {
 /// use cot::request::Request;
 /// use cot::response::{Response, ResponseExt};
 /// use cot::router::{Route, Router};
-/// use cot::{reverse_str, Body, StatusCode};
+/// use cot::{reverse, Body, StatusCode};
 ///
 /// async fn home(request: Request) -> cot::Result<Response> {
 ///     Ok(Response::new_html(
 ///         StatusCode::OK,
 ///         Body::fixed(format!(
 ///             "Hello! The URL for this view is: {}",
-///             reverse_str!(request, "home")
+///             reverse!(request, "home")
 ///         )),
 ///     ))
 /// }
@@ -334,12 +343,12 @@ impl Debug for RouteInner {
 /// let router = Router::with_urls([Route::with_handler_and_name("/", home, "home")]);
 /// ```
 #[macro_export]
-macro_rules! reverse_str {
-    ($request:expr, $view_name:literal $(, $($key:expr => $value:expr),*)?) => {{
+macro_rules! reverse {
+    ($request:expr, $view_name:literal $(, $($key:ident = $value:expr),*)?) => {{
         use $crate::request::RequestExt;
         $request
             .router()
-            .reverse($view_name, &$crate::reverse_param_map!($( $($key => $value),* )?))?
+            .reverse($view_name, &$crate::reverse_param_map!($( $($key = $value),* )?))?
     }};
 }
 
@@ -347,27 +356,27 @@ macro_rules! reverse_str {
 /// a redirect.
 ///
 /// This macro is a shorthand for creating a response with a redirect to a URL
-/// generated by the [`reverse_str!`] macro.
+/// generated by the [`reverse!`] macro.
 ///
 /// # Examples
 ///
 /// ```
 /// use cot::request::Request;
 /// use cot::response::Response;
-/// use cot::reverse;
+/// use cot::reverse_redirect;
 /// use cot::router::{Route, Router};
 ///
 /// async fn infinite_loop(request: Request) -> cot::Result<Response> {
-///     Ok(reverse!(request, "home"))
+///     Ok(reverse_redirect!(request, "home"))
 /// }
 ///
 /// let router = Router::with_urls([Route::with_handler_and_name("/", infinite_loop, "home")]);
 /// ```
 #[macro_export]
-macro_rules! reverse {
+macro_rules! reverse_redirect {
     ($request:expr, $view_name:literal $(, $($key:expr => $value:expr),*)?) => {
         <$crate::response::Response as $crate::response::ResponseExt>::new_redirect(
-            $crate::reverse_str!(
+            $crate::reverse!(
                 $request,
                 $view_name,
                 $( $($key => $value),* )?
@@ -493,7 +502,7 @@ mod tests {
     fn route_with_handler_and_name() {
         let route = Route::with_handler_and_name("/test", MockHandler, "test");
         assert_eq!(route.url.to_string(), "/test");
-        assert_eq!(route.name.as_deref(), Some("test"));
+        assert_eq!(route.name, Some(RouteName("test".to_string())));
     }
 
     #[test]

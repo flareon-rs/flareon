@@ -8,9 +8,19 @@ use cot::response::{Response, ResponseExt};
 use cot::router::{Route, Router};
 use cot::static_files::StaticFilesMiddleware;
 use cot::{AppContext, Body, CotApp, CotProject, StatusCode};
+use rinja::Template;
 
-async fn hello(_request: Request) -> cot::Result<Response> {
-    Ok(Response::new_html(StatusCode::OK, Body::fixed("xd")))
+#[derive(Debug, Template)]
+#[template(path = "index.html")]
+struct IndexTemplate<'a> {
+    request: &'a Request,
+}
+
+async fn index(request: Request) -> cot::Result<Response> {
+    let index_template = IndexTemplate { request: &request };
+    let rendered = index_template.render()?;
+
+    Ok(Response::new_html(StatusCode::OK, Body::fixed(rendered)))
 }
 
 struct HelloApp;
@@ -32,7 +42,7 @@ impl CotApp for HelloApp {
     }
 
     fn router(&self) -> Router {
-        Router::with_urls([Route::with_handler("/", hello)])
+        Router::with_urls([Route::with_handler("/", index)])
     }
 }
 

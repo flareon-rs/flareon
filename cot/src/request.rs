@@ -55,6 +55,9 @@ pub trait RequestExt: private::Sealed {
     fn router(&self) -> &Router;
 
     #[must_use]
+    fn route_name(&self) -> Option<&str>;
+
+    #[must_use]
     fn path_params(&self) -> &PathParams;
 
     #[must_use]
@@ -139,6 +142,12 @@ impl RequestExt for Request {
         self.context().router()
     }
 
+    fn route_name(&self) -> Option<&str> {
+        self.extensions()
+            .get::<RouteName>()
+            .map(|RouteName(name)| name.as_str())
+    }
+
     fn path_params(&self) -> &PathParams {
         self.extensions()
             .get::<PathParams>()
@@ -212,6 +221,10 @@ impl RequestExt for Request {
         }
     }
 }
+
+#[repr(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct RouteName(pub(crate) String);
 
 #[derive(Debug, Clone)]
 pub struct PathParams {

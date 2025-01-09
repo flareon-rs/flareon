@@ -301,7 +301,7 @@ fn build_cot_failure_page() -> axum::response::Response {
     axum::response::Response::builder()
         .status(StatusCode::INTERNAL_SERVER_ERROR)
         .body(axum::body::Body::from(FAILURE_PAGE))
-        .expect("Building the Cot failure page should not fail")
+        .expect("Building the Cot failure page should never fail")
 }
 
 thread_local! {
@@ -310,7 +310,6 @@ thread_local! {
 }
 
 pub(super) fn error_page_panic_hook(info: &PanicHookInfo<'_>) {
-    // TODO print out the panic as well
     let location = info.location().map(|location| format!("{location}"));
     PANIC_LOCATION.replace(location);
 

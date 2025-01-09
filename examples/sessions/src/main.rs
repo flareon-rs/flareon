@@ -3,7 +3,7 @@ use cot::middleware::SessionMiddleware;
 use cot::request::{Request, RequestExt};
 use cot::response::{Response, ResponseExt};
 use cot::router::{Route, Router};
-use cot::{reverse, Body, CotApp, CotProject, StatusCode};
+use cot::{reverse_redirect, Body, CotApp, CotProject, StatusCode};
 use rinja::Template;
 
 #[derive(Debug, Template)]
@@ -33,7 +33,7 @@ async fn hello(request: Request) -> cot::Result<Response> {
         .expect("Invalid session value")
         .unwrap_or_default();
     if name.is_empty() {
-        return Ok(reverse!(request, "name"));
+        return Ok(reverse_redirect!(request, "name"));
     }
 
     let template = IndexTemplate {
@@ -56,7 +56,7 @@ async fn name(mut request: Request) -> cot::Result<Response> {
             .await
             .unwrap();
 
-        return Ok(reverse!(request, "index"));
+        return Ok(reverse_redirect!(request, "index"));
     }
 
     let template = NameTemplate { request: &request };

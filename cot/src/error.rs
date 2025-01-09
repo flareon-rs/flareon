@@ -27,6 +27,14 @@ impl Error {
     }
 
     #[must_use]
+    pub fn custom<E>(error: E) -> Self
+    where
+        E: Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
+    {
+        Self::new(ErrorRepr::Custom(error.into()))
+    }
+
+    #[must_use]
     pub(crate) fn backtrace(&self) -> &CotBacktrace {
         &self.backtrace
     }
@@ -78,13 +86,16 @@ impl_error_from_repr!(serde_json::Error);
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub(crate) enum ErrorRepr {
+    /// A custom user error occurred.
+    #[error("{0}")]
+    Custom(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// An error occurred while trying to start the server.
     #[error("Could not start server: {source}")]
     StartServer { source: std::io::Error },
     /// An error occurred while trying to read the request body.
     #[error("Could not retrieve request body: {source}")]
     ReadRequestBody {
-        #[from]
+        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
     /// The request body had an invalid `Content-Type` header.
@@ -120,6 +131,12 @@ pub(crate) enum ErrorRepr {
     #[error("JSON error: {0}")]
     #[cfg(feature = "json")]
     JsonError(#[from] serde_json::Error),
+    /// An error occurred inside a middleware-wrapped view.
+    #[error("{source}")]
+    MiddlewareWrapped {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 #[cfg(test)]
