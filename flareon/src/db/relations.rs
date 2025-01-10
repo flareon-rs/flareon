@@ -181,7 +181,8 @@ mod tests {
     }
 
     #[should_panic(expected = "object has not been retrieved from the database")]
-    fn test_unwrap_primary_key() {
+    #[test]
+    fn unwrap_primary_key() {
         let fk = ForeignKey::<TestModel>::PrimaryKey(Auto::fixed(1));
         fk.unwrap();
     }

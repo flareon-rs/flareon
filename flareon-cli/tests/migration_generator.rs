@@ -33,26 +33,26 @@ fn create_model_state_test() {
     let field = &fields[0];
     assert_eq!(field.column_name, "id");
     assert!(field.primary_key);
-    assert!(field.auto_value.unwrap());
-    assert!(field.foreign_key.clone().unwrap().is_none());
+    assert!(field.auto_value);
+    assert!(field.foreign_key.clone().is_none());
 
     let field = &fields[1];
     assert_eq!(field.column_name, "field_1");
     assert!(!field.primary_key);
-    assert!(!field.auto_value.unwrap());
-    assert!(field.foreign_key.clone().unwrap().is_none());
+    assert!(!field.auto_value);
+    assert!(field.foreign_key.clone().is_none());
 
     let field = &fields[2];
     assert_eq!(field.column_name, "field_2");
     assert!(!field.primary_key);
-    assert!(!field.auto_value.unwrap());
-    assert!(field.foreign_key.clone().unwrap().is_none());
+    assert!(!field.auto_value);
+    assert!(field.foreign_key.clone().is_none());
 
     let field = &fields[3];
     assert_eq!(field.column_name, "parent");
     assert!(!field.primary_key);
-    assert!(!field.auto_value.unwrap());
-    assert!(field.foreign_key.clone().unwrap().is_some());
+    assert!(!field.auto_value);
+    assert!(field.foreign_key.clone().is_some());
 }
 
 #[test]
@@ -81,14 +81,14 @@ fn create_models_foreign_key() {
     let field = &fields[0];
     assert_eq!(field.column_name, "id");
     assert!(field.primary_key);
-    assert!(field.auto_value.unwrap());
-    assert!(field.foreign_key.clone().unwrap().is_none());
+    assert!(field.auto_value);
+    assert!(field.foreign_key.clone().is_none());
 
     let field = &fields[1];
     assert_eq!(field.column_name, "parent");
     assert!(!field.primary_key);
-    assert!(!field.auto_value.unwrap());
-    assert!(field.foreign_key.clone().unwrap().is_some());
+    assert!(!field.auto_value);
+    assert!(field.foreign_key.clone().is_some());
 }
 
 #[test]

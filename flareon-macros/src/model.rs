@@ -27,7 +27,7 @@ pub(super) fn impl_model_for_struct(
         }
     };
 
-    let model = match opts.as_model(&args, None) {
+    let model = match opts.as_model(&args) {
         Ok(val) => val,
         Err(err) => {
             return err.to_compile_error();

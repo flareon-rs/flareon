@@ -2,7 +2,7 @@ use convert_case::{Case, Casing};
 use darling::{FromDeriveInput, FromField, FromMeta};
 use syn::spanned::Spanned;
 
-use crate::maybe_unknown::MaybeUnknown;
+#[cfg(feature = "symbol-resolver")]
 use crate::symbol_resolver::SymbolResolver;
 
 #[allow(clippy::module_name_repetitions)]
@@ -66,12 +66,17 @@ impl ModelOpts {
     pub fn as_model(
         &self,
         args: &ModelArgs,
-        symbol_resolver: Option<&SymbolResolver>,
+        #[cfg(feature = "symbol-resolver")] symbol_resolver: &SymbolResolver,
     ) -> Result<Model, syn::Error> {
+        #[cfg(feature = "symbol-resolver")]
+        let as_field = |field: &&FieldOpts| field.as_field(symbol_resolver);
+        #[cfg(not(feature = "symbol-resolver"))]
+        let as_field = |field: &&FieldOpts| field.as_field();
+
         let fields = self
             .fields()
             .iter()
-            .map(|field| field.as_field(symbol_resolver))
+            .map(as_field)
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut original_name = self.ident.to_string();
@@ -94,21 +99,20 @@ impl ModelOpts {
 
         let primary_key_field = self.get_primary_key_field(&fields)?;
 
-        let ty = match symbol_resolver {
-            Some(symbol_resolver) => {
-                let mut ty = syn::Type::Path(syn::TypePath {
-                    qself: None,
-                    path: syn::Path::from(self.ident.clone()),
-                });
-                symbol_resolver.resolve(&mut ty);
-                Some(ty)
-            }
-            None => None,
+        #[cfg(feature = "symbol-resolver")]
+        let ty = {
+            let mut ty = syn::Type::Path(syn::TypePath {
+                qself: None,
+                path: syn::Path::from(self.ident.clone()),
+            });
+            symbol_resolver.resolve(&mut ty);
+            ty
         };
 
         Ok(Model {
             name: self.ident.clone(),
             original_name,
+            #[cfg(feature = "symbol-resolver")]
             resolved_ty: ty,
             model_type: args.model_type,
             table_name,
@@ -147,12 +151,14 @@ pub struct FieldOpts {
 }
 
 impl FieldOpts {
+    #[cfg(feature = "symbol-resolver")]
     fn find_type(&self, type_to_find: &str, symbol_resolver: &SymbolResolver) -> Option<syn::Type> {
         let mut ty = self.ty.clone();
         symbol_resolver.resolve(&mut ty);
         Self::find_type_resolved(&ty, type_to_find)
     }
 
+    #[cfg(feature = "symbol-resolver")]
     fn find_type_resolved(ty: &syn::Type, type_to_find: &str) -> Option<syn::Type> {
         if let syn::Type::Path(type_path) = ty {
             let name = type_path
@@ -179,6 +185,7 @@ impl FieldOpts {
         None
     }
 
+    #[cfg(feature = "symbol-resolver")]
     fn find_type_in_generics(
         arg: &syn::AngleBracketedGenericArguments,
         type_to_find: &str,
@@ -201,29 +208,31 @@ impl FieldOpts {
     ///
     /// Panics if the field does not have an identifier (i.e. it is a tuple
     /// struct).
-    pub fn as_field(&self, symbol_resolver: Option<&SymbolResolver>) -> Result<Field, syn::Error> {
+    pub fn as_field(
+        &self,
+        #[cfg(feature = "symbol-resolver")] symbol_resolver: &SymbolResolver,
+    ) -> Result<Field, syn::Error> {
         let name = self.ident.as_ref().unwrap();
         let column_name = name.to_string();
 
-        let (auto_value, foreign_key) = match symbol_resolver {
-            Some(resolver) => (
-                MaybeUnknown::Known(self.find_type("flareon::db::Auto", resolver).is_some()),
-                MaybeUnknown::Known(
-                    self.find_type("flareon::db::ForeignKey", resolver)
-                        .map(ForeignKeySpec::try_from)
-                        .transpose()?,
-                ),
-            ),
-            None => (MaybeUnknown::Unknown, MaybeUnknown::Unknown),
-        };
+        #[cfg(feature = "symbol-resolver")]
+        let (auto_value, foreign_key) = (
+            self.find_type("flareon::db::Auto", symbol_resolver)
+                .is_some(),
+            self.find_type("flareon::db::ForeignKey", symbol_resolver)
+                .map(ForeignKeySpec::try_from)
+                .transpose()?,
+        );
         let is_primary_key = column_name == "id" || self.primary_key.is_present();
 
         Ok(Field {
             field_name: name.clone(),
             column_name,
             ty: self.ty.clone(),
+            #[cfg(feature = "symbol-resolver")]
             auto_value,
             primary_key: is_primary_key,
+            #[cfg(feature = "symbol-resolver")]
             foreign_key,
             unique: self.unique.is_present(),
         })
@@ -234,9 +243,9 @@ impl FieldOpts {
 pub struct Model {
     pub name: syn::Ident,
     pub original_name: String,
-    /// The type of the model, or [`None`] if the symbol resolver was not
-    /// enabled.
-    pub resolved_ty: Option<syn::Type>,
+    /// The type of the model resolved by symbol resolver.
+    #[cfg(feature = "symbol-resolver")]
+    pub resolved_ty: syn::Type,
     pub model_type: ModelType,
     pub table_name: String,
     pub pk_field: Field,
@@ -255,16 +264,14 @@ pub struct Field {
     pub field_name: syn::Ident,
     pub column_name: String,
     pub ty: syn::Type,
-    /// Whether the field is an auto field (e.g. `id`);
-    /// [`MaybeUnknown::Unknown`] if this `Field` instance was not resolved with
-    /// a [`SymbolResolver`].
-    pub auto_value: MaybeUnknown<bool>,
+    /// Whether the field is an auto field (e.g. `id`).
+    #[cfg(feature = "symbol-resolver")]
+    pub auto_value: bool,
     pub primary_key: bool,
-    /// [`Some`] wrapped in [`MaybeUnknown::Known`] if this field is a
-    /// foreign key; [`None`] wrapped in [`MaybeUnknown::Known`] if this
-    /// field is determined not to be a foreign key; [`MaybeUnknown::Unknown`]
-    /// if this `Field` instance was not resolved with a [`SymbolResolver`].
-    pub foreign_key: MaybeUnknown<Option<ForeignKeySpec>>,
+    /// [`Some`] if this field is a foreign key; [`None`] if this field is
+    /// determined not to be a foreign key.
+    #[cfg(feature = "symbol-resolver")]
+    pub foreign_key: Option<ForeignKeySpec>,
     pub unique: bool,
 }
 
@@ -355,6 +362,7 @@ mod tests {
         assert_eq!(fields[1].ident.as_ref().unwrap().to_string(), "name");
     }
 
+    #[cfg(feature = "symbol-resolver")]
     #[test]
     fn model_opts_as_model() {
         let input: syn::DeriveInput = parse_quote! {
@@ -365,13 +373,14 @@ mod tests {
         };
         let opts = ModelOpts::new_from_derive_input(&input).unwrap();
         let args = ModelArgs::default();
-        let model = opts.as_model(&args, None).unwrap();
+        let model = opts.as_model(&args, &SymbolResolver::new(vec![])).unwrap();
         assert_eq!(model.name.to_string(), "TestModel");
         assert_eq!(model.table_name, "test_model");
         assert_eq!(model.fields.len(), 2);
         assert_eq!(model.field_count(), 2);
     }
 
+    #[cfg(feature = "symbol-resolver")]
     #[test]
     fn model_opts_as_model_migration() {
         let input: syn::DeriveInput = parse_quote! {
@@ -383,13 +392,16 @@ mod tests {
         };
         let opts = ModelOpts::new_from_derive_input(&input).unwrap();
         let args = ModelArgs::from_meta(&input.attrs.first().unwrap().meta).unwrap();
-        let err = opts.as_model(&args, None).unwrap_err();
+        let err = opts
+            .as_model(&args, &SymbolResolver::new(vec![]))
+            .unwrap_err();
         assert_eq!(
             err.to_string(),
             "migration model names must start with an underscore"
         );
     }
 
+    #[cfg(feature = "symbol-resolver")]
     #[test]
     fn model_opts_as_model_pk_attr() {
         let input: syn::DeriveInput = parse_quote! {
@@ -401,11 +413,12 @@ mod tests {
         };
         let opts = ModelOpts::new_from_derive_input(&input).unwrap();
         let args = ModelArgs::default();
-        let model = opts.as_model(&args, None).unwrap();
+        let model = opts.as_model(&args, &SymbolResolver::new(vec![])).unwrap();
         assert_eq!(model.fields.len(), 1);
         assert!(model.fields[0].primary_key);
     }
 
+    #[cfg(feature = "symbol-resolver")]
     #[test]
     fn model_opts_as_model_no_pk() {
         let input: syn::DeriveInput = parse_quote! {
@@ -416,7 +429,9 @@ mod tests {
         };
         let opts = ModelOpts::new_from_derive_input(&input).unwrap();
         let args = ModelArgs::default();
-        let err = opts.as_model(&args, None).unwrap_err();
+        let err = opts
+            .as_model(&args, &SymbolResolver::new(vec![]))
+            .unwrap_err();
         assert_eq!(
             err.to_string(),
             "models must have a primary key field, either named `id` \
@@ -424,6 +439,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "symbol-resolver")]
     #[test]
     fn model_opts_as_model_multiple_pks() {
         let input: syn::DeriveInput = parse_quote! {
@@ -437,13 +453,16 @@ mod tests {
         };
         let opts = ModelOpts::new_from_derive_input(&input).unwrap();
         let args = ModelArgs::default();
-        let err = opts.as_model(&args, None).unwrap_err();
+        let err = opts
+            .as_model(&args, &SymbolResolver::new(vec![]))
+            .unwrap_err();
         assert_eq!(
             err.to_string(),
             "composite primary keys are not supported; only one primary key field is allowed"
         );
     }
 
+    #[cfg(feature = "symbol-resolver")]
     #[test]
     fn field_opts_as_field() {
         let input: syn::Field = parse_quote! {
@@ -451,13 +470,11 @@ mod tests {
             name: String
         };
         let field_opts = FieldOpts::from_field(&input).unwrap();
-        let field = field_opts.as_field(None).unwrap();
+        let field = field_opts.as_field(&SymbolResolver::new(vec![])).unwrap();
         assert_eq!(field.field_name.to_string(), "name");
         assert_eq!(field.column_name, "name");
         assert_eq!(field.ty, parse_quote!(String));
         assert!(field.unique);
-        assert_eq!(field.auto_value, MaybeUnknown::Unknown);
-        assert_eq!(field.foreign_key, MaybeUnknown::Unknown);
     }
 
     #[test]

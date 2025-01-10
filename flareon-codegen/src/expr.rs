@@ -584,11 +584,36 @@ mod tests {
     }
 
     #[test]
+    fn function_call_with_args() {
+        let input = quote! { $a == bar(42, "baz") };
+        let expected = Expr::Eq(
+            Box::new(field("a")),
+            Box::new(Expr::FunctionCall {
+                function: Box::new(value("bar")),
+                args: vec![parse_quote!(42), parse_quote!("baz")],
+            }),
+        );
+
+        assert_eq!(expected, unwrap_syn(Expr::parse(input)));
+    }
+
+    #[test]
     fn parse_member_access() {
         let input = quote! { $a == foo.bar };
         let expected = Expr::Eq(
             Box::new(field("a")),
             Box::new(member_access(value("foo"), "bar")),
+        );
+
+        assert_eq!(expected, unwrap_syn(Expr::parse(input)));
+    }
+
+    #[test]
+    fn parse_member_access_multiple() {
+        let input = quote! { $a == foo.bar.baz };
+        let expected = Expr::Eq(
+            Box::new(field("a")),
+            Box::new(member_access(member_access(value("foo"), "bar"), "baz")),
         );
 
         assert_eq!(expected, unwrap_syn(Expr::parse(input)));

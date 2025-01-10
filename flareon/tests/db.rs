@@ -330,7 +330,7 @@ async fn foreign_keys_option(db: &mut TestDatabase) {
     CREATE_PARENT.forwards(db).await.unwrap();
     CREATE_CHILD.forwards(db).await.unwrap();
 
-    // no parent
+    // Test child with `None` parent
     let mut child = Child {
         id: Auto::auto(),
         parent: None,
@@ -342,7 +342,7 @@ async fn foreign_keys_option(db: &mut TestDatabase) {
 
     query!(Child, $id == child.id).delete(&**db).await.unwrap();
 
-    // with parent
+    // Test child with `Some` parent
     let mut parent = Parent { id: Auto::auto() };
     parent.save(&**db).await.unwrap();
 

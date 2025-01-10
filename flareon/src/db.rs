@@ -358,12 +358,12 @@ impl DbFieldValue {
     }
 
     #[must_use]
-    pub fn unwrap_value(self) -> sea_query::Value {
+    pub fn unwrap_value(self) -> DbValue {
         self.expect_value("called DbValue::unwrap_value() on a wrong DbValue variant")
     }
 
     #[must_use]
-    pub fn expect_value(self, message: &str) -> sea_query::Value {
+    pub fn expect_value(self, message: &str) -> DbValue {
         match self {
             Self::Value(value) => value,
             Self::Auto => panic!("{message}"),
