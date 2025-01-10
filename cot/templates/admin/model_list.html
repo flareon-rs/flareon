@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+{% let request = request %}
+{% for model in model_managers %}
+    <a href="{{ cot::reverse_str!(request, "view_model", "model_name" => model.url_name()) }}">{{ model.name() }}</a>
+{% endfor %}
+{% endblock %}

@@ -2,8 +2,8 @@
 name = "example-admin"
 version = "0.1.0"
 publish = false
-description = "Admin panel - Flareon example."
+description = "Admin panel - Cot example."
 edition = "2021"
 
 [dependencies]
-flareon = { path = "../../flareon" }
+cot = { path = "../../cot" }

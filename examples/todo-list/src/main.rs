@@ -1,13 +1,13 @@
 mod migrations;
 
-use flareon::config::{DatabaseConfig, ProjectConfig};
-use flareon::db::migrations::DynMigration;
-use flareon::db::{model, query, Model};
-use flareon::forms::Form;
-use flareon::request::{Request, RequestExt};
-use flareon::response::{Response, ResponseExt};
-use flareon::router::{Route, Router};
-use flareon::{reverse, Body, FlareonApp, FlareonProject, StatusCode};
+use cot::config::{DatabaseConfig, ProjectConfig};
+use cot::db::migrations::DynMigration;
+use cot::db::{model, query, Model};
+use cot::forms::Form;
+use cot::request::{Request, RequestExt};
+use cot::response::{Response, ResponseExt};
+use cot::router::{Route, Router};
+use cot::{reverse, Body, CotApp, CotProject, StatusCode};
 use rinja::Template;
 
 #[derive(Debug, Clone)]
@@ -24,7 +24,7 @@ struct IndexTemplate<'a> {
     todo_items: Vec<TodoItem>,
 }
 
-async fn index(request: Request) -> flareon::Result<Response> {
+async fn index(request: Request) -> cot::Result<Response> {
     let todo_items = TodoItem::objects().all(request.db()).await?;
     let index_template = IndexTemplate {
         request: &request,
@@ -41,7 +41,7 @@ struct TodoForm {
     title: String,
 }
 
-async fn add_todo(mut request: Request) -> flareon::Result<Response> {
+async fn add_todo(mut request: Request) -> cot::Result<Response> {
     let todo_form = TodoForm::from_request(&mut request).await?.unwrap();
 
     {
@@ -56,7 +56,7 @@ async fn add_todo(mut request: Request) -> flareon::Result<Response> {
     Ok(reverse!(request, "index"))
 }
 
-async fn remove_todo(request: Request) -> flareon::Result<Response> {
+async fn remove_todo(request: Request) -> cot::Result<Response> {
     let todo_id = request
         .path_params()
         .get("todo_id")
@@ -74,7 +74,7 @@ async fn remove_todo(request: Request) -> flareon::Result<Response> {
 
 struct TodoApp;
 
-impl FlareonApp for TodoApp {
+impl CotApp for TodoApp {
     fn name(&self) -> &'static str {
         "todo-app"
     }
@@ -98,9 +98,9 @@ impl FlareonApp for TodoApp {
     }
 }
 
-#[flareon::main]
-async fn main() -> flareon::Result<FlareonProject> {
-    let todo_project = FlareonProject::builder()
+#[cot::main]
+async fn main() -> cot::Result<CotProject> {
+    let todo_project = CotProject::builder()
         .config(
             ProjectConfig::builder()
                 .database_config(

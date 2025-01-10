@@ -1,18 +1,18 @@
-use flareon::request::Request;
-use flareon::response::{Response, ResponseExt};
-use flareon::router::{Route, Router};
-use flareon::{Body, FlareonApp, FlareonProject, StatusCode};
+use cot::request::Request;
+use cot::response::{Response, ResponseExt};
+use cot::router::{Route, Router};
+use cot::{Body, CotApp, CotProject, StatusCode};
 
-async fn return_hello(_request: Request) -> flareon::Result<Response> {
+async fn return_hello(_request: Request) -> cot::Result<Response> {
     Ok(Response::new_html(
         StatusCode::OK,
-        Body::fixed("<h1>Hello Flareon!</h1>".as_bytes().to_vec()),
+        Body::fixed("<h1>Hello Cot!</h1>".as_bytes().to_vec()),
     ))
 }
 
 struct HelloApp;
 
-impl FlareonApp for HelloApp {
+impl CotApp for HelloApp {
     fn name(&self) -> &'static str {
         env!("CARGO_PKG_NAME")
     }
@@ -22,12 +22,12 @@ impl FlareonApp for HelloApp {
     }
 }
 
-#[flareon::main]
-async fn main() -> flareon::Result<FlareonProject> {
-    let flareon_project = FlareonProject::builder()
+#[cot::main]
+async fn main() -> cot::Result<CotProject> {
+    let cot_project = CotProject::builder()
         .register_app_with_views(HelloApp, "")
         .build()
         .await?;
 
-    Ok(flareon_project)
+    Ok(cot_project)
 }

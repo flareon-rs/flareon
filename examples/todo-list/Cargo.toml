@@ -2,9 +2,9 @@
 name = "example-todo-list"
 version = "0.1.0"
 publish = false
-description = "TODO List - Flareon example."
+description = "TODO List - Cot example."
 edition = "2021"
 
 [dependencies]
-flareon = { path = "../../flareon" }
+cot = { path = "../../cot" }
 rinja = "0.3.5"

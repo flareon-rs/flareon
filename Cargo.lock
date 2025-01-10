@@ -443,6 +443,102 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
+name = "cot"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "axum",
+ "backtrace",
+ "bytes",
+ "chrono",
+ "cot_macros",
+ "derive_builder",
+ "derive_more",
+ "fake",
+ "form_urlencoded",
+ "futures",
+ "futures-core",
+ "futures-util",
+ "hmac 0.13.0-pre.4",
+ "http",
+ "http-body",
+ "http-body-util",
+ "humansize",
+ "indexmap",
+ "mime_guess",
+ "mockall",
+ "password-auth",
+ "pin-project-lite",
+ "rinja",
+ "sea-query",
+ "sea-query-binder",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0-pre.4",
+ "sqlx",
+ "subtle",
+ "sync_wrapper",
+ "thiserror 2.0.9",
+ "time",
+ "tokio",
+ "tower",
+ "tower-sessions",
+ "tracing",
+]
+
+[[package]]
+name = "cot-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cargo_toml",
+ "chrono",
+ "clap",
+ "clap-verbosity-flag",
+ "cot",
+ "cot_codegen",
+ "darling",
+ "glob",
+ "petgraph",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "trybuild",
+]
+
+[[package]]
+name = "cot_codegen"
+version = "0.1.0"
+dependencies = [
+ "convert_case",
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "tracing",
+]
+
+[[package]]
+name = "cot_macros"
+version = "0.1.0"
+dependencies = [
+ "cot",
+ "cot_codegen",
+ "darling",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn",
+ "trybuild",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -732,21 +828,21 @@ dependencies = [
 name = "example-admin"
 version = "0.1.0"
 dependencies = [
- "flareon",
+ "cot",
 ]
 
 [[package]]
 name = "example-hello-world"
 version = "0.1.0"
 dependencies = [
- "flareon",
+ "cot",
 ]
 
 [[package]]
 name = "example-json"
 version = "0.1.0"
 dependencies = [
- "flareon",
+ "cot",
  "serde",
 ]
 
@@ -754,7 +850,7 @@ dependencies = [
 name = "example-sessions"
 version = "0.1.0"
 dependencies = [
- "flareon",
+ "cot",
  "rinja",
 ]
 
@@ -762,7 +858,7 @@ dependencies = [
 name = "example-todo-list"
 version = "0.1.0"
 dependencies = [
- "flareon",
+ "cot",
  "rinja",
 ]
 
@@ -789,102 +885,6 @@ name = "fixedbitset"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
-
-[[package]]
-name = "flareon"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "async-trait",
- "axum",
- "backtrace",
- "bytes",
- "chrono",
- "derive_builder",
- "derive_more",
- "fake",
- "flareon_macros",
- "form_urlencoded",
- "futures",
- "futures-core",
- "futures-util",
- "hmac 0.13.0-pre.4",
- "http",
- "http-body",
- "http-body-util",
- "humansize",
- "indexmap",
- "mime_guess",
- "mockall",
- "password-auth",
- "pin-project-lite",
- "rinja",
- "sea-query",
- "sea-query-binder",
- "serde",
- "serde_json",
- "sha2 0.11.0-pre.4",
- "sqlx",
- "subtle",
- "sync_wrapper",
- "thiserror 2.0.9",
- "time",
- "tokio",
- "tower",
- "tower-sessions",
- "tracing",
-]
-
-[[package]]
-name = "flareon-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cargo_toml",
- "chrono",
- "clap",
- "clap-verbosity-flag",
- "darling",
- "flareon",
- "flareon_codegen",
- "glob",
- "petgraph",
- "prettyplease",
- "proc-macro2",
- "quote",
- "syn",
- "tempfile",
- "tracing",
- "tracing-subscriber",
- "trybuild",
-]
-
-[[package]]
-name = "flareon_codegen"
-version = "0.1.0"
-dependencies = [
- "convert_case",
- "darling",
- "proc-macro2",
- "quote",
- "syn",
- "tracing",
-]
-
-[[package]]
-name = "flareon_macros"
-version = "0.1.0"
-dependencies = [
- "darling",
- "flareon",
- "flareon_codegen",
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "rustversion",
- "syn",
- "trybuild",
-]
 
 [[package]]
 name = "flume"

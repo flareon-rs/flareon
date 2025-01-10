@@ -2,9 +2,9 @@
 name = "example-sessions"
 version = "0.1.0"
 publish = false
-description = "Sessions - Flareon example."
+description = "Sessions - Cot example."
 edition = "2021"
 
 [dependencies]
-flareon = { path = "../../flareon" }
+cot = { path = "../../cot" }
 rinja = "0.3.5"

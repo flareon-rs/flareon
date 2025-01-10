@@ -2,8 +2,8 @@
 name = "example-hello-world"
 version = "0.1.0"
 publish = false
-description = "Hello World - Flareon example."
+description = "Hello World - Cot example."
 edition = "2021"
 
 [dependencies]
-flareon = { path = "../../flareon" }
+cot = { path = "../../cot" }

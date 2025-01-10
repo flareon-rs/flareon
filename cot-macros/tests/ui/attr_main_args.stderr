@@ -1,0 +1,11 @@
+error: cot::main function must have zero arguments
+ --> tests/ui/attr_main_args.rs:2:15
+  |
+2 | async fn main(arg: i32) -> cot::Result<CotProject> {
+  |               ^^^^^^^^
+
+error[E0601]: `main` function not found in crate `$CRATE`
+ --> tests/ui/attr_main_args.rs:4:2
+  |
+4 | }
+  |  ^ consider adding a `main` function to `$DIR/tests/ui/attr_main_args.rs`

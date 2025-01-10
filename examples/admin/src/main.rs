@@ -1,27 +1,27 @@
-use flareon::__private::async_trait;
-use flareon::admin::AdminApp;
-use flareon::auth::db::{DatabaseUser, DatabaseUserApp};
-use flareon::config::{DatabaseConfig, ProjectConfig};
-use flareon::middleware::SessionMiddleware;
-use flareon::request::Request;
-use flareon::response::{Response, ResponseExt};
-use flareon::router::{Route, Router};
-use flareon::static_files::StaticFilesMiddleware;
-use flareon::{AppContext, Body, FlareonApp, FlareonProject, StatusCode};
+use cot::__private::async_trait;
+use cot::admin::AdminApp;
+use cot::auth::db::{DatabaseUser, DatabaseUserApp};
+use cot::config::{DatabaseConfig, ProjectConfig};
+use cot::middleware::SessionMiddleware;
+use cot::request::Request;
+use cot::response::{Response, ResponseExt};
+use cot::router::{Route, Router};
+use cot::static_files::StaticFilesMiddleware;
+use cot::{AppContext, Body, CotApp, CotProject, StatusCode};
 
-async fn hello(_request: Request) -> flareon::Result<Response> {
+async fn hello(_request: Request) -> cot::Result<Response> {
     Ok(Response::new_html(StatusCode::OK, Body::fixed("xd")))
 }
 
 struct HelloApp;
 
 #[async_trait]
-impl FlareonApp for HelloApp {
+impl CotApp for HelloApp {
     fn name(&self) -> &'static str {
         env!("CARGO_PKG_NAME")
     }
 
-    async fn init(&self, context: &mut AppContext) -> flareon::Result<()> {
+    async fn init(&self, context: &mut AppContext) -> cot::Result<()> {
         // TODO use transaction
         let user = DatabaseUser::get_by_username(context.database(), "admin").await?;
         if user.is_none() {
@@ -36,9 +36,9 @@ impl FlareonApp for HelloApp {
     }
 }
 
-#[flareon::main]
-async fn main() -> flareon::Result<FlareonProject> {
-    let flareon_project = FlareonProject::builder()
+#[cot::main]
+async fn main() -> cot::Result<CotProject> {
+    let cot_project = CotProject::builder()
         .config(
             ProjectConfig::builder()
                 .database_config(
@@ -57,5 +57,5 @@ async fn main() -> flareon::Result<FlareonProject> {
         .build()
         .await?;
 
-    Ok(flareon_project)
+    Ok(cot_project)
 }

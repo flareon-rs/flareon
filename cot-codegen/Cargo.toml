@@ -1,0 +1,24 @@
+[package]
+name = "cot_codegen"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Modern web framework focused on speed and ease of use - code generation utils."
+
+[lints]
+workspace = true
+
+[dependencies]
+convert_case.workspace = true
+darling.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+proc-macro2 = { workspace = true, features = ["span-locations"] }
+
+[features]
+default = []
+symbol-resolver = ["dep:tracing"]

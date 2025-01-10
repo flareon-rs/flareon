@@ -1,9 +1,9 @@
-use flareon::forms::Form;
-use flareon::middleware::SessionMiddleware;
-use flareon::request::{Request, RequestExt};
-use flareon::response::{Response, ResponseExt};
-use flareon::router::{Route, Router};
-use flareon::{reverse, Body, FlareonApp, FlareonProject, StatusCode};
+use cot::forms::Form;
+use cot::middleware::SessionMiddleware;
+use cot::request::{Request, RequestExt};
+use cot::response::{Response, ResponseExt};
+use cot::router::{Route, Router};
+use cot::{reverse, Body, CotApp, CotProject, StatusCode};
 use rinja::Template;
 
 #[derive(Debug, Template)]
@@ -25,7 +25,7 @@ struct NameForm {
     name: String,
 }
 
-async fn hello(request: Request) -> flareon::Result<Response> {
+async fn hello(request: Request) -> cot::Result<Response> {
     let name: String = request
         .session()
         .get("user_name")
@@ -47,8 +47,8 @@ async fn hello(request: Request) -> flareon::Result<Response> {
     ))
 }
 
-async fn name(mut request: Request) -> flareon::Result<Response> {
-    if request.method() == flareon::Method::POST {
+async fn name(mut request: Request) -> cot::Result<Response> {
+    if request.method() == cot::Method::POST {
         let name_form = NameForm::from_request(&mut request).await?.unwrap();
         request
             .session_mut()
@@ -69,7 +69,7 @@ async fn name(mut request: Request) -> flareon::Result<Response> {
 
 struct HelloApp;
 
-impl FlareonApp for HelloApp {
+impl CotApp for HelloApp {
     fn name(&self) -> &'static str {
         env!("CARGO_PKG_NAME")
     }
@@ -82,13 +82,13 @@ impl FlareonApp for HelloApp {
     }
 }
 
-#[flareon::main]
-async fn main() -> flareon::Result<FlareonProject> {
-    let flareon_project = FlareonProject::builder()
+#[cot::main]
+async fn main() -> cot::Result<CotProject> {
+    let cot_project = CotProject::builder()
         .register_app_with_views(HelloApp, "")
         .middleware(SessionMiddleware::new())
         .build()
         .await?;
 
-    Ok(flareon_project)
+    Ok(cot_project)
 }

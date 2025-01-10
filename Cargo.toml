@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "flareon",
-    "flareon-cli",
-    "flareon-codegen",
-    "flareon-macros",
+    "cot",
+    "cot-cli",
+    "cot-codegen",
+    "cot-macros",
     # Examples
     "examples/hello-world",
     "examples/todo-list",
@@ -37,9 +37,9 @@ darling = "0.20"
 derive_builder = "0.20"
 derive_more = "1"
 fake = "3.1"
-flareon = { path = "flareon" }
-flareon_codegen = { path = "flareon-codegen" }
-flareon_macros = { path = "flareon-macros" }
+cot = { path = "cot" }
+cot_codegen = { path = "cot-codegen" }
+cot_macros = { path = "cot-macros" }
 form_urlencoded = "1"
 futures = { version = "0.3", default-features = false }
 futures-core = { version = "0.3", default-features = false }
