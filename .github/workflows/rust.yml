@@ -109,7 +109,7 @@ jobs:
         run: docker compose up -d
 
       - name: Test
-        run: cargo nextest run --all-features -- --include-ignored
+        run: cargo nextest run --all-features --run-ignored only
 
       - name: Test docs
         run: cargo test --doc
