@@ -1,0 +1,8 @@
+[package]
+name = "{{ project_name }}"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cot = { {{ cot_source }}, features = ["full"] }
+rinja = "0.3"

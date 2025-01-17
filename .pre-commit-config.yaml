@@ -13,6 +13,7 @@ repos:
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-toml
+        exclude: ^cot-cli/src/project_template/
       - id: detect-private-key
       - id: end-of-file-fixer
       - id: mixed-line-ending
@@ -27,3 +28,4 @@ repos:
     rev: v0.1.0
     hooks:
       - id: fmt
+        exclude: ^cot-cli/src/project_template/

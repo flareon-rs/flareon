@@ -1,6 +1,6 @@
 [package]
 name = "cot-cli"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Modern web framework focused on speed and ease of use - CLI tool."
@@ -13,11 +13,13 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
+anstyle.workspace = true
 anyhow.workspace = true
 cargo_toml.workspace = true
 chrono.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
 clap-verbosity-flag = { workspace = true, features = ["tracing"] }
+convert_case.workspace = true
 darling.workspace = true
 cot.workspace = true
 cot_codegen = { workspace = true, features = ["symbol-resolver"] }

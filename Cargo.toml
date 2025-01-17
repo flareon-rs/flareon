@@ -16,12 +16,14 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "MIT OR Apache-2.0"
+version = "0.1.0"
 
 [workspace.lints.clippy]
 all = "deny"
 pedantic = "warn"
 
 [workspace.dependencies]
+anstyle = "1.0.10"
 anyhow = "1.0.95"
 async-stream = "0.3"
 async-trait = "0.1"
@@ -33,13 +35,13 @@ chrono = { version = "0.4", default-features = false }
 clap = "4"
 clap-verbosity-flag = { version = "3", default-features = false }
 convert_case = "0.6"
+cot = { path = "cot" }
+cot_codegen = { path = "cot-codegen" }
+cot_macros = { path = "cot-macros" }
 darling = "0.20"
 derive_builder = "0.20"
 derive_more = "1"
 fake = "3.1"
-cot = { path = "cot" }
-cot_codegen = { path = "cot-codegen" }
-cot_macros = { path = "cot-macros" }
 form_urlencoded = "1"
 futures = { version = "0.3", default-features = false }
 futures-core = { version = "0.3", default-features = false }

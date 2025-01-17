@@ -1,5 +1,12 @@
 use std::path::{Path, PathBuf};
 
+pub(crate) fn print_status_msg(status: &str, message: &str) {
+    let status_style = anstyle::Style::new() | anstyle::Effects::BOLD;
+    let status_style = status_style.fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Green)));
+
+    eprintln!("{status_style}{status:>12}{status_style:#} {message}");
+}
+
 pub fn find_cargo_toml(starting_dir: &Path) -> Option<PathBuf> {
     let mut current_dir = starting_dir;
 

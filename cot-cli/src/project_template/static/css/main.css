@@ -1,0 +1,40 @@
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    text-align: center;
+    background-image: linear-gradient(to right bottom, #0f172a, #2d3d57);
+    font-family: sans-serif;
+    color: #fff;
+}
+
+main {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+}
+
+ul {
+    padding: 0;
+    list-style: none;
+}
+
+h1 {
+    margin: 0;
+}
+
+a {
+    color: #f97316;
+}
+
+a:hover, a:focus {
+    color: #ec9355;
+}

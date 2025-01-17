@@ -492,11 +492,13 @@ dependencies = [
 name = "cot-cli"
 version = "0.1.0"
 dependencies = [
+ "anstyle",
  "anyhow",
  "cargo_toml",
  "chrono",
  "clap",
  "clap-verbosity-flag",
+ "convert_case",
  "cot",
  "cot_codegen",
  "darling",
