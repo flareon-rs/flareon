@@ -972,6 +972,19 @@ impl<T> Auto<T> {
     pub const fn fixed(value: T) -> Self {
         Self::Fixed(value)
     }
+
+    #[must_use]
+    pub fn unwrap(self) -> T {
+        self.expect("called `Auto::unwrap()` on a `Auto::Auto` value")
+    }
+
+    #[must_use]
+    pub fn expect(self, message: &str) -> T {
+        match self {
+            Self::Fixed(value) => value,
+            Self::Auto => panic!("{}", message),
+        }
+    }
 }
 
 impl<T> Default for Auto<T> {

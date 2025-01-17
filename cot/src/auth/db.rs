@@ -6,7 +6,6 @@
 use std::any::Any;
 
 use async_trait::async_trait;
-use cot_macros::model;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha512;
 use thiserror::Error;
@@ -18,7 +17,7 @@ use crate::auth::{
 };
 use crate::config::SecretKey;
 use crate::db::migrations::DynMigration;
-use crate::db::{query, DatabaseBackend, LimitedString, Model};
+use crate::db::{model, query, Auto, DatabaseBackend, LimitedString, Model};
 use crate::request::{Request, RequestExt};
 use crate::CotApp;
 
@@ -30,7 +29,7 @@ pub(crate) const MAX_USERNAME_LENGTH: u32 = 255;
 #[derive(Debug, Clone)]
 #[model]
 pub struct DatabaseUser {
-    id: i64,
+    id: Auto<i64>,
     #[model(unique)]
     username: LimitedString<MAX_USERNAME_LENGTH>,
     password: PasswordHash,
@@ -45,7 +44,11 @@ pub enum CreateUserError {
 
 impl DatabaseUser {
     #[must_use]
-    pub fn new(id: i64, username: LimitedString<MAX_USERNAME_LENGTH>, password: &Password) -> Self {
+    fn new(
+        id: Auto<i64>,
+        username: LimitedString<MAX_USERNAME_LENGTH>,
+        password: &Password,
+    ) -> Self {
         Self {
             id,
             username,
@@ -106,7 +109,7 @@ impl DatabaseUser {
             AuthError::backend_error(CreateUserError::UsernameTooLong(username_length))
         })?;
 
-        let mut user = Self::new(0, username, &password.into());
+        let mut user = Self::new(Auto::auto(), username, &password.into());
         user.save(db).await.map_err(AuthError::backend_error)?;
 
         Ok(user)
@@ -180,6 +183,7 @@ impl DatabaseUser {
     #[must_use]
     pub fn id(&self) -> i64 {
         self.id
+            .expect("called DatabaseUser::id() on an unsaved instance")
     }
 
     #[must_use]
@@ -192,7 +196,7 @@ type SessionAuthHmac = Hmac<Sha512>;
 
 impl User for DatabaseUser {
     fn id(&self) -> Option<UserId> {
-        Some(UserId::Int(self.id))
+        Some(UserId::Int(self.id()))
     }
 
     fn username(&self) -> Option<&str> {
@@ -379,7 +383,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn session_auth_hash() {
         let user = DatabaseUser::new(
-            1,
+            Auto::fixed(1),
             LimitedString::new("testuser").unwrap(),
             &Password::new("password123"),
         );
@@ -393,7 +397,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn database_user_traits() {
         let user = DatabaseUser::new(
-            1,
+            Auto::fixed(1),
             LimitedString::new("testuser").unwrap(),
             &Password::new("password123"),
         );
@@ -429,7 +433,7 @@ mod tests {
     async fn get_by_id() {
         let mut mock_db = MockDatabaseBackend::new();
         let user = DatabaseUser::new(
-            1,
+            Auto::fixed(1),
             LimitedString::new("testuser").unwrap(),
             &Password::new("password123"),
         );
@@ -450,7 +454,7 @@ mod tests {
     async fn authenticate() {
         let mut mock_db = MockDatabaseBackend::new();
         let user = DatabaseUser::new(
-            1,
+            Auto::fixed(1),
             LimitedString::new("testuser").unwrap(),
             &Password::new("password123"),
         );
@@ -490,7 +494,7 @@ mod tests {
     async fn authenticate_invalid_password() {
         let mut mock_db = MockDatabaseBackend::new();
         let user = DatabaseUser::new(
-            1,
+            Auto::fixed(1),
             LimitedString::new("testuser").unwrap(),
             &Password::new("password123"),
         );
