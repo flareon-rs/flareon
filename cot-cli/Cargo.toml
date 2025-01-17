@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Modern web framework focused on speed and ease of use - CLI tool."
 
+[[bin]]
+name = "cot"
+path = "src/main.rs"
+
 [lints]
 workspace = true
 
