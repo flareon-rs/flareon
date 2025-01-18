@@ -39,6 +39,7 @@ impl CotApp for {{ app_name }} {
 async fn main() -> cot::Result<CotProject> {
     let project = CotProject::builder()
         .config(ProjectConfig::builder().build())
+        .with_cli(cot::cli::metadata!())
         .register_app_with_views({{ app_name }}, "")
         .middleware_with_context(StaticFilesMiddleware::from_app_context)
         .middleware(LiveReloadMiddleware::new())

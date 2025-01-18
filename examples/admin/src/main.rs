@@ -59,6 +59,7 @@ async fn main() -> cot::Result<CotProject> {
                 )
                 .build(),
         )
+        .with_cli(cot::cli::metadata!())
         .register_app(DatabaseUserApp::new())
         .register_app_with_views(AdminApp::new(), "/admin")
         .register_app_with_views(HelloApp, "")

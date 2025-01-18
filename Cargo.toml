@@ -10,6 +10,7 @@ members = [
     "examples/sessions",
     "examples/admin",
     "examples/json",
+    "examples/custom-task",
 ]
 resolver = "2"
 
@@ -32,7 +33,7 @@ backtrace = "0.3"
 bytes = "1.9"
 cargo_toml = "0.20"
 chrono = { version = "0.4", default-features = false }
-clap = "4"
+clap = { version = "4", features = ["deprecated"] }
 clap-verbosity-flag = { version = "3", default-features = false }
 convert_case = "0.6"
 cot = { path = "cot" }

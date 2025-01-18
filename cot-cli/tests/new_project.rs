@@ -1,5 +1,5 @@
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use cot_cli::new_project::{new_project, CotSource};
@@ -10,7 +10,14 @@ fn new_project_compile_test() {
     let temp_dir = tempfile::tempdir().unwrap();
     let project_path = temp_dir.path().join("my_project");
 
-    new_project(&project_path, "my_project", CotSource::Git).unwrap();
+    let cot_cli_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cot_workspace_path = cot_cli_path.parent().unwrap().join("cot");
+    new_project(
+        &project_path,
+        "my_project",
+        CotSource::Path(&cot_workspace_path),
+    )
+    .unwrap();
 
     let output = cargo(&project_path)
         .arg("build")

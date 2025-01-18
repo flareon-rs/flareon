@@ -14,6 +14,7 @@ axum = { workspace = true, features = ["http1", "tokio"] }
 backtrace.workspace = true
 bytes.workspace = true
 chrono.workspace = true
+clap.workspace = true
 derive_builder.workspace = true
 derive_more = { workspace = true, features = ["debug", "deref", "display", "from"] }
 fake = { workspace = true, optional = true, features = ["derive", "chrono"] }
@@ -52,6 +53,7 @@ async-stream.workspace = true
 fake.workspace = true
 futures.workspace = true
 mockall.workspace = true
+tempfile.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

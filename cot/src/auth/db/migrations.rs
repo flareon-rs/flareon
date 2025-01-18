@@ -1,3 +1,3 @@
 mod m_0001_initial;
 
-pub const MIGRATIONS: &[&dyn ::cot::db::migrations::DynMigration] = &[&m_0001_initial::Migration];
+pub const MIGRATIONS: &[&::cot::db::migrations::SyncDynMigration] = &[&m_0001_initial::Migration];

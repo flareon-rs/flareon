@@ -1,0 +1,11 @@
+[package]
+name = "example-custom-task"
+version = "0.1.0"
+publish = false
+description = "Custom tasks - Cot example."
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1"
+clap = { version = "4", features = ["derive"] }
+cot = { path = "../../cot" }

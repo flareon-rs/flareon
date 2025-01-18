@@ -1,7 +1,7 @@
 mod migrations;
 
 use cot::config::{DatabaseConfig, ProjectConfig};
-use cot::db::migrations::DynMigration;
+use cot::db::migrations::SyncDynMigration;
 use cot::db::{model, query, Model};
 use cot::forms::Form;
 use cot::request::{Request, RequestExt};
@@ -79,13 +79,13 @@ impl CotApp for TodoApp {
         "todo-app"
     }
 
-    fn migrations(&self) -> Vec<Box<dyn DynMigration>> {
+    fn migrations(&self) -> Vec<Box<SyncDynMigration>> {
         // TODO: this is way too complicated for the user-facing API
         #[allow(trivial_casts)]
         migrations::MIGRATIONS
             .iter()
             .copied()
-            .map(|x| Box::new(x) as Box<dyn DynMigration>)
+            .map(|x| Box::new(x) as Box<SyncDynMigration>)
             .collect()
     }
 

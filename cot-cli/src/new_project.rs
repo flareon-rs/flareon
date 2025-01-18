@@ -12,7 +12,7 @@ macro_rules! project_file {
 }
 
 const PROJECT_FILES: [(&str, &str); 6] = [
-    project_file!("Cargo.toml"),
+    project_file!("Cargo.toml.template"),
     project_file!("bacon.toml"),
     project_file!(".gitignore"),
     project_file!("src/main.rs"),
@@ -20,13 +20,36 @@ const PROJECT_FILES: [(&str, &str); 6] = [
     project_file!("templates/index.html"),
 ];
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CotSource {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CotSource<'a> {
     Git,
+    #[allow(dead_code)] // used in integration tests
+    Path(&'a Path),
     PublishedCrate,
 }
 
-pub fn new_project(path: &Path, project_name: &str, cot_source: CotSource) -> anyhow::Result<()> {
+impl CotSource<'_> {
+    fn as_cargo_toml_source(&self) -> String {
+        match self {
+            CotSource::Git => {
+                "package = \"cot\", git = \"https://github.com/cot-rs/cot.git\"".to_owned()
+            }
+            CotSource::Path(path) => {
+                format!(
+                    "path = \"{}\"",
+                    path.display().to_string().replace("\\", "\\\\")
+                )
+            }
+            CotSource::PublishedCrate => format!("version = \"{}\"", env!("CARGO_PKG_VERSION")),
+        }
+    }
+}
+
+pub fn new_project(
+    path: &Path,
+    project_name: &str,
+    cot_source: CotSource<'_>,
+) -> anyhow::Result<()> {
     print_status_msg("Creating", &format!("Cot project `{project_name}`"));
 
     if path.exists() {
@@ -34,14 +57,13 @@ pub fn new_project(path: &Path, project_name: &str, cot_source: CotSource) -> an
     }
 
     let app_name = format!("{}App", project_name.to_case(Case::Pascal));
-    let cot_source = match cot_source {
-        CotSource::Git => {
-            "package = \"cot\", git = \"https://github.com/cot-rs/cot.git\"".to_owned()
-        }
-        CotSource::PublishedCrate => format!("version = \"{}\"", env!("CARGO_PKG_VERSION")),
-    };
+    let cot_source = cot_source.as_cargo_toml_source();
 
     for (file_name, content) in PROJECT_FILES {
+        // Cargo reads and parses all files that are named "Cargo.toml" in a repository,
+        // so we need a different name so that it doesn't fail on build.
+        let file_name = file_name.replace(".template", "");
+
         let file_path = path.join(file_name);
         trace!("Writing file: {:?}", file_path);
 
@@ -61,4 +83,46 @@ pub fn new_project(path: &Path, project_name: &str, cot_source: CotSource) -> an
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn as_cargo_toml_source_git() {
+        let source = CotSource::Git;
+        assert_eq!(
+            source.as_cargo_toml_source(),
+            "package = \"cot\", git = \"https://github.com/cot-rs/cot.git\""
+        );
+    }
+
+    #[test]
+    fn as_cargo_toml_source_path() {
+        let path = Path::new("/some/local/path");
+        let source = CotSource::Path(path);
+        assert_eq!(source.as_cargo_toml_source(), "path = \"/some/local/path\"");
+    }
+
+    #[test]
+    fn as_cargo_toml_source_path_windows() {
+        let path = Path::new("C:\\some\\local\\path");
+        let source = CotSource::Path(path);
+        assert_eq!(
+            source.as_cargo_toml_source(),
+            "path = \"C:\\\\some\\\\local\\\\path\""
+        );
+    }
+
+    #[test]
+    fn as_cargo_toml_source_published_crate() {
+        let source = CotSource::PublishedCrate;
+        assert_eq!(
+            source.as_cargo_toml_source(),
+            format!("version = \"{}\"", env!("CARGO_PKG_VERSION"))
+        );
+    }
 }

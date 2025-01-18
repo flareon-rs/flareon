@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -68,7 +69,7 @@ macro_rules! static_files {
 
 /// Struct representing a collection of static files.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct StaticFiles {
+pub(crate) struct StaticFiles {
     files: HashMap<String, File>,
 }
 
@@ -91,11 +92,38 @@ impl StaticFiles {
     fn get_file(&self, path: &str) -> Option<&File> {
         self.files.get(path)
     }
+
+    pub(crate) fn collect_into(&self, path: &Path) -> Result<(), std::io::Error> {
+        for (file_path, file) in &self.files {
+            let file_path = path.join(file_path);
+            std::fs::create_dir_all(
+                file_path
+                    .parent()
+                    .expect("joined file path should always have a parent"),
+            )?;
+            std::fs::write(file_path, &file.content)?;
+        }
+        Ok(())
+    }
 }
 
 impl Default for StaticFiles {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl From<&AppContext> for StaticFiles {
+    fn from(app_context: &AppContext) -> Self {
+        let mut static_files = StaticFiles::new();
+
+        for app in app_context.apps() {
+            for (path, content) in app.static_files() {
+                static_files.add_file(&path, content);
+            }
+        }
+
+        static_files
     }
 }
 
@@ -142,16 +170,8 @@ impl StaticFilesMiddleware {
     /// context.
     #[must_use]
     pub fn from_app_context(app_context: &AppContext) -> Self {
-        let mut static_files = StaticFiles::new();
-
-        for app in app_context.apps() {
-            for (path, content) in app.static_files() {
-                static_files.add_file(&path, content);
-            }
-        }
-
         Self {
-            static_files: Arc::new(static_files),
+            static_files: Arc::new(StaticFiles::from(app_context)),
         }
     }
 }
@@ -250,6 +270,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use http::{Request, StatusCode};
     use tower::{Layer, ServiceExt};
 
@@ -384,5 +406,43 @@ mod tests {
 
         let file = static_files.get_file("app2/test.js").unwrap();
         assert_eq!(file.content, Bytes::from("test"));
+    }
+
+    #[test]
+    fn collect_into() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_path = temp_dir.path().to_path_buf();
+
+        let mut static_files = StaticFiles::new();
+        static_files.add_file("test.txt", "This is a test file");
+        static_files.add_file("nested/test2.txt", "This is another test file");
+
+        static_files.collect_into(&temp_path).unwrap();
+
+        let file_path = temp_path.join("test.txt");
+        let nested_file_path = temp_path.join("nested/test2.txt");
+
+        assert!(file_path.exists());
+        assert_eq!(
+            fs::read_to_string(file_path).unwrap(),
+            "This is a test file"
+        );
+
+        assert!(nested_file_path.exists());
+        assert_eq!(
+            fs::read_to_string(nested_file_path).unwrap(),
+            "This is another test file"
+        );
+    }
+
+    #[test]
+    fn collect_into_empty() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_path = temp_dir.path().to_path_buf();
+
+        let static_files = StaticFiles::new();
+        static_files.collect_into(&temp_path).unwrap();
+
+        assert!(fs::read_dir(&temp_path).unwrap().next().is_none());
     }
 }

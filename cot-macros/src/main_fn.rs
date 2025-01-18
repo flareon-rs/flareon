@@ -19,8 +19,12 @@ pub(super) fn fn_to_cot_main(main_function_decl: ItemFn) -> syn::Result<TokenStr
     let result = quote! {
         fn main() {
             let body = async {
-                let project: #crate_name::CotProject = __cot_main().await.unwrap();
-                #crate_name::run_cli(project).await.unwrap();
+                let project: #crate_name::CotProject = __cot_main().await.expect(
+                    "failed to build the Cot project"
+                );
+                #crate_name::run_cli(project).await.expect(
+                    "failed to run the Cot project"
+                );
 
                 #new_main_decl
             };

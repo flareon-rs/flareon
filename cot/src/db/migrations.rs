@@ -27,9 +27,11 @@ pub struct MigrationEngine {
 }
 
 impl MigrationEngine {
-    pub fn new<T: DynMigration + 'static, V: IntoIterator<Item = T>>(
-        migrations: V,
-    ) -> Result<Self> {
+    pub fn new<T, V>(migrations: V) -> Result<Self>
+    where
+        T: DynMigration + Send + Sync + 'static,
+        V: IntoIterator<Item = T>,
+    {
         let migrations = migrations.into_iter().map(MigrationWrapper::new).collect();
         Self::from_wrapper(migrations)
     }
@@ -578,6 +580,8 @@ pub trait DynMigration {
     fn operations(&self) -> &[Operation];
 }
 
+pub type SyncDynMigration = dyn DynMigration + Send + Sync;
+
 impl<T: Migration + Send + Sync + 'static> DynMigration for T {
     fn app_name(&self) -> &str {
         Self::APP_NAME
@@ -614,6 +618,24 @@ impl DynMigration for &dyn DynMigration {
     }
 }
 
+impl DynMigration for &SyncDynMigration {
+    fn app_name(&self) -> &str {
+        DynMigration::app_name(*self)
+    }
+
+    fn name(&self) -> &str {
+        DynMigration::name(*self)
+    }
+
+    fn dependencies(&self) -> &[MigrationDependency] {
+        DynMigration::dependencies(*self)
+    }
+
+    fn operations(&self) -> &[Operation] {
+        DynMigration::operations(*self)
+    }
+}
+
 impl DynMigration for Box<dyn DynMigration> {
     fn app_name(&self) -> &str {
         DynMigration::app_name(&**self)
@@ -632,11 +654,29 @@ impl DynMigration for Box<dyn DynMigration> {
     }
 }
 
-pub struct MigrationWrapper(Box<dyn DynMigration>);
+impl DynMigration for Box<dyn DynMigration + Send + Sync> {
+    fn app_name(&self) -> &str {
+        DynMigration::app_name(&**self)
+    }
+
+    fn name(&self) -> &str {
+        DynMigration::name(&**self)
+    }
+
+    fn dependencies(&self) -> &[MigrationDependency] {
+        DynMigration::dependencies(&**self)
+    }
+
+    fn operations(&self) -> &[Operation] {
+        DynMigration::operations(&**self)
+    }
+}
+
+pub struct MigrationWrapper(Box<SyncDynMigration>);
 
 impl MigrationWrapper {
     #[must_use]
-    pub(crate) fn new<T: DynMigration + 'static>(migration: T) -> Self {
+    pub(crate) fn new<T: DynMigration + Send + Sync + 'static>(migration: T) -> Self {
         Self(Box::new(migration))
     }
 }

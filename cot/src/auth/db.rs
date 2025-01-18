@@ -16,7 +16,7 @@ use crate::auth::{
     SessionAuthHash, User, UserId,
 };
 use crate::config::SecretKey;
-use crate::db::migrations::DynMigration;
+use crate::db::migrations::SyncDynMigration;
 use crate::db::{model, query, Auto, DatabaseBackend, LimitedString, Model};
 use crate::request::{Request, RequestExt};
 use crate::CotApp;
@@ -362,13 +362,13 @@ impl CotApp for DatabaseUserApp {
         vec![Box::new(DefaultAdminModelManager::<DatabaseUser>::new())]
     }
 
-    fn migrations(&self) -> Vec<Box<dyn DynMigration>> {
+    fn migrations(&self) -> Vec<Box<SyncDynMigration>> {
         // TODO: this is way too complicated for the user-facing API
         #[allow(trivial_casts)]
         migrations::MIGRATIONS
             .iter()
             .copied()
-            .map(|x| Box::new(x) as Box<dyn DynMigration>)
+            .map(|x| Box::new(x) as Box<SyncDynMigration>)
             .collect()
     }
 }

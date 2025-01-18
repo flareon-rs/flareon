@@ -55,6 +55,7 @@ mod headers;
 pub mod __private;
 pub mod admin;
 pub mod auth;
+pub mod cli;
 pub mod config;
 mod error_page;
 pub mod middleware;
@@ -92,11 +93,14 @@ use tower::{Layer, Service};
 use tracing::info;
 
 use crate::admin::AdminModelManager;
+use crate::cli::Cli;
 #[cfg(feature = "db")]
 use crate::config::DatabaseConfig;
 use crate::config::ProjectConfig;
 #[cfg(feature = "db")]
-use crate::db::migrations::{DynMigration, MigrationEngine};
+use crate::db::migrations::MigrationEngine;
+#[cfg(feature = "db")]
+use crate::db::migrations::SyncDynMigration;
 #[cfg(feature = "db")]
 use crate::db::Database;
 use crate::error::ErrorRepr;
@@ -164,7 +168,7 @@ pub trait CotApp: Send + Sync {
     }
 
     #[cfg(feature = "db")]
-    fn migrations(&self) -> Vec<Box<dyn DynMigration>> {
+    fn migrations(&self) -> Vec<Box<SyncDynMigration>> {
         vec![]
     }
 
@@ -368,6 +372,7 @@ pub type BoxedHandler = BoxCloneService<Request, Response, Error>;
 pub struct CotProject {
     context: AppContext,
     handler: BoxedHandler,
+    cli: Cli,
 }
 
 /// A part of [`CotProject`] that contains the shared context and configs
@@ -437,6 +442,7 @@ pub struct Uninitialized;
 #[derive(Debug)]
 pub struct CotProjectBuilder<S> {
     context: AppContext,
+    cli: Cli,
     urls: Vec<Route>,
     handler: S,
 }
@@ -452,9 +458,34 @@ impl CotProjectBuilder<Uninitialized> {
                 #[cfg(feature = "db")]
                 database: None,
             },
+            cli: Cli::new(),
             urls: Vec::new(),
             handler: Uninitialized,
         }
+    }
+
+    /// Sets the metadata for the CLI.
+    ///
+    /// This method is used to set the name, version, authors, and description
+    /// of the CLI application. This is meant to be typically used with
+    /// [`crate::cli::metadata!`].
+    #[must_use]
+    pub fn with_cli(mut self, metadata: cli::CliMetadata) -> Self {
+        self.cli.set_metadata(metadata);
+        self
+    }
+
+    /// Adds a task to the CLI.
+    ///
+    /// This method is used to add a task to the CLI. The task will be available
+    /// as a subcommand of the main CLI command.
+    #[must_use]
+    pub fn add_task<C>(mut self, task: C) -> Self
+    where
+        C: cli::CliTask + Send + 'static,
+    {
+        self.cli.add_task(task);
+        self
     }
 
     #[must_use]
@@ -514,6 +545,7 @@ impl CotProjectBuilder<Uninitialized> {
 
         CotProjectBuilder {
             context: self.context,
+            cli: self.cli,
             urls: vec![],
             handler: RouterService::new(router),
         }
@@ -541,6 +573,7 @@ where
 
         CotProjectBuilder {
             context: self.context,
+            cli: self.cli,
             urls: vec![],
             handler: layer.layer(self.handler),
         }
@@ -569,6 +602,7 @@ where
 
         Ok(CotProject {
             context: self.context,
+            cli: self.cli,
             handler: BoxedHandler::new(self.handler),
         })
     }
@@ -632,7 +666,7 @@ pub async fn run_at(project: CotProject, listener: tokio::net::TcpListener) -> R
 
     #[cfg(feature = "db")]
     if let Some(database) = &context.database {
-        let mut migrations: Vec<Box<dyn DynMigration>> = Vec::new();
+        let mut migrations: Vec<Box<SyncDynMigration>> = Vec::new();
         for app in &context.apps {
             migrations.extend(app.migrations());
         }
@@ -722,11 +756,8 @@ pub async fn run_at(project: CotProject, listener: tokio::net::TcpListener) -> R
     Ok(())
 }
 
-pub async fn run_cli(project: CotProject) -> Result<()> {
-    // TODO: we want to have a (extensible) CLI interface soon, but for simplicity
-    // we just run the server now
-    run(project, "127.0.0.1:8080").await?;
-    Ok(())
+pub async fn run_cli(mut project: CotProject) -> Result<()> {
+    std::mem::take(&mut project.cli).execute(project).await
 }
 
 fn request_parts_for_diagnostics(request: Request) -> (Option<Parts>, Request) {

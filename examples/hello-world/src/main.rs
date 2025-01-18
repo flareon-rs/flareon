@@ -25,6 +25,7 @@ impl CotApp for HelloApp {
 #[cot::main]
 async fn main() -> cot::Result<CotProject> {
     let cot_project = CotProject::builder()
+        .with_cli(cot::cli::metadata!())
         .register_app_with_views(HelloApp, "")
         .build()
         .await?;

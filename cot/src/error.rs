@@ -92,6 +92,9 @@ pub(crate) enum ErrorRepr {
     /// An error occurred while trying to start the server.
     #[error("Could not start server: {source}")]
     StartServer { source: std::io::Error },
+    /// An error occurred while trying to collect static files into a directory.
+    #[error("Could not collect static files: {source}")]
+    CollectStatic { source: std::io::Error },
     /// An error occurred while trying to read the request body.
     #[error("Could not retrieve request body: {source}")]
     ReadRequestBody {

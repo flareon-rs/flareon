@@ -301,7 +301,7 @@ impl TestDatabase {
         ))
     }
 
-    pub fn add_migrations<T: DynMigration + 'static, V: IntoIterator<Item = T>>(
+    pub fn add_migrations<T: DynMigration + Send + Sync + 'static, V: IntoIterator<Item = T>>(
         &mut self,
         migrations: V,
     ) -> &mut Self {
