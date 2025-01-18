@@ -5,6 +5,7 @@
 [![crates.io](https://img.shields.io/crates/v/cot.svg)](https://crates.io/crates/cot)
 [![Documentation](https://docs.rs/cot/badge.svg)](https://docs.rs/cot)
 [![codecov](https://codecov.io/gh/cot-rs/cot/branch/master/graph/badge.svg)](https://codecov.io/gh/cot-rs/cot)
+[![Discord chat](https://img.shields.io/discord/1330137289287925781?logo=Discord&logoColor=white)](https://discord.cot.rs)
 </div>
 
 Cot is an easy to use, modern, and fast web framework for Rust. It has been designed to be familiar if you've ever
