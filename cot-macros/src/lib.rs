@@ -17,14 +17,6 @@ use crate::main_fn::fn_to_cot_main;
 use crate::model::impl_model_for_struct;
 use crate::query::{query_to_tokens, Query};
 
-/// Derive the [`Form`] trait for a struct.
-///
-/// This macro will generate an implementation of the [`Form`] trait for the
-/// given named struct. Note that all the fields of the struct **must**
-/// implement the [`AsFormField`] trait.
-///
-/// [`Form`]: trait.Form.html
-/// [`AsFormField`]: trait.AsFormField.html
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as syn::DeriveInput);

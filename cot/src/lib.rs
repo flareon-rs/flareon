@@ -65,6 +65,7 @@ pub mod cli;
 pub mod config;
 mod error_page;
 mod handler;
+pub mod html;
 pub mod middleware;
 pub(crate) mod project;
 pub mod request;
@@ -90,37 +91,3 @@ pub type StatusCode = http::StatusCode;
 
 /// A type alias for an HTTP method.
 pub type Method = http::Method;
-
-/// A trait for types that can be used to render them as HTML.
-pub trait Render {
-    /// Renders the object as an HTML string.
-    fn render(&self) -> Html;
-}
-
-/// A type that represents HTML content as a string.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Default,
-    derive_more::Deref,
-    derive_more::From,
-    derive_more::Display,
-)]
-pub struct Html(String);
-
-impl Html {
-    #[must_use]
-    pub fn new<T: Into<String>>(html: T) -> Self {
-        Self(html.into())
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}

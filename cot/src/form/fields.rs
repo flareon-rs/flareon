@@ -1,14 +1,15 @@
 use std::borrow::Cow;
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Formatter};
 use std::num::{
     NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize, NonZeroU128,
     NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize,
 };
 
 use derive_more::Deref;
+use rinja::filters::HtmlSafe;
 
 use crate::form::{AsFormField, FormField, FormFieldOptions, FormFieldValidationError};
-use crate::{Html, Render};
+use crate::html::{Html, HtmlTag};
 
 macro_rules! impl_form_field {
     ($field_type_name:ident, $field_options_type_name:ident, $purpose:literal $(, $generic_param:ident $(: $generic_param_bound:ident $(+ $generic_param_bound_more:ident)*)?)?) => {
@@ -59,8 +60,8 @@ pub struct StringFieldOptions {
     pub max_length: Option<u32>,
 }
 
-impl Render for StringField {
-    fn render(&self) -> Html {
+impl Display for StringField {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut tag = HtmlTag::input("text");
         tag.attr("name", self.id());
         tag.attr("id", self.id());
@@ -70,9 +71,12 @@ impl Render for StringField {
         if let Some(max_length) = self.custom_options.max_length {
             tag.attr("maxlength", &max_length.to_string());
         }
-        tag.render()
+
+        write!(f, "{}", tag.render())
     }
 }
+
+impl HtmlSafe for StringField {}
 
 impl AsFormField for String {
     type Type = StringField;
@@ -122,13 +126,13 @@ impl Password {
 }
 
 impl Debug for Password {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Password").field(&"********").finish()
     }
 }
 
 impl Display for Password {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "********")
     }
 }
@@ -149,8 +153,8 @@ pub struct PasswordFieldOptions {
     pub max_length: Option<u32>,
 }
 
-impl Render for PasswordField {
-    fn render(&self) -> Html {
+impl Display for PasswordField {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut tag = HtmlTag::input("password");
         tag.attr("name", self.id());
         tag.attr("id", self.id());
@@ -160,9 +164,12 @@ impl Render for PasswordField {
         if let Some(max_length) = self.custom_options.max_length {
             tag.attr("maxlength", &max_length.to_string());
         }
-        tag.render()
+
+        write!(f, "{}", tag.render())
     }
 }
+
+impl HtmlSafe for PasswordField {}
 
 impl AsFormField for Password {
     type Type = PasswordField;
@@ -204,8 +211,8 @@ impl<T: Integer> Default for IntegerFieldOptions<T> {
     }
 }
 
-impl<T: Integer> Render for IntegerField<T> {
-    fn render(&self) -> Html {
+impl<T: Integer> Display for IntegerField<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut tag = HtmlTag::input("number");
         tag.attr("name", self.id());
         tag.attr("id", self.id());
@@ -218,9 +225,12 @@ impl<T: Integer> Render for IntegerField<T> {
         if let Some(max) = &self.custom_options.max {
             tag.attr("max", &max.to_string());
         }
-        tag.render()
+
+        write!(f, "{}", tag.render())
     }
 }
+
+impl<T: Integer> HtmlSafe for IntegerField<T> {}
 
 /// A trait for numerical types that optionally have minimum and maximum values.
 ///
@@ -339,8 +349,8 @@ pub struct BoolFieldOptions {
     pub must_be_true: Option<bool>,
 }
 
-impl Render for BoolField {
-    fn render(&self) -> Html {
+impl Display for BoolField {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut bool_input = HtmlTag::input("checkbox");
         bool_input.attr("name", self.id());
         bool_input.attr("id", self.id());
@@ -348,7 +358,7 @@ impl Render for BoolField {
 
         if self.custom_options.must_be_true.unwrap_or(false) {
             bool_input.bool_attr("required");
-            return bool_input.render();
+            return write!(f, "{}", bool_input.render());
         }
 
         // Web browsers don't send anything when a checkbox is unchecked, so we
@@ -359,9 +369,11 @@ impl Render for BoolField {
         let hidden = hidden_input.render();
 
         let checkbox = bool_input.render();
-        format!("{}{}", hidden.as_str(), checkbox.as_str()).into()
+        write!(f, "{}{}", hidden.as_str(), checkbox.as_str())
     }
 }
+
+impl HtmlSafe for BoolField {}
 
 /// Implementation of `AsFormField` for `bool`.
 ///
@@ -422,61 +434,6 @@ fn check_required<T: FormField>(field: &T) -> Result<&str, FormFieldValidationEr
     }
 }
 
-/// A helper struct for rendering HTML tags.
-#[derive(Debug)]
-struct HtmlTag {
-    tag: String,
-    attributes: Vec<(String, String)>,
-    boolean_attributes: Vec<String>,
-}
-
-impl HtmlTag {
-    #[must_use]
-    fn new(tag: &str) -> Self {
-        Self {
-            tag: tag.to_string(),
-            attributes: Vec::new(),
-            boolean_attributes: Vec::new(),
-        }
-    }
-
-    #[must_use]
-    fn input(input_type: &str) -> Self {
-        let mut input = Self::new("input");
-        input.attr("type", input_type);
-        input
-    }
-
-    fn attr(&mut self, key: &str, value: &str) -> &mut Self {
-        assert!(
-            !self.attributes.iter().any(|(k, _)| k == key),
-            "Attribute already exists: {key}"
-        );
-        self.attributes.push((key.to_string(), value.to_string()));
-        self
-    }
-
-    fn bool_attr(&mut self, key: &str) -> &mut Self {
-        self.boolean_attributes.push(key.to_string());
-        self
-    }
-
-    #[must_use]
-    fn render(&self) -> Html {
-        let mut result = format!("<{}", self.tag);
-
-        for (key, value) in &self.attributes {
-            result.push_str(&format!(" {key}=\"{value}\""));
-        }
-        for key in &self.boolean_attributes {
-            result.push_str(&format!(" {key}"));
-        }
-
-        result.push_str(" />");
-        result.into()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
@@ -494,7 +451,7 @@ mod tests {
                 max_length: Some(10),
             },
         );
-        let html = field.render().to_string();
+        let html = field.to_string();
         assert!(html.contains("type=\"text\""));
         assert!(html.contains("required"));
         assert!(html.contains("maxlength=\"10\""));
@@ -511,7 +468,7 @@ mod tests {
                 max_length: Some(10),
             },
         );
-        let html = field.render().to_string();
+        let html = field.to_string();
         assert!(html.contains("type=\"password\""));
         assert!(html.contains("required"));
         assert!(html.contains("maxlength=\"10\""));
@@ -529,7 +486,7 @@ mod tests {
                 max: Some(10),
             },
         );
-        let html = field.render().to_string();
+        let html = field.to_string();
         assert!(html.contains("type=\"number\""));
         assert!(html.contains("required"));
         assert!(html.contains("min=\"1\""));
@@ -547,7 +504,7 @@ mod tests {
                 must_be_true: Some(false),
             },
         );
-        let html = field.render().to_string();
+        let html = field.to_string();
         assert!(html.contains("type=\"checkbox\""));
         assert!(html.contains("type=\"hidden\""));
         assert!(!html.contains("required"));
@@ -564,7 +521,7 @@ mod tests {
                 must_be_true: Some(true),
             },
         );
-        let html = field.render().to_string();
+        let html = field.to_string();
         assert!(html.contains("type=\"checkbox\""));
         assert!(!html.contains("type=\"hidden\""));
         assert!(html.contains("required"));

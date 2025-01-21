@@ -17,7 +17,7 @@
 
         <div class="form-row">
             <label for="{{ form.username.id() }}">Username:</label>
-            {{ form.username.render()|safe }}
+            {{ form.username }}
             {% for error in form.errors_for(FormErrorTarget::Field("username")) %}
             {{ error }}
             {% endfor %}
@@ -25,7 +25,7 @@
 
         <div class="form-row">
             <label for="{{ form.password.id() }}">Password:</label>
-            {{ form.password.render()|safe }}
+            {{ form.password }}
             {% for error in form.errors_for(FormErrorTarget::Field("password")) %}
             {{ error }}
             {% endfor %}

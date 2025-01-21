@@ -24,14 +24,38 @@
 pub mod fields;
 
 use std::borrow::Cow;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 use async_trait::async_trait;
+/// Derive the [`Form`] trait for a struct and create a [`FormContext`] for it.
+///
+/// This macro will generate an implementation of the [`Form`] trait for the
+/// given named struct. Note that all the fields of the struct **must**
+/// implement the [`AsFormField`] trait.
+///
+/// # Rendering
+///
+/// In order for the [`FormContext`] to be renderable in templates, all the form
+/// fields (i.e. [`AsFormField::Type`]) must implement the [`Display`] and
+/// [`rinja::filters::HtmlSafe`] traits. If you are implementing your own form
+/// field types, you should make sure they implement these traits (and you have
+/// to make sure the types are safe to render as HTML, possibly escaping user
+/// input if needed).
+///
+/// Note that even if the form is not rendered in a template, you will still be
+/// able to render the fields individually.
+///
+/// # Safety
+///
+/// The implementation of [`Display`] for the form context that this derive
+/// macro generates depends on the implementation of [`Display`] for the form
+/// fields. If the form fields are not safe to render as HTML, the form context
+/// will not be safe to render as HTML either.
 pub use cot_macros::Form;
 use thiserror::Error;
 
+use crate::request;
 use crate::request::{Request, RequestExt};
-use crate::{request, Html, Render};
 
 /// Error occurred while processing a form.
 #[derive(Debug, Error)]
@@ -254,18 +278,6 @@ pub trait FormContext: Debug {
     fn has_errors(&self) -> bool;
 }
 
-impl<T: FormContext> Render for T {
-    fn render(&self) -> Html {
-        let mut html = String::new();
-
-        for field in self.fields() {
-            html.push_str(field.dyn_render().as_str());
-        }
-
-        Html::new(html)
-    }
-}
-
 /// Generic options valid for all types of form fields.
 #[derive(Debug)]
 pub struct FormFieldOptions {
@@ -284,7 +296,7 @@ pub struct FormFieldOptions {
 /// is used to render the field in an HTML form, set the value of the field, and
 /// validate it. Typically, the implementors of this trait are used indirectly
 /// through the [`Form`] trait and field types that implement [`AsFormField`].
-pub trait FormField: Render {
+pub trait FormField: Display {
     /// Custom options for the form field, unique for each field type.
     type CustomOptions: Default;
 
@@ -318,7 +330,7 @@ pub trait FormField: Render {
 /// options, value, and rendering, among others.
 ///
 /// This trait is implemented for all types that implement [`FormField`].
-pub trait DynFormField {
+pub trait DynFormField: Display {
     /// Returns the generic options for the form field.
     fn dyn_options(&self) -> &FormFieldOptions;
 
@@ -327,9 +339,6 @@ pub trait DynFormField {
 
     /// Sets the string value of the form field.
     fn dyn_set_value(&mut self, value: Cow<'_, str>);
-
-    /// Renders the form field as HTML.
-    fn dyn_render(&self) -> Html;
 }
 
 impl<T: FormField> DynFormField for T {
@@ -343,10 +352,6 @@ impl<T: FormField> DynFormField for T {
 
     fn dyn_set_value(&mut self, value: Cow<'_, str>) {
         FormField::set_value(self, value);
-    }
-
-    fn dyn_render(&self) -> Html {
-        Render::render(self)
     }
 }
 

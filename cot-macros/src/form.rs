@@ -57,6 +57,8 @@ impl FormOpts {
             fields_as_errors_for_mut: Vec::with_capacity(self.field_count()),
             fields_as_has_errors: Vec::with_capacity(self.field_count()),
             fields_as_dyn_field_ref: Vec::with_capacity(self.field_count()),
+            fields_as_display: Vec::with_capacity(self.field_count()),
+            fields_as_display_trait_bound: Vec::with_capacity(self.field_count()),
         }
     }
 }
@@ -84,6 +86,8 @@ struct FormDeriveBuilder {
     fields_as_errors_for_mut: Vec<TokenStream>,
     fields_as_has_errors: Vec<TokenStream>,
     fields_as_dyn_field_ref: Vec<TokenStream>,
+    fields_as_display: Vec<TokenStream>,
+    fields_as_display_trait_bound: Vec<TokenStream>,
 }
 
 impl ToTokens for FormDeriveBuilder {
@@ -153,6 +157,12 @@ impl FormDeriveBuilder {
 
         self.fields_as_dyn_field_ref
             .push(quote!(&self.#name as &dyn #crate_ident::form::DynFormField));
+
+        self.fields_as_display
+            .push(quote!(::core::fmt::Display::fmt(&self.#name, f)?));
+
+        self.fields_as_display_trait_bound
+            .push(quote!(&'dummy <#ty as #crate_ident::form::AsFormField>::Type: ::core::fmt::Display + #crate_ident::__private::rinja::filters::HtmlSafe));
     }
 
     fn build_form_impl(&self) -> TokenStream {
@@ -201,6 +211,26 @@ impl FormDeriveBuilder {
         let fields_as_errors_for_mut = &self.fields_as_errors_for_mut;
         let fields_as_has_errors = &self.fields_as_has_errors;
         let fields_as_dyn_field_ref = &self.fields_as_dyn_field_ref;
+        let fields_as_display = &self.fields_as_display;
+
+        // <'dummy> is here because we can't directly create trivial constraints in
+        // where clauses
+        // see https://github.com/rust-lang/rust/issues/48214 for details
+        // and the following comment for the details on the workaround being used here:
+        // https://github.com/rust-lang/rust/issues/48214#issuecomment-2557829956
+        let fields_as_display_trait_bound = &self.fields_as_display_trait_bound;
+        let display_where_clause = if fields_as_display_trait_bound.is_empty() {
+            quote! {}
+        } else {
+            quote! {
+                where #( #fields_as_display_trait_bound, )*
+            }
+        };
+        let display_dummy_lifetime_decl = if fields_as_display_trait_bound.is_empty() {
+            quote! {}
+        } else {
+            quote! { <'dummy> }
+        };
 
         quote! {
             #[derive(::core::fmt::Debug)]
@@ -280,6 +310,18 @@ impl FormDeriveBuilder {
                     !self.__errors.__form.is_empty() #( || #fields_as_has_errors )*
                 }
             }
+
+            #[automatically_derived]
+            impl #display_dummy_lifetime_decl ::core::fmt::Display for #context_struct_name #display_where_clause {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                    #( #fields_as_display; )*
+
+                    Ok(())
+                }
+            }
+
+            #[automatically_derived]
+            impl #display_dummy_lifetime_decl #crate_ident::__private::rinja::filters::HtmlSafe for #context_struct_name #display_where_clause {}
         }
     }
 

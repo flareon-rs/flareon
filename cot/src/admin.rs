@@ -18,7 +18,7 @@ use crate::form::{
 use crate::request::{Request, RequestExt};
 use crate::response::{Response, ResponseExt};
 use crate::router::Router;
-use crate::{reverse_redirect, static_files, Body, CotApp, Render, StatusCode};
+use crate::{reverse_redirect, static_files, Body, CotApp, StatusCode};
 
 #[derive(Debug, Form)]
 struct LoginForm {

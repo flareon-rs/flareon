@@ -19,6 +19,15 @@ async fn context_from_empty_request() {
 }
 
 #[tokio::test]
+async fn context_display_non_empty() {
+    let mut request = TestRequestBuilder::get("/").build();
+
+    let context = MyForm::build_context(&mut request).await.unwrap();
+    let form_rendered = context.to_string();
+    assert!(!form_rendered.is_empty());
+}
+
+#[tokio::test]
 async fn form_from_request() {
     let mut request = TestRequestBuilder::post("/")
         .form_data(&[("name", "Alice"), ("age", "30")])
