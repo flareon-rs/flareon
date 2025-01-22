@@ -654,7 +654,7 @@ impl DynMigration for Box<dyn DynMigration> {
     }
 }
 
-impl DynMigration for Box<dyn DynMigration + Send + Sync> {
+impl DynMigration for Box<SyncDynMigration> {
     fn app_name(&self) -> &str {
         DynMigration::app_name(&**self)
     }
