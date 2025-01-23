@@ -18,15 +18,26 @@ async fn model_crud(test_db: &mut TestDatabase) {
 
     assert_eq!(TestModel::objects().all(&**test_db).await.unwrap(), vec![]);
 
+    // Create
     let mut model = TestModel {
         id: Auto::fixed(1),
         name: "test".to_owned(),
     };
     model.save(&**test_db).await.unwrap();
+
+    // Read
     let objects = TestModel::objects().all(&**test_db).await.unwrap();
     assert_eq!(objects.len(), 1);
     assert_eq!(objects[0].name, "test");
 
+    // Update (& read again)
+    model.name = "test2".to_owned();
+    model.save(&**test_db).await.unwrap();
+    let objects = TestModel::objects().all(&**test_db).await.unwrap();
+    assert_eq!(objects.len(), 1);
+    assert_eq!(objects[0].name, "test2");
+
+    // Delete
     TestModel::objects()
         .filter(<TestModel as Model>::Fields::id.eq(1))
         .delete(&**test_db)
@@ -34,6 +45,59 @@ async fn model_crud(test_db: &mut TestDatabase) {
         .unwrap();
 
     assert_eq!(TestModel::objects().all(&**test_db).await.unwrap(), vec![]);
+}
+
+#[cot_macros::dbtest]
+async fn model_insert(test_db: &mut TestDatabase) {
+    migrate_test_model(&*test_db).await;
+
+    // Insert
+    let mut model = TestModel {
+        id: Auto::fixed(1),
+        name: "test".to_owned(),
+    };
+    let result = model.insert(&**test_db).await;
+    assert!(result.is_ok());
+
+    // Can't insert the same model instance again
+    let result = model.insert(&**test_db).await;
+    assert!(result.is_err());
+
+    // Read the model from the database
+    let objects = TestModel::objects().all(&**test_db).await.unwrap();
+    assert_eq!(objects.len(), 1);
+    assert_eq!(objects[0].name, "test");
+}
+
+#[cot_macros::dbtest]
+async fn model_update(test_db: &mut TestDatabase) {
+    migrate_test_model(&*test_db).await;
+
+    // Insert
+    let mut model = TestModel {
+        id: Auto::fixed(1),
+        name: "test".to_owned(),
+    };
+    let result = model.insert(&**test_db).await;
+    assert!(result.is_ok());
+
+    // Update
+    model.name = "test2".to_owned();
+    let result = model.update(&**test_db).await;
+    assert!(result.is_ok());
+
+    // Can't update non-existing object
+    let mut model = TestModel {
+        id: Auto::fixed(2),
+        name: "test3".to_owned(),
+    };
+    let result = model.update(&**test_db).await;
+    assert!(result.is_err());
+
+    // Read the model from the database
+    let objects = TestModel::objects().all(&**test_db).await.unwrap();
+    assert_eq!(objects.len(), 1);
+    assert_eq!(objects[0].name, "test2");
 }
 
 #[cot_macros::dbtest]
