@@ -336,7 +336,9 @@ impl TestDatabase {
             TestDatabaseKind::Postgres { db_url, db_name } => {
                 let database = Database::new(format!("{db_url}/postgres")).await?;
 
-                database.raw(&format!("DROP DATABASE {db_name}")).await?;
+                database
+                    .raw(&format!("DROP DATABASE {db_name} WITH (FORCE)"))
+                    .await?;
                 database.close().await?;
             }
             TestDatabaseKind::MySql { db_url, db_name } => {

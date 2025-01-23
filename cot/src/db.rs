@@ -31,7 +31,7 @@ use sea_query::{
 use sea_query_binder::{SqlxBinder, SqlxValues};
 use sqlx::{Type, TypeInfo};
 use thiserror::Error;
-use tracing::debug;
+use tracing::{span, trace, Instrument, Level};
 
 #[cfg(feature = "mysql")]
 use crate::db::impl_mysql::{DatabaseMySql, MySqlRow, MySqlValueRef};
@@ -579,7 +579,11 @@ impl Database {
     /// the database, for instance because the migrations haven't been
     /// applied, or there was a problem with the database connection.
     pub async fn insert<T: Model>(&self, data: &mut T) -> Result<()> {
-        Self::insert_or_update_impl(self, data, false).await
+        let span = span!(Level::TRACE, "insert", table = %T::TABLE_NAME);
+
+        Self::insert_or_update_impl(self, data, false)
+            .instrument(span)
+            .await
     }
 
     /// Inserts a new row into the database, or updates it if a row with the
@@ -591,7 +595,15 @@ impl Database {
     /// the database, for instance because the migrations haven't been
     /// applied, or there was a problem with the database connection.
     pub async fn insert_or_update<T: Model>(&self, data: &mut T) -> Result<()> {
-        Self::insert_or_update_impl(self, data, true).await
+        let span = span!(
+            Level::TRACE,
+            "insert_or_update",
+            table = %T::TABLE_NAME
+        );
+
+        Self::insert_or_update_impl(self, data, true)
+            .instrument(span)
+            .await
     }
 
     async fn insert_or_update_impl<T: Model>(&self, data: &mut T, update: bool) -> Result<()> {
@@ -671,9 +683,9 @@ impl Database {
         }
 
         if update {
-            debug!("Inserted or updated row");
+            trace!(primary_key = ?data.primary_key().to_db_field_value(), "Inserted or updated row");
         } else {
-            debug!("Inserted row");
+            trace!(primary_key = ?data.primary_key().to_db_field_value(), "Inserted row");
         }
 
         Ok(())
@@ -690,6 +702,17 @@ impl Database {
     /// This method can return an error if the row with the given primary key
     /// could not be found in the database.
     pub async fn update<T: Model>(&self, data: &mut T) -> Result<()> {
+        let span = span!(
+            Level::TRACE,
+            "update",
+            table = %T::TABLE_NAME,
+            primary_key = ?data.primary_key().to_db_field_value(),
+        );
+
+        Self::update_impl(self, data).instrument(span).await
+    }
+
+    async fn update_impl<T: Model>(&self, data: &mut T) -> Result<()> {
         let column_identifiers = T::COLUMNS
             .iter()
             .map(|column| Identifier::from(column.name.as_str()));
@@ -728,7 +751,7 @@ impl Database {
             return Err(DatabaseError::RecordNotFound { primary_key });
         }
 
-        debug!("Updated row");
+        trace!("Updated row");
 
         Ok(())
     }
