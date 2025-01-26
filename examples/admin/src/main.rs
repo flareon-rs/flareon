@@ -54,8 +54,7 @@ async fn main() -> cot::Result<CotProject> {
                 .database_config(
                     DatabaseConfig::builder()
                         .url("sqlite://db.sqlite3?mode=rwc")
-                        .build()
-                        .unwrap(),
+                        .build(),
                 )
                 .build(),
         )

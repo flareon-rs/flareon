@@ -16,7 +16,7 @@ enum ItemToken {
 }
 
 impl Parse for ItemToken {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let lookahead = input.lookahead1();
         let op = OpParser::from_lookahead(&lookahead, input)?;
         if let Some(op) = op {
@@ -69,7 +69,7 @@ impl FieldParser {
 }
 
 impl Parse for FieldParser {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         Ok(FieldParser {
             field_token: input.parse()?,
             name: input.parse()?,
@@ -91,7 +91,7 @@ impl ReferenceParser {
 }
 
 impl Parse for ReferenceParser {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         Ok(ReferenceParser {
             reference_token: input.parse()?,
             expr: input.parse()?,
@@ -113,7 +113,7 @@ impl MemberAccessParser {
 }
 
 impl Parse for MemberAccessParser {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         Ok(Self {
             dot: input.parse()?,
             member_name: input.parse()?,
@@ -134,7 +134,7 @@ impl FunctionCallParser {
 }
 
 impl Parse for FunctionCallParser {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let args_content;
         syn::parenthesized!(args_content in input);
         Ok(Self {
@@ -156,7 +156,10 @@ enum OpParser {
 }
 
 impl OpParser {
-    fn from_lookahead(lookahead: &Lookahead1, input: ParseStream) -> syn::Result<Option<Self>> {
+    fn from_lookahead(
+        lookahead: &Lookahead1<'_>,
+        input: ParseStream<'_>,
+    ) -> syn::Result<Option<Self>> {
         let result = if lookahead.peek(Token![*]) {
             OpParser::Mul(input.parse()?)
         } else if lookahead.peek(Token![/]) {
@@ -290,7 +293,7 @@ impl Expr {
         syn::parse2::<Expr>(input)
     }
 
-    fn parse_impl(input: ParseStream, min_binding_priority: u8) -> syn::Result<Self> {
+    fn parse_impl(input: ParseStream<'_>, min_binding_priority: u8) -> syn::Result<Self> {
         // Implementation of Pratt parsing algorithm
 
         let mut lhs = if input.peek(syn::token::Paren) {
@@ -476,7 +479,7 @@ enum ExprAsTokensMode {
 }
 
 impl Parse for Expr {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         Self::parse_impl(input, 0)
     }
 }

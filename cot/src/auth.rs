@@ -411,17 +411,19 @@ impl DatabaseField for PasswordHash {
 #[cfg(feature = "db")]
 impl FromDbValue for PasswordHash {
     #[cfg(feature = "sqlite")]
-    fn from_sqlite(value: crate::db::impl_sqlite::SqliteValueRef) -> cot::db::Result<Self> {
+    fn from_sqlite(value: crate::db::impl_sqlite::SqliteValueRef<'_>) -> cot::db::Result<Self> {
         PasswordHash::new(value.get::<String>()?).map_err(cot::db::DatabaseError::value_decode)
     }
 
     #[cfg(feature = "postgres")]
-    fn from_postgres(value: crate::db::impl_postgres::PostgresValueRef) -> cot::db::Result<Self> {
+    fn from_postgres(
+        value: crate::db::impl_postgres::PostgresValueRef<'_>,
+    ) -> cot::db::Result<Self> {
         PasswordHash::new(value.get::<String>()?).map_err(cot::db::DatabaseError::value_decode)
     }
 
     #[cfg(feature = "mysql")]
-    fn from_mysql(value: crate::db::impl_mysql::MySqlValueRef) -> crate::db::Result<Self>
+    fn from_mysql(value: crate::db::impl_mysql::MySqlValueRef<'_>) -> crate::db::Result<Self>
     where
         Self: Sized,
     {
@@ -708,6 +710,7 @@ async fn session_auth_hash_valid(
     Ok(false)
 }
 
+/// An authentication backend.
 #[async_trait]
 pub trait AuthBackend: Send + Sync {
     async fn authenticate(
@@ -716,6 +719,42 @@ pub trait AuthBackend: Send + Sync {
         credentials: &(dyn Any + Send + Sync),
     ) -> Result<Option<Box<dyn User + Send + Sync>>>;
 
+    /// Get a user by ID.
+    ///
+    /// This method returns a user object by its ID. If the user is not found,
+    /// it should return `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user object cannot be fetched.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::UserId;
+    /// use cot::request::{Request, RequestExt};
+    ///
+    /// async fn view_user_profile(request: &Request) {
+    ///     let user = request
+    ///         .project_config()
+    ///         .auth_backend()
+    ///         .get_by_id(request, UserId::Int(1))
+    ///         .await;
+    ///
+    ///     match user {
+    ///         Ok(Some(user)) => {
+    ///             println!("User ID: {:?}", user.id());
+    ///             println!("Username: {:?}", user.username());
+    ///         }
+    ///         Ok(None) => {
+    ///             println!("User not found");
+    ///         }
+    ///         Err(error) => {
+    ///             eprintln!("Error: {}", error);
+    ///         }
+    ///     }
+    /// }
+    /// ```
     async fn get_by_id(
         &self,
         request: &Request,
@@ -723,6 +762,7 @@ pub trait AuthBackend: Send + Sync {
     ) -> Result<Option<Box<dyn User + Send + Sync>>>;
 }
 
+/// A no-op authentication backend.
 #[derive(Debug, Copy, Clone)]
 pub struct NoAuthBackend;
 

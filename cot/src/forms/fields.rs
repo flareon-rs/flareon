@@ -42,7 +42,7 @@ macro_rules! impl_form_field {
                 self.value.as_deref()
             }
 
-            fn set_value(&mut self, value: Cow<str>) {
+            fn set_value(&mut self, value: Cow<'_, str>) {
                 self.value = Some(value.into_owned());
             }
         }
@@ -187,7 +187,11 @@ impl_form_field!(IntegerField, IntegerFieldOptions, "an integer", T: Integer);
 /// Custom options for a `IntegerField`.
 #[derive(Debug, Copy, Clone)]
 pub struct IntegerFieldOptions<T> {
+    /// The minimum value of the field. Used to set the `min` attribute in the
+    /// HTML input element.
     pub min: Option<T>,
+    /// The maximum value of the field. Used to set the `max` attribute in the
+    /// HTML input element.
     pub max: Option<T>,
 }
 

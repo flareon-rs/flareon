@@ -13,10 +13,12 @@ impl DatabaseMySql {
         // No changes are needed for MySQL
     }
 
+    #[allow(clippy::unnecessary_wraps)] // to have a unified interface between database impls
     fn last_inserted_row_id_for(result: &sqlx::mysql::MySqlQueryResult) -> Option<u64> {
         Some(result.last_insert_id())
     }
 
+    #[allow(clippy::unused_self)] // to have a unified interface between database impls
     pub(super) fn sea_query_column_type_for(
         &self,
         column_type: ColumnType,

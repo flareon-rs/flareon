@@ -218,6 +218,10 @@ impl TestDatabase {
     }
 
     /// Create a new in-memory SQLite database for testing.
+    ///
+    /// # Errors
+    ///
+    /// If the database could not have been created.
     pub async fn new_sqlite() -> Result<Self> {
         let database = Database::new("sqlite::memory:").await?;
         Ok(Self::new(database, TestDatabaseKind::Sqlite))
@@ -237,6 +241,15 @@ impl TestDatabase {
     ///
     /// The database is dropped when `self.cleanup()` is called. Note that this
     /// means that the database will not be dropped if the test panics.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a database connection (either to the test database,
+    /// or postgres maintenance database) could not be established.
+    ///
+    /// Returns an error if the old test database could not be dropped.
+    ///
+    /// Returns an error if the new test database could not be created.
     pub async fn new_postgres(test_name: &str) -> Result<Self> {
         let db_url = std::env::var("POSTGRES_URL")
             .unwrap_or_else(|_| "postgresql://cot:cot@localhost".to_string());
@@ -276,6 +289,16 @@ impl TestDatabase {
     ///
     /// The database is dropped when `self.cleanup()` is called. Note that this
     /// means that the database will not be dropped if the test panics.
+    ///
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a database connection (either to the test database,
+    /// or MySQL maintenance database) could not be established.
+    ///
+    /// Returns an error if the old test database could not be dropped.
+    ///
+    /// Returns an error if the new test database could not be created.
     pub async fn new_mysql(test_name: &str) -> Result<Self> {
         let db_url =
             std::env::var("MYSQL_URL").unwrap_or_else(|_| "mysql://root:@localhost".to_string());

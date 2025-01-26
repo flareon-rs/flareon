@@ -78,7 +78,7 @@ impl<'a, T: DynMigration> MigrationSorter<'a, T> {
         Ok(())
     }
 
-    fn create_lookup_table(migrations: &[T]) -> Result<HashMap<MigrationLookup, usize>> {
+    fn create_lookup_table(migrations: &[T]) -> Result<HashMap<MigrationLookup<'_>, usize>> {
         let mut map = HashMap::with_capacity(migrations.len());
 
         for (index, migration) in migrations.iter().enumerate() {

@@ -164,6 +164,10 @@ impl Expr {
     /// Create a new value expression. This represents a literal value that gets
     /// passed into the SQL query.
     ///
+    /// # Panics
+    ///
+    /// If the value provided is a [`DbFieldValue::Auto`].
+    ///
     /// # Example
     ///
     /// ```

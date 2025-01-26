@@ -43,6 +43,7 @@ impl DatabasePostgres {
         None
     }
 
+    #[allow(clippy::unused_self)] // to have a unified interface between database impls
     pub(super) fn sea_query_column_type_for(
         &self,
         column_type: crate::db::ColumnType,

@@ -37,7 +37,7 @@ impl CotSource<'_> {
             CotSource::Path(path) => {
                 format!(
                     "path = \"{}\"",
-                    path.display().to_string().replace("\\", "\\\\")
+                    path.display().to_string().replace('\\', "\\\\")
                 )
             }
             CotSource::PublishedCrate => format!("version = \"{}\"", env!("CARGO_PKG_VERSION")),
@@ -48,7 +48,7 @@ impl CotSource<'_> {
 pub fn new_project(
     path: &Path,
     project_name: &str,
-    cot_source: CotSource<'_>,
+    cot_source: &CotSource<'_>,
 ) -> anyhow::Result<()> {
     print_status_msg("Creating", &format!("Cot project `{project_name}`"));
 

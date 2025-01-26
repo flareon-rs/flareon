@@ -7,7 +7,7 @@ pub(crate) fn print_status_msg(status: &str, message: &str) {
     eprintln!("{status_style}{status:>12}{status_style:#} {message}");
 }
 
-pub fn find_cargo_toml(starting_dir: &Path) -> Option<PathBuf> {
+pub(crate) fn find_cargo_toml(starting_dir: &Path) -> Option<PathBuf> {
     let mut current_dir = starting_dir;
 
     loop {

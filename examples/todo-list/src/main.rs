@@ -103,12 +103,7 @@ async fn main() -> cot::Result<CotProject> {
     let todo_project = CotProject::builder()
         .config(
             ProjectConfig::builder()
-                .database_config(
-                    DatabaseConfig::builder()
-                        .url("sqlite::memory:")
-                        .build()
-                        .unwrap(),
-                )
+                .database_config(DatabaseConfig::builder().url("sqlite::memory:").build())
                 .build(),
         )
         .register_app_with_views(TodoApp, "")

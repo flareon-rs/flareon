@@ -29,18 +29,12 @@
 //!   common modern web vulnerabilities. You can focus on building your app, not
 //!   securing it.
 
-#![warn(
-    missing_debug_implementations,
-    missing_copy_implementations,
-    trivial_casts,
-    trivial_numeric_casts,
-    unreachable_pub,
-    unsafe_code,
-    unstable_features,
-    unused_import_braces,
-    unused_qualifications
+#![warn(missing_docs, rustdoc::missing_crate_level_docs)]
+#![cfg_attr(
+    docsrs,
+    feature(doc_cfg, doc_auto_cfg, rustdoc_missing_doc_code_examples)
 )]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, warn(rustdoc::missing_doc_code_examples))]
 
 extern crate self as cot;
 
@@ -156,27 +150,43 @@ where
 /// migrations (which can depend on other apps), etc.
 #[async_trait]
 pub trait CotApp: Send + Sync {
+    /// The name of the app.
     fn name(&self) -> &str;
 
+    /// Initializes the app.
+    ///
+    /// This method is called when the app is initialized. It can be used to
+    /// initialize whatever is needed for the app to work, possibly depending on
+    /// other apps, or the project's configuration.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the app fails to initialize.
     #[allow(unused_variables)]
     async fn init(&self, context: &mut AppContext) -> Result<()> {
         Ok(())
     }
 
+    /// Returns the router for the app. By default, it returns an empty router.
     fn router(&self) -> Router {
         Router::empty()
     }
 
+    /// Returns the migrations for the app. By default, it returns an empty
+    /// list.
     #[cfg(feature = "db")]
     fn migrations(&self) -> Vec<Box<SyncDynMigration>> {
         vec![]
     }
 
+    /// Returns the admin model managers for the app. By default, it returns an
+    /// empty list.
     fn admin_model_managers(&self) -> Vec<Box<dyn AdminModelManager>> {
         vec![]
     }
 
-    /// Returns a list of static files that the app serves.
+    /// Returns a list of static files that the app serves. By default, it
+    /// returns an empty list.
     fn static_files(&self) -> Vec<(String, Bytes)> {
         vec![]
     }
@@ -272,10 +282,59 @@ impl Body {
         Self::new(BodyInner::Streaming(SyncWrapper::new(Box::pin(stream))))
     }
 
+    /// Convert this [`Body`] instance into a byte array.
+    ///
+    /// This method reads the entire body into memory and returns it as a byte
+    /// array. Note that if the body is too large, this method can consume a lot
+    /// of memory. For a way to read the body while limiting the memory usage,
+    /// see [`Self::into_bytes_limited`].
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if reading the body fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::Body;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let body = Body::fixed("Hello, world!");
+    /// let bytes = body.into_bytes().await?;
+    /// assert_eq!(bytes, "Hello, world!".as_bytes());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn into_bytes(self) -> std::result::Result<Bytes, Error> {
         self.into_bytes_limited(usize::MAX).await
     }
 
+    /// Convert this [`Body`] instance into a byte array.
+    ///
+    /// This is a version of [`Self::into_bytes`] that allows you to limit the
+    /// amount of memory used to read the body. If the body is larger than
+    /// the limit, an error is returned.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if reading the body fails.
+    ///
+    /// If the body is larger than the limit, an error is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::Body;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let body = Body::fixed("Hello, world!");
+    /// let bytes = body.into_bytes_limited(32).await?;
+    /// assert_eq!(bytes, "Hello, world!".as_bytes());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn into_bytes_limited(self, limit: usize) -> std::result::Result<Bytes, Error> {
         use http_body_util::BodyExt;
 
@@ -404,27 +463,124 @@ impl AppContext {
         }
     }
 
+    /// Returns the configuration for the project.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    /// use cot::CotProject;
+    ///
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     let config = request.context().config();
+    ///     // can also be accessed via:
+    ///     let config = request.project_config();
+    ///
+    ///     let db_url = config.database_config().url();
+    ///
+    ///     // ...
+    /// #    todo!()
+    /// }
+    /// ```
     #[must_use]
     pub fn config(&self) -> &ProjectConfig {
         &self.config
     }
 
+    /// Returns the apps for the project.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    /// use cot::CotProject;
+    ///
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     let apps = request.context().apps();
+    ///
+    ///     // ...
+    /// #    todo!()
+    /// }
+    /// ```
     #[must_use]
     pub fn apps(&self) -> &[Box<dyn CotApp>] {
         &self.apps
     }
 
+    /// Returns the router for the project.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    /// use cot::CotProject;
+    ///
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     let router = request.context().config();
+    ///     // can also be accessed via:
+    ///     let router = request.router();
+    ///
+    ///     let num_routes = router.routes().len();
+    ///
+    ///     // ...
+    /// #    todo!()
+    /// }
+    /// ```
     #[must_use]
     pub fn router(&self) -> &Router {
         &self.router
     }
 
+    /// Returns the database for the project, if it is enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    /// use cot::CotProject;
+    ///
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     let database = request.context().try_database();
+    ///     if let Some(database) = database {
+    ///         // do something with the database
+    ///     } else {
+    ///         // database is not enabled
+    ///     }
+    /// #    todo!()
+    /// }
+    /// ```
     #[must_use]
     #[cfg(feature = "db")]
     pub fn try_database(&self) -> Option<&Arc<Database>> {
         self.database.as_ref()
     }
 
+    /// Returns the database for the project, if it is enabled.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the database is not enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    /// use cot::CotProject;
+    ///
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     let database = request.context().database();
+    ///     // can also be accessed via:
+    ///     request.db();
+    ///
+    ///     // ...
+    /// #    todo!()
+    /// }
+    /// ```
     #[must_use]
     #[cfg(feature = "db")]
     pub fn database(&self) -> &Database {
@@ -494,6 +650,7 @@ impl CotProjectBuilder<Uninitialized> {
         self
     }
 
+    #[must_use]
     pub fn register_app_with_views<T: CotApp + 'static>(
         mut self,
         app: T,
@@ -504,6 +661,7 @@ impl CotProjectBuilder<Uninitialized> {
         self
     }
 
+    #[must_use]
     pub fn register_app<T: CotApp + 'static>(mut self, app: T) -> Self {
         self.context.apps.push(Box::new(app));
         self
@@ -736,7 +894,7 @@ pub async fn run_at(project: CotProject, listener: tokio::net::TcpListener) -> R
     );
     if config::REGISTER_PANIC_HOOK {
         let current_hook = std::panic::take_hook();
-        let new_hook = move |hook_info: &std::panic::PanicHookInfo| {
+        let new_hook = move |hook_info: &std::panic::PanicHookInfo<'_>| {
             current_hook(hook_info);
             error_page::error_page_panic_hook(hook_info);
         };

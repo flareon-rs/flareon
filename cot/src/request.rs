@@ -255,7 +255,7 @@ impl PathParams {
     }
 }
 
-pub(crate) fn query_pairs(bytes: &Bytes) -> impl Iterator<Item = (Cow<str>, Cow<str>)> {
+pub(crate) fn query_pairs(bytes: &Bytes) -> impl Iterator<Item = (Cow<'_, str>, Cow<'_, str>)> {
     form_urlencoded::parse(bytes.as_ref())
 }
 

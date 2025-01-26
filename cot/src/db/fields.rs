@@ -16,7 +16,7 @@ use crate::db::{
 macro_rules! impl_from_sqlite_default {
     () => {
         #[cfg(feature = "sqlite")]
-        fn from_sqlite(value: SqliteValueRef) -> Result<Self> {
+        fn from_sqlite(value: SqliteValueRef<'_>) -> Result<Self> {
             value.get::<Self>()
         }
     };
@@ -25,7 +25,7 @@ macro_rules! impl_from_sqlite_default {
 macro_rules! impl_from_postgres_default {
     () => {
         #[cfg(feature = "postgres")]
-        fn from_postgres(value: PostgresValueRef) -> Result<Self> {
+        fn from_postgres(value: PostgresValueRef<'_>) -> Result<Self> {
             value.get::<Self>()
         }
     };
@@ -34,7 +34,7 @@ macro_rules! impl_from_postgres_default {
 macro_rules! impl_from_mysql_default {
     () => {
         #[cfg(feature = "mysql")]
-        fn from_mysql(value: MySqlValueRef) -> Result<Self> {
+        fn from_mysql(value: MySqlValueRef<'_>) -> Result<Self> {
             value.get::<Self>()
         }
     };
@@ -94,7 +94,7 @@ macro_rules! impl_db_field_with_postgres_int_cast {
             impl_from_mysql_default!();
 
             #[cfg(feature = "postgres")]
-            fn from_postgres(value: PostgresValueRef) -> Result<Self> {
+            fn from_postgres(value: PostgresValueRef<'_>) -> Result<Self> {
                 #[allow(clippy::cast_possible_truncation)]
                 #[allow(clippy::cast_sign_loss)]
                 value.get::<$src_ty>().map(|v| v as $dest_ty)
@@ -107,7 +107,7 @@ macro_rules! impl_db_field_with_postgres_int_cast {
             impl_from_mysql_default!();
 
             #[cfg(feature = "postgres")]
-            fn from_postgres(value: PostgresValueRef) -> Result<Self> {
+            fn from_postgres(value: PostgresValueRef<'_>) -> Result<Self> {
                 #[allow(clippy::cast_possible_truncation)]
                 #[allow(clippy::cast_sign_loss)]
                 value
@@ -153,7 +153,7 @@ impl FromDbValue for chrono::DateTime<chrono::FixedOffset> {
     impl_from_postgres_default!();
 
     #[cfg(feature = "mysql")]
-    fn from_mysql(value: MySqlValueRef) -> Result<Self> {
+    fn from_mysql(value: MySqlValueRef<'_>) -> Result<Self> {
         Ok(value.get::<chrono::DateTime<chrono::Utc>>()?.fixed_offset())
     }
 }
@@ -163,7 +163,7 @@ impl FromDbValue for Option<chrono::DateTime<chrono::FixedOffset>> {
     impl_from_postgres_default!();
 
     #[cfg(feature = "mysql")]
-    fn from_mysql(value: MySqlValueRef) -> Result<Self> {
+    fn from_mysql(value: MySqlValueRef<'_>) -> Result<Self> {
         Ok(value
             .get::<Option<chrono::DateTime<chrono::Utc>>>()?
             .map(|dt| dt.fixed_offset()))
@@ -192,19 +192,19 @@ impl<const LIMIT: u32> DatabaseField for LimitedString<LIMIT> {
 
 impl<const LIMIT: u32> FromDbValue for LimitedString<LIMIT> {
     #[cfg(feature = "sqlite")]
-    fn from_sqlite(value: SqliteValueRef) -> Result<Self> {
+    fn from_sqlite(value: SqliteValueRef<'_>) -> Result<Self> {
         let str = value.get::<String>()?;
         Self::new(str).map_err(DatabaseError::value_decode)
     }
 
     #[cfg(feature = "postgres")]
-    fn from_postgres(value: PostgresValueRef) -> Result<Self> {
+    fn from_postgres(value: PostgresValueRef<'_>) -> Result<Self> {
         let str = value.get::<String>()?;
         Self::new(str).map_err(DatabaseError::value_decode)
     }
 
     #[cfg(feature = "mysql")]
-    fn from_mysql(value: MySqlValueRef) -> Result<Self> {
+    fn from_mysql(value: MySqlValueRef<'_>) -> Result<Self> {
         let str = value.get::<String>()?;
         Self::new(str).map_err(DatabaseError::value_decode)
     }
@@ -229,17 +229,17 @@ impl<T: Model + Send + Sync> DatabaseField for ForeignKey<T> {
 
 impl<T: Model + Send + Sync> FromDbValue for ForeignKey<T> {
     #[cfg(feature = "sqlite")]
-    fn from_sqlite(value: SqliteValueRef) -> Result<Self> {
+    fn from_sqlite(value: SqliteValueRef<'_>) -> Result<Self> {
         T::PrimaryKey::from_sqlite(value).map(ForeignKey::PrimaryKey)
     }
 
     #[cfg(feature = "postgres")]
-    fn from_postgres(value: PostgresValueRef) -> Result<Self> {
+    fn from_postgres(value: PostgresValueRef<'_>) -> Result<Self> {
         T::PrimaryKey::from_postgres(value).map(ForeignKey::PrimaryKey)
     }
 
     #[cfg(feature = "mysql")]
-    fn from_mysql(value: MySqlValueRef) -> Result<Self> {
+    fn from_mysql(value: MySqlValueRef<'_>) -> Result<Self> {
         T::PrimaryKey::from_mysql(value).map(ForeignKey::PrimaryKey)
     }
 }
@@ -255,17 +255,17 @@ where
     Option<T::PrimaryKey>: FromDbValue,
 {
     #[cfg(feature = "sqlite")]
-    fn from_sqlite(value: SqliteValueRef) -> Result<Self> {
+    fn from_sqlite(value: SqliteValueRef<'_>) -> Result<Self> {
         Ok(<Option<T::PrimaryKey>>::from_sqlite(value)?.map(ForeignKey::PrimaryKey))
     }
 
     #[cfg(feature = "postgres")]
-    fn from_postgres(value: PostgresValueRef) -> Result<Self> {
+    fn from_postgres(value: PostgresValueRef<'_>) -> Result<Self> {
         Ok(<Option<T::PrimaryKey>>::from_postgres(value)?.map(ForeignKey::PrimaryKey))
     }
 
     #[cfg(feature = "mysql")]
-    fn from_mysql(value: MySqlValueRef) -> Result<Self> {
+    fn from_mysql(value: MySqlValueRef<'_>) -> Result<Self> {
         Ok(<Option<T::PrimaryKey>>::from_mysql(value)?.map(ForeignKey::PrimaryKey))
     }
 }
@@ -289,7 +289,7 @@ impl<T: DatabaseField> DatabaseField for Auto<T> {
 
 impl<T: DatabaseField> FromDbValue for Auto<T> {
     #[cfg(feature = "sqlite")]
-    fn from_sqlite(value: SqliteValueRef) -> Result<Self>
+    fn from_sqlite(value: SqliteValueRef<'_>) -> Result<Self>
     where
         Self: Sized,
     {
@@ -297,7 +297,7 @@ impl<T: DatabaseField> FromDbValue for Auto<T> {
     }
 
     #[cfg(feature = "postgres")]
-    fn from_postgres(value: PostgresValueRef) -> Result<Self>
+    fn from_postgres(value: PostgresValueRef<'_>) -> Result<Self>
     where
         Self: Sized,
     {
@@ -305,7 +305,7 @@ impl<T: DatabaseField> FromDbValue for Auto<T> {
     }
 
     #[cfg(feature = "mysql")]
-    fn from_mysql(value: MySqlValueRef) -> Result<Self>
+    fn from_mysql(value: MySqlValueRef<'_>) -> Result<Self>
     where
         Self: Sized,
     {
@@ -327,7 +327,7 @@ where
     Option<T>: FromDbValue,
 {
     #[cfg(feature = "sqlite")]
-    fn from_sqlite(value: SqliteValueRef) -> Result<Self>
+    fn from_sqlite(value: SqliteValueRef<'_>) -> Result<Self>
     where
         Self: Sized,
     {
@@ -335,7 +335,7 @@ where
     }
 
     #[cfg(feature = "postgres")]
-    fn from_postgres(value: PostgresValueRef) -> Result<Self>
+    fn from_postgres(value: PostgresValueRef<'_>) -> Result<Self>
     where
         Self: Sized,
     {
@@ -343,7 +343,7 @@ where
     }
 
     #[cfg(feature = "mysql")]
-    fn from_mysql(value: MySqlValueRef) -> Result<Self>
+    fn from_mysql(value: MySqlValueRef<'_>) -> Result<Self>
     where
         Self: Sized,
     {

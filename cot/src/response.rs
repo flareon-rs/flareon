@@ -34,6 +34,19 @@ mod private {
 /// This trait is sealed since it doesn't make sense to be implemented for types
 /// outside the context of Cot.
 pub trait ResponseExt: Sized + private::Sealed {
+    /// Create a new response builder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::StatusCode;
+    ///
+    /// let response = Response::builder()
+    ///     .status(StatusCode::OK)
+    ///     .body(cot::Body::empty())
+    ///     .expect("Failed to build response");
+    /// ```
     #[must_use]
     fn builder() -> http::response::Builder;
 

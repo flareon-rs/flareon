@@ -42,7 +42,7 @@ pub(crate) const REGISTER_PANIC_HOOK: bool = true;
 /// This is all the project-specific configuration data that can (and makes
 /// sense to) be expressed in a TOML configuration file.
 #[derive(Debug, Clone, Builder)]
-#[builder(build_fn(skip))]
+#[builder(build_fn(skip, error = std::convert::Infallible))]
 pub struct ProjectConfig {
     /// The secret key used for signing cookies and other sensitive data. This
     /// is a cryptographic key, should be kept secret, and should a set to a
@@ -91,18 +91,47 @@ impl ProjectConfigBuilder {
 
 #[cfg(feature = "db")]
 #[derive(Debug, Clone, Builder)]
+#[builder(build_fn(skip, error = std::convert::Infallible))]
 pub struct DatabaseConfig {
     #[builder(setter(into))]
     url: String,
 }
 
+impl DatabaseConfigBuilder {
+    #[must_use]
+    pub fn build(&self) -> DatabaseConfig {
+        DatabaseConfig {
+            url: self.url.clone().expect("Database URL is required"),
+        }
+    }
+}
+
 #[cfg(feature = "db")]
 impl DatabaseConfig {
+    /// Create a new [`DatabaseConfigBuilder`] to build a [`DatabaseConfig`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::DatabaseConfig;
+    ///
+    /// let config = DatabaseConfig::builder().url("sqlite::memory:").build();
+    /// ```
     #[must_use]
     pub fn builder() -> DatabaseConfigBuilder {
         DatabaseConfigBuilder::default()
     }
 
+    /// Get the URL stored in the database config.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::DatabaseConfig;
+    ///
+    /// let config = DatabaseConfig::builder().url("sqlite::memory:").build();
+    /// assert_eq!(config.url(), "sqlite::memory:");
+    /// ```
     #[must_use]
     pub fn url(&self) -> &str {
         &self.url

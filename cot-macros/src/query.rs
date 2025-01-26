@@ -7,14 +7,14 @@ use syn::Token;
 use crate::cot_ident;
 
 #[derive(Debug)]
-pub struct Query {
+pub(crate) struct Query {
     model_name: syn::Type,
     _comma: Token![,],
     expr: Expr,
 }
 
 impl Parse for Query {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         Ok(Self {
             model_name: input.parse()?,
             _comma: input.parse()?,

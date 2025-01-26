@@ -6,6 +6,8 @@
 /// * `sea_query_column_type_for`
 macro_rules! impl_sea_query_db_backend {
     ($db_name:ident : $sqlx_db_ty:ty, $pool_ty:ty, $row_name:ident, $value_ref_name:ident, $query_builder:expr) => {
+        /// A wrapper over [`$sqlx_db_ty`] that serves an in internal implementation of
+        /// `Database` using `SeaQuery`.
         #[derive(Debug)]
         pub(super) struct $db_name {
             db_connection: $pool_ty,
@@ -117,6 +119,8 @@ macro_rules! impl_sea_query_db_backend {
             }
         }
 
+        /// A wrapper for the internal row type used by [`$sqlx_db_ty`] to provide a
+        /// unified interface for the database operations.
         #[derive(derive_more::Debug)]
         pub struct $row_name {
             #[debug("...")]
@@ -139,6 +143,8 @@ macro_rules! impl_sea_query_db_backend {
             }
         }
 
+        /// A wrapper for the internal value type used by [`$sqlx_db_ty`] to provide a
+        /// unified interface for the database operations.
         #[derive(derive_more::Debug)]
         pub struct $value_ref_name<'r> {
             #[debug("...")]

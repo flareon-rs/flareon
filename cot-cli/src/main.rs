@@ -1,3 +1,5 @@
+#![allow(unreachable_pub)] // triggers false positives because we have both a binary and library
+
 mod migration_generator;
 mod new_project;
 mod utils;
@@ -81,7 +83,7 @@ fn main() -> anyhow::Result<()> {
             } else {
                 CotSource::PublishedCrate
             };
-            new_project(&path, &project_name, cot_source)
+            new_project(&path, &project_name, &cot_source)
                 .with_context(|| "unable to create project")?;
         }
         Commands::MakeMigrations {

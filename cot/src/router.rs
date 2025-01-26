@@ -67,7 +67,7 @@ impl Router {
         }
     }
 
-    fn get_handler(&self, request_path: &str) -> Option<HandlerFound> {
+    fn get_handler(&self, request_path: &str) -> Option<HandlerFound<'_>> {
         for route in &self.urls {
             if let Some(matches) = route.url.capture(request_path) {
                 let matches_fully = matches.matches_fully();
@@ -99,7 +99,7 @@ impl Router {
     }
 
     fn matches_to_path_params(
-        matches: &CaptureResult,
+        matches: &CaptureResult<'_, '_>,
         mut path_params: Vec<(String, String)>,
     ) -> Vec<(String, String)> {
         // Adding in reverse order, since we're doing this from the bottom up (we're

@@ -19,6 +19,18 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 version = "0.1.0"
 
+[workspace.lints.rust]
+missing_debug_implementations = "warn"
+missing_copy_implementations = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unreachable_pub = "warn"
+unsafe_code = "warn"
+unstable_features = "warn"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
 [workspace.lints.clippy]
 all = "deny"
 pedantic = "warn"

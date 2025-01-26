@@ -15,7 +15,7 @@ use petgraph::graph::DiGraph;
 use petgraph::visit::EdgeRef;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
-use syn::{parse_quote, Attribute, Meta};
+use syn::{parse_quote, Meta};
 use tracing::{debug, info, trace};
 
 use crate::utils::find_cargo_toml;
@@ -244,7 +244,7 @@ impl MigrationGenerator {
         Ok(())
     }
 
-    fn args_from_attr(path: &Path, attr: &Attribute) -> Result<ModelArgs, ParsingError> {
+    fn args_from_attr(path: &Path, attr: &syn::Attribute) -> Result<ModelArgs, ParsingError> {
         match attr.meta {
             Meta::Path(_) => {
                 // Means `#[model]` without any arguments
@@ -496,7 +496,7 @@ impl MigrationGenerator {
     }
 
     #[must_use]
-    fn model_to_migration_model(model: &ModelInSource) -> proc_macro2::TokenStream {
+    fn model_to_migration_model(model: &ModelInSource) -> TokenStream {
         let mut model_source = model.model_item.clone();
         model_source.vis = syn::Visibility::Inherited;
         model_source.ident = format_ident!("_{}", model_source.ident);
@@ -885,7 +885,7 @@ pub struct MigrationAsSource {
 
 impl MigrationAsSource {
     #[must_use]
-    pub fn new(name: String, content: String) -> Self {
+    pub(crate) fn new(name: String, content: String) -> Self {
         Self { name, content }
     }
 }
@@ -902,11 +902,11 @@ fn is_model_attr(attr: &syn::Attribute) -> bool {
 }
 
 trait Repr {
-    fn repr(&self) -> proc_macro2::TokenStream;
+    fn repr(&self) -> TokenStream;
 }
 
 impl Repr for Field {
-    fn repr(&self) -> proc_macro2::TokenStream {
+    fn repr(&self) -> TokenStream {
         let column_name = &self.column_name;
         let ty = &self.ty;
         let mut tokens = quote! {

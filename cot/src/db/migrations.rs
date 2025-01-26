@@ -342,6 +342,8 @@ enum OperationInner {
     },
 }
 
+/// A field in a model.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Copy, Clone)]
 pub struct Field {
     /// The name of the field

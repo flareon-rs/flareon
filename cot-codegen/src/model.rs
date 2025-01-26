@@ -190,16 +190,13 @@ impl FieldOpts {
         arg: &syn::AngleBracketedGenericArguments,
         type_to_find: &str,
     ) -> Option<syn::Type> {
-        arg.args
-            .iter()
-            .filter_map(|arg| {
-                if let syn::GenericArgument::Type(ty) = arg {
-                    Self::find_type_resolved(ty, type_to_find)
-                } else {
-                    None
-                }
-            })
-            .next()
+        arg.args.iter().find_map(|arg| {
+            if let syn::GenericArgument::Type(ty) = arg {
+                Self::find_type_resolved(ty, type_to_find)
+            } else {
+                None
+            }
+        })
     }
 
     /// Convert the field options into a field.
@@ -283,21 +280,17 @@ impl TryFrom<syn::Type> for ForeignKeySpec {
     type Error = syn::Error;
 
     fn try_from(ty: syn::Type) -> Result<Self, Self::Error> {
-        let type_path = if let syn::Type::Path(type_path) = &ty {
-            type_path
-        } else {
+        let syn::Type::Path(type_path) = &ty else {
             panic!("Expected a path type for a foreign key");
         };
 
-        let args = if let syn::PathArguments::AngleBracketed(args) = &type_path
+        let syn::PathArguments::AngleBracketed(args) = &type_path
             .path
             .segments
             .last()
             .expect("type path must have at least one segment")
             .arguments
-        {
-            args
-        } else {
+        else {
             return Err(syn::Error::new(
                 ty.span(),
                 "expected ForeignKey to have angle-bracketed generic arguments",

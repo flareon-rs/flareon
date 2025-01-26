@@ -347,6 +347,30 @@ impl Default for DatabaseUserApp {
 }
 
 impl DatabaseUserApp {
+    /// Create a new instance of the database user authentication app.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use cot::auth::db::DatabaseUserApp;
+    /// use cot::config::{DatabaseConfig, ProjectConfig};
+    /// use cot::CotProject;
+    ///
+    /// #[cot::main]
+    /// async fn main() -> cot::Result<CotProject> {
+    ///     let cot_project = CotProject::builder()
+    ///         .config(
+    ///             ProjectConfig::builder()
+    ///                 .database_config(DatabaseConfig::builder().url("sqlite::memory:").build())
+    ///                 .build(),
+    ///         )
+    ///         .register_app(DatabaseUserApp::new())
+    ///         .build()
+    ///         .await?;
+    ///
+    ///     Ok(cot_project)
+    /// }
+    /// ```
     #[must_use]
     pub fn new() -> Self {
         Self {}

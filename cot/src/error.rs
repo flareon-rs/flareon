@@ -26,6 +26,15 @@ impl Error {
         }
     }
 
+    /// Create a new error with a custom error message.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::Error;
+    ///
+    /// let error = Error::custom("An error occurred");
+    /// ```
     #[must_use]
     pub fn custom<E>(error: E) -> Self
     where
