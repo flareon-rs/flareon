@@ -2777,8 +2777,9 @@ checksum = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
 
 [[package]]
 name = "tower-livereload"
-version = "0.9.6-wip"
-source = "git+https://github.com/leotaku/tower-livereload.git?rev=106cc96f91b11a1eca6d3dfc86be4e766a90a415#106cc96f91b11a1eca6d3dfc86be4e766a90a415"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aa6b29b17d4540f2bd9ec304ad39d280c4bdf291d0ea6c4123eeba10939af84"
 dependencies = [
  "bytes",
  "http",
