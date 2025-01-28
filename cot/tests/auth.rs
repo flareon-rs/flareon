@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use cot::auth::db::{DatabaseUser, DatabaseUserCredentials};
 use cot::auth::{AuthRequestExt, Password};
 use cot::test::{TestDatabase, TestRequestBuilder};
@@ -31,13 +33,13 @@ async fn database_user(test_db: &mut TestDatabase) {
         .unwrap()
         .unwrap();
     assert!(user.is_authenticated());
-    assert_eq!(user.username(), Some("testuser"));
+    assert_eq!(user.username(), Some(Cow::from("testuser")));
 
     // Log in
     request.login(user).await.unwrap();
     let user = request.user().await.unwrap();
     assert!(user.is_authenticated());
-    assert_eq!(user.username(), Some("testuser"));
+    assert_eq!(user.username(), Some(Cow::from("testuser")));
 
     // Invalid credentials
     let user = request
@@ -53,7 +55,7 @@ async fn database_user(test_db: &mut TestDatabase) {
     let mut request = request_builder.clone().with_session_from(&request).build();
     let user = request.user().await.unwrap();
     assert!(user.is_authenticated());
-    assert_eq!(user.username(), Some("testuser"));
+    assert_eq!(user.username(), Some(Cow::from("testuser")));
 
     // Log out
     request.logout().await.unwrap();

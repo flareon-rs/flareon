@@ -1,5 +1,6 @@
 //! Test utilities for Cot projects.
 
+use std::collections::HashMap;
 use std::future::poll_fn;
 use std::sync::Arc;
 
@@ -71,6 +72,10 @@ impl Client {
     /// # Ok(())
     /// }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Propagates any errors that the request handler might return.
     pub async fn get(&mut self, path: &str) -> Result<Response> {
         self.request(match http::Request::get(path).body(Body::empty()) {
             Ok(request) => request,
@@ -98,6 +103,10 @@ impl Client {
     /// # Ok(())
     /// }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Propagates any errors that the request handler might return.
     pub async fn request(&mut self, mut request: Request) -> Result<Response> {
         prepare_request(&mut request, self.context.clone());
 
@@ -340,6 +349,30 @@ impl TestRequestBuilder {
         self
     }
 
+    /// Add JSON data to the request builder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::test::TestRequestBuilder;
+    ///
+    /// #[derive(serde::Serialize)]
+    /// struct Data {
+    ///     key: String,
+    ///     value: i32,
+    /// }
+    ///
+    /// let request = TestRequestBuilder::post("/")
+    ///     .json(&Data {
+    ///         key: "value".to_string(),
+    ///         value: 42,
+    ///     })
+    ///     .build();
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the JSON serialization fails.
     #[cfg(feature = "json")]
     pub fn json<T: serde::Serialize>(&mut self, data: &T) -> &mut Self {
         self.json_data = Some(serde_json::to_string(data).expect("Failed to serialize JSON"));
@@ -428,6 +461,29 @@ impl TestRequestBuilder {
     }
 }
 
+/// A test database.
+///
+/// This is used to create a separate database for testing and run migrations on
+/// it.
+///
+/// # Examples
+///
+/// ```
+/// use cot::test::{TestDatabase, TestRequestBuilder};
+///
+/// # #[tokio::main]
+/// # async fn main() -> cot::Result<()> {
+/// let mut test_database = TestDatabase::new_sqlite().await?;
+/// let request = TestRequestBuilder::get("/")
+///     .database(test_database.database())
+///     .build();
+///
+/// // do something with the request
+///
+/// test_database.cleanup().await?;
+/// # Ok(())
+/// # }
+/// ```
 #[cfg(feature = "db")]
 #[derive(Debug)]
 pub struct TestDatabase {
@@ -451,6 +507,26 @@ impl TestDatabase {
     /// # Errors
     ///
     /// If the database could not have been created.
+    ///
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::test::{TestDatabase, TestRequestBuilder};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let mut test_database = TestDatabase::new_sqlite().await?;
+    /// let request = TestRequestBuilder::get("/")
+    ///     .database(test_database.database())
+    ///     .build();
+    ///
+    /// // do something with the request
+    ///
+    /// test_database.cleanup().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn new_sqlite() -> Result<Self> {
         let database = Database::new("sqlite::memory:").await?;
         Ok(Self::new(database, TestDatabaseKind::Sqlite))
@@ -479,6 +555,25 @@ impl TestDatabase {
     /// Returns an error if the old test database could not be dropped.
     ///
     /// Returns an error if the new test database could not be created.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use cot::test::{TestDatabase, TestRequestBuilder};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let mut test_database = TestDatabase::new_postgres("my_test").await?;
+    /// let request = TestRequestBuilder::get("/")
+    ///     .database(test_database.database())
+    ///     .build();
+    ///
+    /// // do something with the request
+    ///
+    /// test_database.cleanup().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn new_postgres(test_name: &str) -> Result<Self> {
         let db_url = std::env::var("POSTGRES_URL")
             .unwrap_or_else(|_| "postgresql://cot:cot@localhost".to_string());
@@ -528,6 +623,25 @@ impl TestDatabase {
     /// Returns an error if the old test database could not be dropped.
     ///
     /// Returns an error if the new test database could not be created.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use cot::test::{TestDatabase, TestRequestBuilder};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let mut test_database = TestDatabase::new_mysql("my_test").await?;
+    /// let request = TestRequestBuilder::get("/")
+    ///     .database(test_database.database())
+    ///     .build();
+    ///
+    /// // do something with the request
+    ///
+    /// test_database.cleanup().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn new_mysql(test_name: &str) -> Result<Self> {
         let db_url =
             std::env::var("MYSQL_URL").unwrap_or_else(|_| "mysql://root:@localhost".to_string());
@@ -553,6 +667,57 @@ impl TestDatabase {
         ))
     }
 
+    /// Add the default Cot authentication migrations to the test database.
+    ///
+    /// This is useful if you want to test something that requires
+    /// authentication.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::test::{TestDatabase, TestRequestBuilder};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let mut test_database = TestDatabase::new_sqlite().await?;
+    /// test_database.with_auth().run_migrations().await;
+    ///
+    /// let request = TestRequestBuilder::get("/")
+    ///     .with_db_auth(test_database.database())
+    ///     .build();
+    ///
+    /// // do something with the request
+    ///
+    /// test_database.cleanup().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "db")]
+    pub fn with_auth(&mut self) -> &mut Self {
+        self.add_migrations(cot::auth::db::migrations::MIGRATIONS.to_vec());
+        self
+    }
+
+    /// Add migrations to the test database.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::test::{TestDatabase, TestMigration};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let mut test_database = TestDatabase::new_sqlite().await?;
+    ///
+    /// test_database.add_migrations(vec![TestMigration::new(
+    ///     "auth",
+    ///     "create_users",
+    ///     vec![],
+    ///     vec![],
+    /// )]);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn add_migrations<T: DynMigration + Send + Sync + 'static, V: IntoIterator<Item = T>>(
         &mut self,
         migrations: V,
@@ -562,12 +727,27 @@ impl TestDatabase {
         self
     }
 
-    #[cfg(feature = "db")]
-    pub fn with_auth(&mut self) -> &mut Self {
-        self.add_migrations(cot::auth::db::migrations::MIGRATIONS.to_vec());
-        self
-    }
-
+    /// Run the migrations on the test database.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::test::{TestDatabase, TestMigration};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let mut test_database = TestDatabase::new_sqlite().await?;
+    /// test_database.add_migrations(vec![TestMigration::new(
+    ///     "auth",
+    ///     "create_users",
+    ///     vec![],
+    ///     vec![],
+    /// )]);
+    ///
+    /// test_database.run_migrations().await;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn run_migrations(&mut self) -> &mut Self {
         if !self.migrations.is_empty() {
             let engine = MigrationEngine::new(std::mem::take(&mut self.migrations))
@@ -580,11 +760,46 @@ impl TestDatabase {
         self
     }
 
+    /// Get the database.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::test::{TestDatabase, TestRequestBuilder};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let database = TestDatabase::new_sqlite().await?;
+    ///
+    /// let request = TestRequestBuilder::get("/")
+    ///     .database(database.database())
+    ///     .build();
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn database(&self) -> Arc<Database> {
         self.database.clone()
     }
 
+    /// Cleanup the test database.
+    ///
+    /// This removes the test database and closes the connection. Note that this
+    /// means that the database will not be dropped if the test panics, nor will
+    /// it be dropped if you don't call this function.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::test::TestDatabase;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let mut test_database = TestDatabase::new_sqlite().await?;
+    /// test_database.cleanup().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn cleanup(&self) -> Result<()> {
         self.database.close().await?;
         match &self.kind {
@@ -626,6 +841,26 @@ enum TestDatabaseKind {
     MySql { db_url: String, db_name: String },
 }
 
+/// A test migration.
+///
+/// This can be used if you need a dynamically created migration for testing.
+///
+/// # Examples
+///
+/// ```
+/// use cot::db::migrations::{Field, Operation};
+/// use cot::db::{ColumnType, Identifier};
+/// use cot::test::{TestDatabase, TestMigration};
+///
+/// const OPERATION: Operation = Operation::create_model()
+///     .table_name(Identifier::new("myapp__users"))
+///     .fields(&[Field::new(Identifier::new("id"), ColumnType::Integer)
+///         .auto()
+///         .primary_key()])
+///     .build();
+///
+/// let migration = TestMigration::new("auth", "create_users", vec![], vec![OPERATION]);
+/// ```
 #[cfg(feature = "db")]
 #[derive(Debug, Clone)]
 pub struct TestMigration {
@@ -637,6 +872,24 @@ pub struct TestMigration {
 
 #[cfg(feature = "db")]
 impl TestMigration {
+    /// Create a new test migration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::{Field, Operation};
+    /// use cot::db::{ColumnType, Identifier};
+    /// use cot::test::{TestDatabase, TestMigration};
+    ///
+    /// const OPERATION: Operation = Operation::create_model()
+    ///     .table_name(Identifier::new("myapp__users"))
+    ///     .fields(&[Field::new(Identifier::new("id"), ColumnType::Integer)
+    ///         .auto()
+    ///         .primary_key()])
+    ///     .build();
+    ///
+    /// let migration = TestMigration::new("auth", "create_users", vec![], vec![OPERATION]);
+    /// ```
     #[must_use]
     pub fn new<D: Into<Vec<MigrationDependency>>, O: Into<Vec<Operation>>>(
         app_name: &'static str,

@@ -10,6 +10,7 @@
 pub mod db;
 
 use std::any::Any;
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -27,22 +28,36 @@ use crate::config::SecretKey;
 use crate::db::{ColumnType, DatabaseField, DbValue, FromDbValue, SqlxValueRef, ToDbValue};
 use crate::request::{Request, RequestExt};
 
+/// An error that occurs during authentication.
 #[derive(Debug, Error)]
 pub enum AuthError {
+    /// The password hash that is passed to [`PasswordHash::new`] is invalid.
     #[error("Password hash is invalid")]
     PasswordHashInvalid,
+    /// An error occurred while accessing the session object.
     #[error("Error while accessing the session object")]
-    SessionsError(#[from] tower_sessions::session::Error),
+    SessionAccess(#[from] tower_sessions::session::Error),
+    /// An error occurred while accessing the user object.
     #[error("Error while accessing the user object")]
-    UserBackendError(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+    UserBackend(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
 impl AuthError {
+    /// Creates a new [`AuthError::UserBackend`] error from a backend error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::AuthError;
+    ///
+    /// let error = AuthError::backend_error(std::io::Error::new(std::io::ErrorKind::Other, "test"));
+    /// ```
     pub fn backend_error(error: impl std::error::Error + Send + Sync + 'static) -> Self {
-        Self::UserBackendError(Box::new(error))
+        Self::UserBackend(Box::new(error))
     }
 }
 
+/// The result type for authentication operations.
 pub type Result<T> = std::result::Result<T, AuthError>;
 
 /// A user object that can be authenticated.
@@ -78,7 +93,7 @@ pub trait User {
     // mockall requires lifetimes to be specified here
     // (see related issue: https://github.com/asomers/mockall/issues/571)
     #[allow(clippy::needless_lifetimes)]
-    fn username<'a>(&'a self) -> Option<&'a str> {
+    fn username<'a>(&'a self) -> Option<Cow<'a, str>> {
         None
     }
 
@@ -142,6 +157,54 @@ pub trait User {
     /// If this method returns `None`, the session hash is not checked.
     ///
     /// [`AnonymousUser`] always returns `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::borrow::Cow;
+    ///
+    /// use cot::auth::{Password, SessionAuthHash, User, UserId};
+    /// use cot::config::SecretKey;
+    /// use hmac::{Hmac, KeyInit, Mac};
+    /// use sha2::Sha512;
+    ///
+    /// struct MyUser {
+    ///     id: i64,
+    ///     password: Password,
+    /// }
+    ///
+    /// type SessionAuthHmac = Hmac<Sha512>;
+    ///
+    /// impl User for MyUser {
+    ///     fn id(&self) -> Option<UserId> {
+    ///         Some(UserId::Int(self.id))
+    ///     }
+    ///
+    ///     fn username(&self) -> Option<Cow<'_, str>> {
+    ///         Some(Cow::from(format!("user{}", self.id)))
+    ///     }
+    ///
+    ///     fn is_active(&self) -> bool {
+    ///         true
+    ///     }
+    ///
+    ///     fn is_authenticated(&self) -> bool {
+    ///         true
+    ///     }
+    ///
+    ///     fn session_auth_hash(&self, secret_key: &SecretKey) -> Option<SessionAuthHash> {
+    ///         // thanks to this, the session hash is invalidated when the user changes their password
+    ///         // and the user is automatically logged out
+    ///
+    ///         let mut mac = <Hmac<Sha512>>::new_from_slice(secret_key.as_bytes())
+    ///             .expect("HMAC can take key of any size");
+    ///         mac.update(self.password.as_str().as_bytes());
+    ///         let hmac_data = mac.finalize().into_bytes();
+    ///
+    ///         Some(SessionAuthHash::new(&hmac_data))
+    ///     }
+    /// }
+    /// ```
     #[allow(unused_variables)]
     fn session_auth_hash(&self, secret_key: &SecretKey) -> Option<SessionAuthHash> {
         None
@@ -152,11 +215,41 @@ pub trait User {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum UserId {
+    /// A user ID that is an integer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::UserId;
+    ///
+    /// let user_id = UserId::Int(42);
+    /// ```
     Int(i64),
+    /// A user ID that is a string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::UserId;
+    ///
+    /// let user_id = UserId::String("42".to_string());
+    /// ```
     String(String),
 }
 
 impl UserId {
+    /// Returns the user ID as an integer.
+    ///
+    /// Returns [`None`] if the user ID is not an integer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::UserId;
+    ///
+    /// let user_id = UserId::Int(42);
+    /// assert_eq!(user_id.as_int(), Some(42));
+    /// ```
     #[must_use]
     pub fn as_int(&self) -> Option<i64> {
         match self {
@@ -165,6 +258,18 @@ impl UserId {
         }
     }
 
+    /// Returns the user ID as a string.
+    ///
+    /// Returns [`None`] if the user ID is not a string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::UserId;
+    ///
+    /// let user_id = UserId::String("42".to_string());
+    /// assert_eq!(user_id.as_string(), Some("42"));
+    /// ```
     #[must_use]
     pub fn as_string(&self) -> Option<&str> {
         match self {
@@ -204,21 +309,98 @@ impl User for AnonymousUser {}
 /// The implementation of the [`Debug`] trait for this type hides the session
 /// auth hash value to prevent it from being leaked in logs or other debug
 /// output.
+///
+/// # Examples
+///
+/// ```
+/// use std::borrow::Cow;
+///
+/// use cot::auth::{Password, SessionAuthHash, User, UserId};
+/// use cot::config::SecretKey;
+/// use hmac::{Hmac, KeyInit, Mac};
+/// use sha2::Sha512;
+///
+/// struct MyUser {
+///     id: i64,
+///     password: Password,
+/// }
+///
+/// type SessionAuthHmac = Hmac<Sha512>;
+///
+/// impl User for MyUser {
+///     fn id(&self) -> Option<UserId> {
+///         Some(UserId::Int(self.id))
+///     }
+///
+///     fn username(&self) -> Option<Cow<'_, str>> {
+///         Some(Cow::from(format!("user{}", self.id)))
+///     }
+///
+///     fn is_active(&self) -> bool {
+///         true
+///     }
+///
+///     fn is_authenticated(&self) -> bool {
+///         true
+///     }
+///
+///     fn session_auth_hash(&self, secret_key: &SecretKey) -> Option<SessionAuthHash> {
+///         // thanks to this, the session hash is invalidated when the user changes their password
+///         // and the user is automatically logged out
+///
+///         let mut mac = <Hmac<Sha512>>::new_from_slice(secret_key.as_bytes())
+///             .expect("HMAC can take key of any size");
+///         mac.update(self.password.as_str().as_bytes());
+///         let hmac_data = mac.finalize().into_bytes();
+///
+///         Some(SessionAuthHash::new(&hmac_data))
+///     }
+/// }
+/// ```
 #[repr(transparent)]
 #[derive(Clone)]
 pub struct SessionAuthHash(Box<[u8]>);
 
 impl SessionAuthHash {
+    /// Creates a new session authentication hash object from a byte slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::SessionAuthHash;
+    ///
+    /// let hash = SessionAuthHash::new(&[1, 2, 3, 4]);
+    /// ```
     #[must_use]
     pub fn new(hash: &[u8]) -> Self {
         Self(Box::from(hash))
     }
 
+    /// Returns the session authentication hash as a byte slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::SessionAuthHash;
+    ///
+    /// let hash = SessionAuthHash::new(&[1, 2, 3, 4]);
+    /// assert_eq!(hash.as_bytes(), &[1, 2, 3, 4]);
+    /// ```
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 
+    /// Returns the session authentication hash as a byte slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::SessionAuthHash;
+    ///
+    /// let hash = SessionAuthHash::new(&[1, 2, 3, 4]);
+    /// assert_eq!(hash.into_bytes(), Box::from([1, 2, 3, 4]));
+    /// ```
     #[must_use]
     pub fn into_bytes(self) -> Box<[u8]> {
         self.0
@@ -310,7 +492,9 @@ impl PasswordHash {
     pub fn from_password(password: &Password) -> Self {
         let hash = password_auth::generate_hash(password.as_str());
 
-        assert!(hash.len() <= MAX_PASSWORD_HASH_LENGTH as usize);
+        if hash.len() > MAX_PASSWORD_HASH_LENGTH as usize {
+            unreachable!("password hash should never exceed {MAX_PASSWORD_HASH_LENGTH} bytes");
+        }
         Self(hash)
     }
 
@@ -346,7 +530,9 @@ impl PasswordHash {
 
         match password_auth::verify_password(password.as_str(), &self.0) {
             Ok(()) => {
-                let is_obsolete = password_auth::is_hash_obsolete(&self.0).expect(VALID_ERROR_STR);
+                let Ok(is_obsolete) = password_auth::is_hash_obsolete(&self.0) else {
+                    unreachable!("{VALID_ERROR_STR}");
+                };
                 if is_obsolete {
                     PasswordVerificationResult::OkObsolete(PasswordHash::from_password(password))
                 } else {
@@ -360,11 +546,41 @@ impl PasswordHash {
         }
     }
 
+    /// Returns the password hash as a string.
+    ///
+    /// For security reasons, you should avoid using this method as much as
+    /// possible. Typically, you should use the [`PasswordHash::verify()`]
+    /// method to verify a password against the hash. This method is mostly
+    /// useful for persisting the password hash externally.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::{Password, PasswordHash};
+    ///
+    /// let hash = PasswordHash::from_password(&Password::new("password"));
+    /// assert!(!hash.as_str().is_empty());
+    /// ```
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Consumes the object and returns the password hash as a string.
+    ///
+    /// For security reasons, you should avoid using this method as much as
+    /// possible. Typically, you should use the [`PasswordHash::verify()`]
+    /// method to verify a password against the hash. This method is mostly
+    /// useful for persisting the password hash externally.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::{Password, PasswordHash};
+    ///
+    /// let hash = PasswordHash::from_password(&Password::new("password"));
+    /// assert!(!hash.into_string().is_empty());
+    /// ```
     #[must_use]
     pub fn into_string(self) -> String {
         self.0
@@ -444,7 +660,8 @@ impl ToDbValue for PasswordHash {
 /// instead of a raw String, as it has a [`Debug`] implementation that hides
 /// the password value.
 ///
-/// For persisting passwords in the database, use [`PasswordHash`].
+/// For persisting passwords in the database, and verifying passwords against
+/// the hash, use [`PasswordHash`].
 ///
 /// # Security
 ///
@@ -483,11 +700,31 @@ impl Password {
         Self(password.into())
     }
 
+    /// Returns the password as a string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::Password;
+    ///
+    /// let password = Password::new("password");
+    /// assert_eq!(password.as_str(), "password");
+    /// ```
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Consumes the object and returns the password as a string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::Password;
+    ///
+    /// let password = Password::new("password");
+    /// assert_eq!(password.into_string(), "password");
+    /// ```
     #[must_use]
     pub fn into_string(self) -> String {
         self.0
@@ -713,6 +950,14 @@ async fn session_auth_hash_valid(
 /// An authentication backend.
 #[async_trait]
 pub trait AuthBackend: Send + Sync {
+    /// Authenticates a user with the given credentials.
+    ///
+    /// This method returns a user object if the authentication is successful.
+    /// If the authentication fails, it returns `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user object cannot be fetched.
     async fn authenticate(
         &self,
         request: &Request,
@@ -763,7 +1008,7 @@ pub trait AuthBackend: Send + Sync {
 }
 
 /// A no-op authentication backend.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct NoAuthBackend;
 
 #[async_trait]
@@ -965,7 +1210,9 @@ mod tests {
             let mut mock_user = MockUser::new();
             mock_user.expect_id().return_const(UserId::Int(1));
             mock_user.expect_session_auth_hash().return_const(None);
-            mock_user.expect_username().return_const(Some("mockuser"));
+            mock_user
+                .expect_username()
+                .return_const(Some(Cow::from("mockuser")));
             mock_user
         });
 
@@ -975,20 +1222,22 @@ mod tests {
             .await
             .unwrap();
         let user = request.user().await.unwrap();
-        assert_eq!(user.username(), Some("mockuser"));
+        assert_eq!(user.username(), Some(Cow::from("mockuser")));
     }
 
     #[tokio::test]
     async fn authenticate() {
         let mut request = test_request(|| {
             let mut mock_user = MockUser::new();
-            mock_user.expect_username().return_const(Some("mockuser"));
+            mock_user
+                .expect_username()
+                .return_const(Some(Cow::from("mockuser")));
             mock_user
         });
 
         let credentials: &(dyn Any + Send + Sync) = &();
         let user = request.authenticate(credentials).await.unwrap().unwrap();
-        assert_eq!(user.username(), Some("mockuser"));
+        assert_eq!(user.username(), Some(Cow::from("mockuser")));
     }
 
     #[tokio::test]
@@ -998,11 +1247,13 @@ mod tests {
         let mut mock_user = MockUser::new();
         mock_user.expect_id().return_const(UserId::Int(1));
         mock_user.expect_session_auth_hash().return_const(None);
-        mock_user.expect_username().return_const(Some("mockuser"));
+        mock_user
+            .expect_username()
+            .return_const(Some(Cow::from("mockuser")));
 
         request.login(Box::new(mock_user)).await.unwrap();
         let user = request.user().await.unwrap();
-        assert_eq!(user.username(), Some("mockuser"));
+        assert_eq!(user.username(), Some(Cow::from("mockuser")));
 
         request.logout().await.unwrap();
         let user = request.user().await.unwrap();
@@ -1037,7 +1288,9 @@ mod tests {
             mock_user
                 .expect_session_auth_hash()
                 .returning(move |_| Some(session_auth_hash_clone.lock().unwrap().clone()));
-            mock_user.expect_username().return_const(Some("mockuser"));
+            mock_user
+                .expect_username()
+                .return_const(Some(Cow::from("mockuser")));
             mock_user
         };
 
@@ -1045,12 +1298,12 @@ mod tests {
 
         request.login(Box::new(create_user())).await.unwrap();
         let user = request.user().await.unwrap();
-        assert_eq!(user.username(), Some("mockuser"));
+        assert_eq!(user.username(), Some(Cow::from("mockuser")));
 
         // Check the user can be retrieved again
         request.extensions_mut().remove::<UserExtension>();
         let user = request.user().await.unwrap();
-        assert_eq!(user.username(), Some("mockuser"));
+        assert_eq!(user.username(), Some(Cow::from("mockuser")));
 
         // Verify the user is logged out when the session hash changes
         request.extensions_mut().remove::<UserExtension>();
@@ -1077,7 +1330,9 @@ mod tests {
                 .expect_session_auth_hash()
                 .with(eq(SecretKey::new(TEST_KEY_3)))
                 .returning(move |_| Some(SessionAuthHash::new(&[7, 8, 9])));
-            mock_user.expect_username().return_const(Some("mockuser"));
+            mock_user
+                .expect_username()
+                .return_const(Some(Cow::from("mockuser")));
             mock_user
         };
 
@@ -1085,7 +1340,7 @@ mod tests {
 
         request.login(Box::new(create_user())).await.unwrap();
         let user = request.user().await.unwrap();
-        assert_eq!(user.username(), Some("mockuser"));
+        assert_eq!(user.username(), Some(Cow::from("mockuser")));
 
         let replace_keys = move |request: &mut Request, secret_key, fallback_keys| {
             let new_config = test_project_config(
@@ -1106,12 +1361,12 @@ mod tests {
             vec![SecretKey::new(TEST_KEY_1)],
         );
         let user = request.user().await.unwrap();
-        assert_eq!(user.username(), Some("mockuser"));
+        assert_eq!(user.username(), Some(Cow::from("mockuser")));
 
         // Remove fallback key and verify the user is still logged in
         replace_keys(&mut request, SecretKey::new(TEST_KEY_2), vec![]);
         let user = request.user().await.unwrap();
-        assert_eq!(user.username(), Some("mockuser"));
+        assert_eq!(user.username(), Some(Cow::from("mockuser")));
 
         // Remove both keys and verify the user is logged out
         replace_keys(&mut request, SecretKey::new(TEST_KEY_3), vec![]);

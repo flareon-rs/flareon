@@ -27,6 +27,7 @@ pub enum ModelType {
 #[darling(forward_attrs(allow, doc, cfg), supports(struct_named))]
 pub struct ModelOpts {
     pub ident: syn::Ident,
+    pub vis: syn::Visibility,
     pub generics: syn::Generics,
     pub data: darling::ast::Data<darling::util::Ignored, FieldOpts>,
 }
@@ -111,6 +112,7 @@ impl ModelOpts {
 
         Ok(Model {
             name: self.ident.clone(),
+            vis: self.vis.clone(),
             original_name,
             #[cfg(feature = "symbol-resolver")]
             resolved_ty: ty,
@@ -238,6 +240,7 @@ impl FieldOpts {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Model {
     pub name: syn::Ident,
+    pub vis: syn::Visibility,
     pub original_name: String,
     /// The type of the model resolved by symbol resolver.
     #[cfg(feature = "symbol-resolver")]

@@ -160,7 +160,7 @@ impl<T: Model> Query<T> {
 /// An expression that can be used to filter, update, or delete rows.
 ///
 /// This is used to create complex queries with multiple conditions. Typically,
-/// it is only internally used by the [`cot::query`] macro to create a
+/// it is only internally used by the [`cot::db::query!`] macro to create a
 /// [`Query`].
 ///
 /// # Example
@@ -1083,21 +1083,21 @@ mod tests {
     }
 
     #[test]
-    fn test_new_query() {
+    fn query_new() {
         let query: Query<MockModel> = Query::new();
 
         assert!(query.filter.is_none());
     }
 
     #[test]
-    fn test_default_query() {
+    fn query_default() {
         let query: Query<MockModel> = Query::default();
 
         assert!(query.filter.is_none());
     }
 
     #[test]
-    fn test_query_filter() {
+    fn query_filter() {
         let mut query: Query<MockModel> = Query::new();
 
         query.filter(Expr::eq(Expr::field("name"), Expr::value("John")));
@@ -1106,7 +1106,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_query_all() {
+    async fn query_all() {
         let mut db = MockDatabaseBackend::new();
         db.expect_query().returning(|_| Ok(Vec::<MockModel>::new()));
         let query: Query<MockModel> = Query::new();
@@ -1117,7 +1117,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_query_get() {
+    async fn query_get() {
         let mut db = MockDatabaseBackend::new();
         db.expect_get().returning(|_| Ok(Option::<MockModel>::None));
         let query: Query<MockModel> = Query::new();
@@ -1128,7 +1128,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_query_exists() {
+    async fn query_exists() {
         let mut db = MockDatabaseBackend::new();
         db.expect_exists()
             .returning(|_: &Query<MockModel>| Ok(false));
@@ -1140,7 +1140,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_query_delete() {
+    async fn query_delete() {
         let mut db = MockDatabaseBackend::new();
         db.expect_delete()
             .returning(|_: &Query<MockModel>| Ok(StatementResult::new(RowsNum(0))));
@@ -1152,7 +1152,7 @@ mod tests {
     }
 
     #[test]
-    fn test_expr_field() {
+    fn expr_field() {
         let expr = Expr::field("name");
         if let Expr::Field(identifier) = expr {
             assert_eq!(identifier.to_string(), "name");
@@ -1162,7 +1162,7 @@ mod tests {
     }
 
     #[test]
-    fn test_expr_value() {
+    fn expr_value() {
         let expr = Expr::value(30);
         if let Expr::Value(value) = expr {
             assert_eq!(value.to_string(), "30");

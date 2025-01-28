@@ -70,6 +70,7 @@ fn remove_helper_field_attributes(fields: &mut syn::Fields) -> &Punctuated<syn::
 #[derive(Debug)]
 struct ModelBuilder {
     name: Ident,
+    vis: syn::Visibility,
     table_name: String,
     pk_field: Field,
     fields_struct_name: Ident,
@@ -92,6 +93,7 @@ impl ModelBuilder {
         let field_count = model.field_count();
         let mut model_builder = Self {
             name: model.name.clone(),
+            vis: model.vis,
             table_name: model.table_name,
             pk_field: model.pk_field.clone(),
             fields_struct_name: format_ident!("{}Fields", model.name),
@@ -136,6 +138,7 @@ impl ModelBuilder {
         ));
 
         self.fields_as_field_refs.push(quote!(
+            #[doc = concat!("Field reference to [`", stringify!(#name), "::", stringify!(#column_name), "`].")]
             pub const #name: #orm_ident::query::FieldRef<#ty> =
                 #orm_ident::query::FieldRef::<#ty>::new(#orm_ident::Identifier::new(#column_name));
         ));
@@ -219,12 +222,15 @@ impl ModelBuilder {
 
     #[must_use]
     fn build_fields_struct(&self) -> TokenStream {
+        let name = &self.name;
+        let vis = &self.vis;
         let fields_struct_name = &self.fields_struct_name;
         let fields_as_field_refs = &self.fields_as_field_refs;
 
         quote! {
+            #[doc = concat!("Fields of the model [`", stringify!(#name), "`].")]
             #[derive(::core::fmt::Debug)]
-            pub struct #fields_struct_name;
+            #vis struct #fields_struct_name;
 
             #[allow(non_upper_case_globals)]
             impl #fields_struct_name {

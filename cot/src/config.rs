@@ -69,11 +69,30 @@ pub struct ProjectConfig {
 }
 
 impl ProjectConfigBuilder {
+    /// Sets the authentication backend to use.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::NoAuthBackend;
+    /// use cot::config::ProjectConfig;
+    ///
+    /// let config = ProjectConfig::builder().auth_backend(NoAuthBackend).build();
+    /// ```
     pub fn auth_backend<T: AuthBackend + 'static>(&mut self, auth_backend: T) -> &mut Self {
         self.auth_backend = Some(Arc::new(auth_backend));
         self
     }
 
+    /// Builds the project configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::ProjectConfig;
+    ///
+    /// let config = ProjectConfig::builder().build();
+    /// ```
     #[must_use]
     pub fn build(&self) -> ProjectConfig {
         ProjectConfig {
@@ -167,26 +186,89 @@ fn default_auth_backend() -> Arc<dyn AuthBackend> {
 }
 
 impl ProjectConfig {
+    /// Create a new [`ProjectConfigBuilder`] to build a [`ProjectConfig`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::ProjectConfig;
+    ///
+    /// let config = ProjectConfig::builder().build();
+    /// ```
     #[must_use]
     pub fn builder() -> ProjectConfigBuilder {
         ProjectConfigBuilder::default()
     }
 
+    /// Get the secret key stored in the project configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::{ProjectConfig, SecretKey};
+    ///
+    /// let config = ProjectConfig::builder()
+    ///     .secret_key(SecretKey::new(&[1, 2, 3]))
+    ///     .build();
+    /// assert_eq!(config.secret_key().as_bytes(), &[1, 2, 3]);
+    /// ```
     #[must_use]
     pub fn secret_key(&self) -> &SecretKey {
         &self.secret_key
     }
 
+    /// Get the fallback secret keys stored in the project configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::{ProjectConfig, SecretKey};
+    ///
+    /// let config = ProjectConfig::builder()
+    ///     .secret_key(SecretKey::new(&[1, 2, 3]))
+    ///     .fallback_secret_keys(vec![SecretKey::new(&[4, 5, 6])])
+    ///     .build();
+    /// assert_eq!(config.fallback_secret_keys(), &[SecretKey::new(&[4, 5, 6])]);
+    /// ```
     #[must_use]
     pub fn fallback_secret_keys(&self) -> &[SecretKey] {
         &self.fallback_secret_keys
     }
 
+    /// Get the authentication backend stored in the project configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::UserId;
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    ///
+    /// fn index(request: Request) -> cot::Result<Response> {
+    ///     let user = request
+    ///         .project_config()
+    ///         .auth_backend()
+    ///         .get_by_id(&request, UserId::Int(123));
+    ///
+    ///     // ... do something with the user
+    ///     # todo!()
+    /// }
+    /// ```
     #[must_use]
     pub fn auth_backend(&self) -> &dyn AuthBackend {
         &*self.auth_backend
     }
 
+    /// Get the database configuration stored in the project configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::ProjectConfig;
+    ///
+    /// let config = ProjectConfig::builder().build();
+    /// assert_eq!(config.database_config().url(), "sqlite::memory:");
+    /// ```
     #[must_use]
     #[cfg(feature = "db")]
     pub fn database_config(&self) -> &DatabaseConfig {

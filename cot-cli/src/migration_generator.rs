@@ -1377,6 +1377,7 @@ mod tests {
             },
             model: Model {
                 name: format_ident!("TestModel"),
+                vis: syn::Visibility::Inherited,
                 original_name: "TestModel".to_string(),
                 resolved_ty: parse_quote!(TestModel),
                 model_type: Default::default(),

@@ -131,6 +131,12 @@ pub type Method = http::Method;
 /// and return a [`Result<Response>`].
 #[async_trait]
 pub trait RequestHandler {
+    /// Handle the request and returns a response.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the request handler fails to handle
+    /// the request.
     async fn handle(&self, request: Request) -> Result<Response>;
 }
 
@@ -633,7 +639,7 @@ pub struct CotProjectBuilder<S> {
 
 impl CotProjectBuilder<Uninitialized> {
     #[must_use]
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             context: AppContext {
                 config: Arc::new(ProjectConfig::default()),
@@ -678,6 +684,34 @@ impl CotProjectBuilder<Uninitialized> {
         self
     }
 
+    /// Registers an app with views.
+    ///
+    /// This method is used to register an app with views. The app's views will
+    /// be available at the given URL prefix.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use cot::{CotApp, CotProject};
+    ///
+    /// struct HelloApp;
+    ///
+    /// impl CotApp for HelloApp {
+    ///     fn name(&self) -> &'static str {
+    ///         env!("CARGO_PKG_NAME")
+    ///     }
+    /// }
+    ///
+    /// #[cot::main]
+    /// async fn main() -> cot::Result<CotProject> {
+    ///     let cot_project = CotProject::builder()
+    ///         .register_app_with_views(HelloApp, "/hello")
+    ///         .build()
+    ///         .await?;
+    ///
+    ///     Ok(cot_project)
+    /// }
+    /// ```
     #[must_use]
     pub fn register_app_with_views<T: CotApp + 'static>(
         mut self,
@@ -689,12 +723,58 @@ impl CotProjectBuilder<Uninitialized> {
         self
     }
 
+    /// Registers an app.
+    ///
+    /// This method is used to register an app. The app's views, if any, will
+    /// not be available.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use cot::{CotApp, CotProject};
+    ///
+    /// struct HelloApp;
+    ///
+    /// impl CotApp for HelloApp {
+    ///     fn name(&self) -> &'static str {
+    ///         env!("CARGO_PKG_NAME")
+    ///     }
+    /// }
+    ///
+    /// #[cot::main]
+    /// async fn main() -> cot::Result<CotProject> {
+    ///     let cot_project = CotProject::builder().register_app(HelloApp).build().await?;
+    ///
+    ///     Ok(cot_project)
+    /// }
+    /// ```
     #[must_use]
     pub fn register_app<T: CotApp + 'static>(mut self, app: T) -> Self {
         self.context.apps.push(Box::new(app));
         self
     }
 
+    /// Adds middleware to the project.
+    ///
+    /// This method is used to add middleware to the project. The middleware
+    /// will be applied to all routes in the project.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use cot::middleware::LiveReloadMiddleware;
+    /// use cot::{CotApp, CotProject};
+    ///
+    /// #[cot::main]
+    /// async fn main() -> cot::Result<CotProject> {
+    ///     let cot_project = CotProject::builder()
+    ///         .middleware(LiveReloadMiddleware::new())
+    ///         .build()
+    ///         .await?;
+    ///
+    ///     Ok(cot_project)
+    /// }
+    /// ```
     #[must_use]
     pub fn middleware<M>(
         self,
@@ -720,6 +800,19 @@ impl CotProjectBuilder<Uninitialized> {
     }
 
     /// Builds the Cot project instance.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use cot::{CotApp, CotProject};
+    ///
+    /// #[cot::main]
+    /// async fn main() -> cot::Result<CotProject> {
+    ///     let cot_project = CotProject::builder().build().await?;
+    ///
+    ///     Ok(cot_project)
+    /// }
+    /// ```
     pub async fn build(self) -> Result<CotProject> {
         self.into_builder_with_service().build().await
     }
@@ -743,6 +836,36 @@ where
     S: Service<Request, Response = Response, Error = Error> + Send + Sync + Clone + 'static,
     S::Future: Send,
 {
+    /// Adds middleware to the project.
+    ///
+    /// This method is used to add middleware to the project. The middleware
+    /// will be applied to all routes in the project.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use cot::middleware::LiveReloadMiddleware;
+    /// use cot::{CotApp, CotProject};
+    ///
+    /// struct HelloApp;
+    ///
+    /// impl CotApp for HelloApp {
+    ///     fn name(&self) -> &'static str {
+    ///         env!("CARGO_PKG_NAME")
+    ///     }
+    /// }
+    ///
+    /// #[cot::main]
+    /// async fn main() -> cot::Result<CotProject> {
+    ///     let cot_project = CotProject::builder()
+    ///         .register_app(HelloApp)
+    ///         .middleware(LiveReloadMiddleware::new())
+    ///         .build()
+    ///         .await?;
+    ///
+    ///     Ok(cot_project)
+    /// }
+    /// ```
     #[must_use]
     pub fn middleware<M>(
         self,
@@ -807,11 +930,46 @@ impl Default for CotProjectBuilder<Uninitialized> {
 }
 
 impl CotProject {
+    /// Creates a new builder for the [`CotProject`].
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use cot::{CotApp, CotProject};
+    ///
+    /// struct HelloApp;
+    ///
+    /// impl CotApp for HelloApp {
+    ///     fn name(&self) -> &'static str {
+    ///         env!("CARGO_PKG_NAME")
+    ///     }
+    /// }
+    ///
+    /// #[cot::main]
+    /// async fn main() -> cot::Result<CotProject> {
+    ///     let cot_project = CotProject::builder().build().await?;
+    ///
+    ///     Ok(cot_project)
+    /// }
+    /// ```
     #[must_use]
     pub fn builder() -> CotProjectBuilder<Uninitialized> {
         CotProjectBuilder::default()
     }
 
+    /// Returns the context and handler of the project.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use cot::CotProject;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let (context, handler) = CotProject::builder().build().await?.into_context();
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn into_context(self) -> (AppContext, BoxedHandler) {
         (self.context, self.handler)

@@ -45,24 +45,126 @@ mod private {
 /// outside the context of Cot.
 #[async_trait]
 pub trait RequestExt: private::Sealed {
+    /// Get the application context.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    ///
+    /// async fn my_handler(mut request: Request) -> cot::Result<Response> {
+    ///     let context = request.context();
+    ///     // ... do something with the context
+    ///     # todo!()
+    /// }
+    /// ```
     #[must_use]
     fn context(&self) -> &crate::AppContext;
 
+    /// Get the project configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    ///
+    /// async fn my_handler(mut request: Request) -> cot::Result<Response> {
+    ///     let config = request.project_config();
+    ///     // ... do something with the config
+    ///     # todo!()
+    /// }
+    /// ```
     #[must_use]
     fn project_config(&self) -> &crate::config::ProjectConfig;
 
+    /// Get the router.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    ///
+    /// async fn my_handler(mut request: Request) -> cot::Result<Response> {
+    ///     let router = request.router();
+    ///     // ... do something with the router
+    ///     # todo!()
+    /// }
+    /// ```
     #[must_use]
     fn router(&self) -> &Router;
 
+    /// Get the route name, or [`None`] if the request is not routed or doesn't
+    /// have a route name.
+    ///
+    /// This is mainly useful for use in templates, where you want to know which
+    /// route is being rendered, for instance to mark the active tab.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    ///
+    /// async fn my_handler(mut request: Request) -> cot::Result<Response> {
+    ///     let route_name = request.route_name();
+    ///     // ... do something with the route name
+    ///     # todo!()
+    /// }
+    /// ```
     #[must_use]
     fn route_name(&self) -> Option<&str>;
 
+    /// Get the path parameters.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    ///
+    /// async fn my_handler(mut request: Request) -> cot::Result<Response> {
+    ///     let path_params = request.path_params();
+    ///     // ... do something with the path params
+    ///     # todo!()
+    /// }
+    /// ```
     #[must_use]
     fn path_params(&self) -> &PathParams;
 
+    /// Get the path parameters mutably.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    ///
+    /// async fn my_handler(mut request: Request) -> cot::Result<Response> {
+    ///     let path_params = request.path_params_mut();
+    ///     // ... do something with the path params
+    ///     # todo!()
+    /// }
+    /// ```
     #[must_use]
     fn path_params_mut(&mut self) -> &mut PathParams;
 
+    /// Get the database.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::Response;
+    ///
+    /// async fn my_handler(mut request: Request) -> cot::Result<Response> {
+    ///     let db = request.db();
+    ///     // ... do something with the database
+    ///     # todo!()
+    /// }
+    /// ```
     #[cfg(feature = "db")]
     #[must_use]
     fn db(&self) -> &Database;

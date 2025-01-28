@@ -4,6 +4,7 @@
 //! the user data in a database using the Cot ORM.
 
 use std::any::Any;
+use std::borrow::Cow;
 
 use async_trait::async_trait;
 use hmac::{Hmac, KeyInit, Mac};
@@ -35,9 +36,11 @@ pub struct DatabaseUser {
     password: PasswordHash,
 }
 
+/// An error that occurs when creating a user.
 #[derive(Debug, Clone, Error)]
 #[non_exhaustive]
 pub enum CreateUserError {
+    /// The username is too long.
     #[error("username is too long (max {MAX_USERNAME_LENGTH} characters, got {0})")]
     UsernameTooLong(usize),
 }
@@ -199,8 +202,8 @@ impl User for DatabaseUser {
         Some(UserId::Int(self.id()))
     }
 
-    fn username(&self) -> Option<&str> {
-        Some(&self.username)
+    fn username(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::from(self.username.as_str()))
     }
 
     fn is_active(&self) -> bool {
@@ -427,7 +430,7 @@ mod tests {
         );
         let user_ref: &dyn User = &user;
         assert_eq!(user_ref.id(), Some(UserId::Int(1)));
-        assert_eq!(user_ref.username(), Some("testuser"));
+        assert_eq!(user_ref.username(), Some(Cow::from("testuser")));
         assert!(user_ref.is_active());
         assert!(user_ref.is_authenticated());
         assert!(user_ref
