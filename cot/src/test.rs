@@ -31,6 +31,21 @@ pub struct Client {
 }
 
 impl Client {
+    /// Create a new test client for a Cot project.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::test::Client;
+    /// use cot::CotProject;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let mut client = Client::new(CotProject::builder().build().await?);
+    /// let response = client.get("/").await;
+    /// # Ok(())
+    /// }
+    /// ```
     #[must_use]
     pub fn new(project: CotProject) -> Self {
         let (context, handler) = project.into_context();
@@ -40,15 +55,49 @@ impl Client {
         }
     }
 
+    /// Send a GET request to the given path.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::test::Client;
+    /// use cot::CotProject;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let mut client = Client::new(CotProject::builder().build().await?);
+    /// let response = client.get("/").await?;
+    /// assert!(!response.into_body().into_bytes().await?.is_empty());
+    /// # Ok(())
+    /// }
+    /// ```
     pub async fn get(&mut self, path: &str) -> Result<Response> {
-        self.request(
-            http::Request::get(path)
-                .body(Body::empty())
-                .expect("Test request should be valid"),
-        )
+        self.request(match http::Request::get(path).body(Body::empty()) {
+            Ok(request) => request,
+            Err(_) => {
+                unreachable!("Test request should be valid")
+            }
+        })
         .await
     }
 
+    /// Send a request to the given path.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::test::Client;
+    /// use cot::CotProject;
+    /// use cot::Body;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let mut client = Client::new(CotProject::builder().build().await?);
+    /// let response = client.request(cot::http::Request::get("/").body(Body::empty()).unwrap()).await?;
+    /// assert!(!response.into_body().into_bytes().await?.is_empty());
+    /// # Ok(())
+    /// }
+    /// ```
     pub async fn request(&mut self, mut request: Request) -> Result<Response> {
         prepare_request(&mut request, self.context.clone());
 
@@ -57,6 +106,36 @@ impl Client {
     }
 }
 
+/// A builder for creating test requests, typically used for unit testing
+/// without having to create a full Cot project and do actual HTTP requests.
+///
+/// # Examples
+///
+/// ```
+/// use cot::request::Request;
+/// use cot::response::{Response, ResponseExt};
+/// use cot::test::TestRequestBuilder;
+/// use cot::Body;
+/// use http::StatusCode;
+///
+/// # #[tokio::main]
+/// # async fn main() -> cot::Result<()> {
+/// async fn index(request: Request) -> cot::Result<Response> {
+///     Ok(Response::new_html(
+///         StatusCode::OK,
+///         Body::fixed("Hello world!"),
+///     ))
+/// }
+///
+/// let request = TestRequestBuilder::get("/").build();
+///
+/// assert_eq!(
+///     index(request).await?.into_body().into_bytes().await?,
+///     "Hello world!"
+/// );
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct TestRequestBuilder {
     method: http::Method,
@@ -71,6 +150,35 @@ pub struct TestRequestBuilder {
 }
 
 impl TestRequestBuilder {
+    /// Create a new GET request builder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::test::TestRequestBuilder;
+    /// use cot::Body;
+    /// use http::StatusCode;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     Ok(Response::new_html(
+    ///         StatusCode::OK,
+    ///         Body::fixed("Hello world!"),
+    ///     ))
+    /// }
+    ///
+    /// let request = TestRequestBuilder::get("/").build();
+    ///
+    /// assert_eq!(
+    ///     index(request).await?.into_body().into_bytes().await?,
+    ///     "Hello world!"
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn get(url: &str) -> Self {
         Self {
@@ -80,6 +188,35 @@ impl TestRequestBuilder {
         }
     }
 
+    /// Create a new POST request builder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::test::TestRequestBuilder;
+    /// use cot::Body;
+    /// use http::StatusCode;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     Ok(Response::new_html(
+    ///         StatusCode::OK,
+    ///         Body::fixed("Hello world!"),
+    ///     ))
+    /// }
+    ///
+    /// let request = TestRequestBuilder::post("/").build();
+    ///
+    /// assert_eq!(
+    ///     index(request).await?.into_body().into_bytes().await?,
+    ///     "Hello world!"
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn post(url: &str) -> Self {
         Self {
@@ -94,6 +231,35 @@ impl TestRequestBuilder {
         self
     }
 
+    /// Create a new request builder with default configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::test::TestRequestBuilder;
+    /// use cot::Body;
+    /// use http::StatusCode;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     Ok(Response::new_html(
+    ///         StatusCode::OK,
+    ///         Body::fixed("Hello world!"),
+    ///     ))
+    /// }
+    ///
+    /// let request = TestRequestBuilder::get("/").with_default_config().build();
+    ///
+    /// assert_eq!(
+    ///     index(request).await?.into_body().into_bytes().await?,
+    ///     "Hello world!"
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn with_default_config(&mut self) -> &mut Self {
         self.config = Some(Arc::new(ProjectConfig::default()));
         self
@@ -115,9 +281,41 @@ impl TestRequestBuilder {
         self
     }
 
+    /// Add a database to the request builder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use cot::db::Database;
+    /// use cot::test::TestRequestBuilder;
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::{Body, StatusCode};
+    ///
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     let db = request.db();
+    ///
+    ///     // ... do something with db
+    ///
+    ///     Ok(Response::new_html(
+    ///         StatusCode::OK,
+    ///         Body::fixed("Hello world!"),
+    ///     ))
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let request = TestRequestBuilder::get("/")
+    ///     .database(Database::new("sqlite::memory:").await?)
+    ///     .build();
+    /// # Ok(())
+    /// }
+    /// ```
     #[cfg(feature = "db")]
-    pub fn database(&mut self, database: Arc<Database>) -> &mut Self {
-        self.database = Some(database);
+    pub fn database<DB: Into<Arc<Database>>>(&mut self, database: DB) -> &mut Self {
+        self.database = Some(database.into());
         self
     }
 
@@ -148,13 +346,44 @@ impl TestRequestBuilder {
         self
     }
 
+    /// Build the request.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::test::TestRequestBuilder;
+    /// use cot::Body;
+    /// use http::StatusCode;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     Ok(Response::new_html(
+    ///         StatusCode::OK,
+    ///         Body::fixed("Hello world!"),
+    ///     ))
+    /// }
+    ///
+    /// let request = TestRequestBuilder::get("/").build();
+    ///
+    /// assert_eq!(
+    ///     index(request).await?.into_body().into_bytes().await?,
+    ///     "Hello world!"
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn build(&mut self) -> http::Request<Body> {
-        let mut request = http::Request::builder()
+        let Ok(mut request) = http::Request::builder()
             .method(self.method.clone())
             .uri(self.url.clone())
             .body(Body::empty())
-            .expect("Test request should be valid");
+        else {
+            unreachable!("Test request should be valid");
+        };
 
         let app_context = AppContext::new(
             self.config.clone().unwrap_or_default(),
@@ -341,8 +570,12 @@ impl TestDatabase {
 
     pub async fn run_migrations(&mut self) -> &mut Self {
         if !self.migrations.is_empty() {
-            let engine = MigrationEngine::new(std::mem::take(&mut self.migrations)).unwrap();
-            engine.run(&self.database()).await.unwrap();
+            let engine = MigrationEngine::new(std::mem::take(&mut self.migrations))
+                .expect("Failed to initialize the migration engine");
+            engine
+                .run(&self.database())
+                .await
+                .expect("Failed to run migrations");
         }
         self
     }

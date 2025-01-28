@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use derive_more::Debug;
-use sea_query::IntoColumnRef;
+use sea_query::{ExprTrait, IntoColumnRef};
 
 use crate::db;
 use crate::db::{
@@ -26,10 +26,36 @@ use crate::db::{
 ///
 /// let query = Query::<User>::new();
 /// ```
-#[derive(Debug)]
 pub struct Query<T> {
     filter: Option<Expr>,
     phantom_data: PhantomData<fn() -> T>,
+}
+
+// manual implementation to avoid `T: Debug` in the trait bounds
+impl<T> Debug for Query<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Query")
+            .field("filter", &self.filter)
+            .field("phantom_data", &self.phantom_data)
+            .finish()
+    }
+}
+
+// manual implementation to avoid `T: Clone` in the trait bounds
+impl<T> Clone for Query<T> {
+    fn clone(&self) -> Self {
+        Self {
+            filter: self.filter.clone(),
+            phantom_data: PhantomData,
+        }
+    }
+}
+
+// manual implementation to avoid `T: PartialEq` in the trait bounds
+impl<T> PartialEq for Query<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.filter == other.filter
+    }
 }
 
 impl<T: Model> Default for Query<T> {
@@ -131,17 +157,347 @@ impl<T: Model> Query<T> {
     }
 }
 
-#[derive(Debug)]
+/// An expression that can be used to filter, update, or delete rows.
+///
+/// This is used to create complex queries with multiple conditions. Typically,
+/// it is only internally used by the [`cot::query`] macro to create a
+/// [`Query`].
+///
+/// # Example
+///
+/// ```
+/// use cot::db::{model, query};
+/// use cot::db::query::{Expr, Query};
+///
+/// #[model]
+/// struct MyModel {
+///     #[model(primary_key)]
+///     id: i32,
+/// };
+///
+/// let expr = Expr::eq(Expr::field("id"), Expr::value(5));
+///
+/// assert_eq!(
+///     <Query<MyModel>>::new().filter(expr),
+///     query!(MyModel, $id == 5)
+/// );
+/// ```
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    /// An expression containing a reference to a column.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == 5)
+    /// );
+    /// ```
     Field(Identifier),
+    /// An expression containing a literal value.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::ne(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id != 5)
+    /// );
+    /// ```
     Value(DbValue),
+    /// An `AND` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::and(
+    ///     Expr::gt(Expr::field("id"), Expr::value(10)),
+    ///     Expr::lt(Expr::field("id"), Expr::value(20))
+    /// );
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id > 10 && $id < 20)
+    /// );
+    /// ```
     And(Box<Expr>, Box<Expr>),
+    /// An `OR` expression.
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::or(
+    ///     Expr::gt(Expr::field("id"), Expr::value(10)),
+    ///     Expr::lt(Expr::field("id"), Expr::value(20))
+    /// );
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id > 10 || $id < 20)
+    /// );
+    /// ```
     Or(Box<Expr>, Box<Expr>),
+    /// An `=` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == 5)
+    /// );
+    /// ```
     Eq(Box<Expr>, Box<Expr>),
+    /// A `!=` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::ne(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id != 5)
+    /// );
+    /// ```
     Ne(Box<Expr>, Box<Expr>),
+    /// A `<` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::lt(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id < 5)
+    /// );
+    /// ```
+    Lt(Box<Expr>, Box<Expr>),
+    /// A `<=` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::lte(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id <= 5)
+    /// );
+    /// ```
+    Lte(Box<Expr>, Box<Expr>),
+    /// A `>` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::gt(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id > 5)
+    /// );
+    /// ```
+    Gt(Box<Expr>, Box<Expr>),
+    /// A `>=` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::gte(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id >= 5)
+    /// );
+    /// ```
+    Gte(Box<Expr>, Box<Expr>),
+    /// A `+` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    ///     id_2: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::add(Expr::field("id_2"), Expr::value(5)));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == $id_2 + 5)
+    /// );
+    /// ```
     Add(Box<Expr>, Box<Expr>),
+    /// A `-` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    ///     id_2: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::sub(Expr::field("id_2"), Expr::value(5)));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == $id_2 - 5)
+    /// );
+    /// ```
     Sub(Box<Expr>, Box<Expr>),
+    /// A `*` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    ///     id_2: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::mul(Expr::field("id_2"), Expr::value(2)));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == $id_2 * 2)
+    /// );
+    /// ```
     Mul(Box<Expr>, Box<Expr>),
+    /// A `/` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    ///     id_2: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::div(Expr::field("id_2"), Expr::value(2)));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == $id_2 / 2)
+    /// );
+    /// ```
     Div(Box<Expr>, Box<Expr>),
 }
 
@@ -152,9 +508,21 @@ impl Expr {
     /// # Example
     ///
     /// ```
-    /// use cot::db::query::Expr;
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
     ///
-    /// let expr = Expr::field("name");
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == 5)
+    /// );
     /// ```
     #[must_use]
     pub fn field<T: Into<Identifier>>(identifier: T) -> Self {
@@ -171,11 +539,24 @@ impl Expr {
     /// # Example
     ///
     /// ```
-    /// use cot::db::query::Expr;
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
     ///
-    /// let expr = Expr::value(30);
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::ne(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id != 5)
+    /// );
     /// ```
     #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
     pub fn value<T: ToDbFieldValue>(value: T) -> Self {
         match value.to_db_field_value() {
             DbFieldValue::Value(value) => Self::Value(value),
@@ -188,11 +569,22 @@ impl Expr {
     /// # Example
     ///
     /// ```
-    /// use cot::db::query::Expr;
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
     ///
     /// let expr = Expr::and(
-    ///     Expr::eq(Expr::field("name"), Expr::value("John")),
-    ///     Expr::eq(Expr::field("age"), Expr::value(30)),
+    ///     Expr::gt(Expr::field("id"), Expr::value(10)),
+    ///     Expr::lt(Expr::field("id"), Expr::value(20))
+    /// );
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id > 10 && $id < 20)
     /// );
     /// ```
     #[must_use]
@@ -205,11 +597,22 @@ impl Expr {
     /// # Example
     ///
     /// ```
-    /// use cot::db::query::Expr;
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
     ///
     /// let expr = Expr::or(
-    ///     Expr::eq(Expr::field("name"), Expr::value("John")),
-    ///     Expr::eq(Expr::field("age"), Expr::value(30)),
+    ///     Expr::gt(Expr::field("id"), Expr::value(10)),
+    ///     Expr::lt(Expr::field("id"), Expr::value(20))
+    /// );
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id > 10 || $id < 20)
     /// );
     /// ```
     #[must_use]
@@ -222,9 +625,21 @@ impl Expr {
     /// # Example
     ///
     /// ```
-    /// use cot::db::query::Expr;
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
     ///
-    /// let expr = Expr::eq(Expr::field("name"), Expr::value("John"));
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == 5)
+    /// );
     /// ```
     #[must_use]
     pub fn eq(lhs: Self, rhs: Self) -> Self {
@@ -236,13 +651,129 @@ impl Expr {
     /// # Example
     ///
     /// ```
-    /// use cot::db::query::Expr;
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
     ///
-    /// let expr = Expr::ne(Expr::field("name"), Expr::value("John"));
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::ne(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id != 5)
+    /// );
     /// ```
     #[must_use]
     pub fn ne(lhs: Self, rhs: Self) -> Self {
         Self::Ne(Box::new(lhs), Box::new(rhs))
+    }
+
+    /// Create a new `<` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::lt(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id < 5)
+    /// );
+    /// ```
+    #[must_use]
+    pub fn lt(lhs: Self, rhs: Self) -> Self {
+        Self::Lt(Box::new(lhs), Box::new(rhs))
+    }
+
+    /// Create a new `<=` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::lte(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id <= 5)
+    /// );
+    /// ```
+    #[must_use]
+    pub fn lte(lhs: Self, rhs: Self) -> Self {
+        Self::Lte(Box::new(lhs), Box::new(rhs))
+    }
+
+    /// Create a new `>` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::gt(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id > 5)
+    /// );
+    /// ```
+    #[must_use]
+    pub fn gt(lhs: Self, rhs: Self) -> Self {
+        Self::Gt(Box::new(lhs), Box::new(rhs))
+    }
+
+    /// Create a new `>=` expression.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = Expr::gte(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id >= 5)
+    /// );
+    /// ```
+    #[must_use]
+    pub fn gte(lhs: Self, rhs: Self) -> Self {
+        Self::Gte(Box::new(lhs), Box::new(rhs))
     }
 
     /// Create a new `+` expression.
@@ -250,9 +781,22 @@ impl Expr {
     /// # Example
     ///
     /// ```
-    /// use cot::db::query::Expr;
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
     ///
-    /// let expr = Expr::add(Expr::field("age"), Expr::value(10));
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    ///     id_2: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::add(Expr::field("id_2"), Expr::value(5)));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == $id_2 + 5)
+    /// );
     /// ```
     #[allow(clippy::should_implement_trait)]
     #[must_use]
@@ -265,9 +809,22 @@ impl Expr {
     /// # Example
     ///
     /// ```
-    /// use cot::db::query::Expr;
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
     ///
-    /// let expr = Expr::sub(Expr::field("age"), Expr::value(10));
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    ///     id_2: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::sub(Expr::field("id_2"), Expr::value(5)));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == $id_2 - 5)
+    /// );
     /// ```
     #[allow(clippy::should_implement_trait)]
     #[must_use]
@@ -280,9 +837,22 @@ impl Expr {
     /// # Example
     ///
     /// ```
-    /// use cot::db::query::Expr;
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
     ///
-    /// let expr = Expr::mul(Expr::field("amount"), Expr::value(5));
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    ///     id_2: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::mul(Expr::field("id_2"), Expr::value(2)));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == $id_2 * 2)
+    /// );
     /// ```
     #[allow(clippy::should_implement_trait)]
     #[must_use]
@@ -295,9 +865,22 @@ impl Expr {
     /// # Example
     ///
     /// ```
-    /// use cot::db::query::Expr;
+    /// use cot::db::{model, query};
+    /// use cot::db::query::{Expr, Query};
     ///
-    /// let expr = Expr::div(Expr::field("amount"), Expr::value(5));
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    ///     id_2: i32,
+    /// };
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::div(Expr::field("id_2"), Expr::value(2)));
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == $id_2 / 2)
+    /// );
     /// ```
     #[allow(clippy::should_implement_trait)]
     #[must_use]
@@ -314,6 +897,10 @@ impl Expr {
             Self::Or(lhs, rhs) => lhs.as_sea_query_expr().or(rhs.as_sea_query_expr()),
             Self::Eq(lhs, rhs) => lhs.as_sea_query_expr().eq(rhs.as_sea_query_expr()),
             Self::Ne(lhs, rhs) => lhs.as_sea_query_expr().ne(rhs.as_sea_query_expr()),
+            Self::Lt(lhs, rhs) => lhs.as_sea_query_expr().lt(rhs.as_sea_query_expr()),
+            Self::Lte(lhs, rhs) => lhs.as_sea_query_expr().lte(rhs.as_sea_query_expr()),
+            Self::Gt(lhs, rhs) => lhs.as_sea_query_expr().gt(rhs.as_sea_query_expr()),
+            Self::Gte(lhs, rhs) => lhs.as_sea_query_expr().gte(rhs.as_sea_query_expr()),
             Self::Add(lhs, rhs) => lhs.as_sea_query_expr().add(rhs.as_sea_query_expr()),
             Self::Sub(lhs, rhs) => lhs.as_sea_query_expr().sub(rhs.as_sea_query_expr()),
             Self::Mul(lhs, rhs) => lhs.as_sea_query_expr().mul(rhs.as_sea_query_expr()),
@@ -389,6 +976,17 @@ pub trait ExprDiv<T> {
     fn div<V: Into<T>>(self, other: V) -> Expr;
 }
 
+/// A trait for database types that can be ordered.
+pub trait ExprOrd<T> {
+    fn lt<V: Into<T>>(self, other: V) -> Expr;
+
+    fn lte<V: Into<T>>(self, other: V) -> Expr;
+
+    fn gt<V: Into<T>>(self, other: V) -> Expr;
+
+    fn gte<V: Into<T>>(self, other: V) -> Expr;
+}
+
 macro_rules! impl_expr {
     ($ty:ty, $trait:ident, $method:ident) => {
         impl $trait<$ty> for FieldRef<$ty> {
@@ -405,6 +1003,24 @@ macro_rules! impl_num_expr {
         impl_expr!($ty, ExprSub, sub);
         impl_expr!($ty, ExprMul, mul);
         impl_expr!($ty, ExprDiv, div);
+
+        impl ExprOrd<$ty> for FieldRef<$ty> {
+            fn lt<V: Into<$ty>>(self, other: V) -> Expr {
+                Expr::lt(self.as_expr(), Expr::value(other.into()))
+            }
+
+            fn lte<V: Into<$ty>>(self, other: V) -> Expr {
+                Expr::lte(self.as_expr(), Expr::value(other.into()))
+            }
+
+            fn gt<V: Into<$ty>>(self, other: V) -> Expr {
+                Expr::gt(self.as_expr(), Expr::value(other.into()))
+            }
+
+            fn gte<V: Into<$ty>>(self, other: V) -> Expr {
+                Expr::gte(self.as_expr(), Expr::value(other.into()))
+            }
+        }
     };
 }
 
@@ -555,25 +1171,31 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_expr_and() {
-        let expr = Expr::and(Expr::field("name"), Expr::value("John"));
-        if let Expr::And(lhs, rhs) = expr {
-            assert!(matches!(*lhs, Expr::Field(_)));
-            assert!(matches!(*rhs, Expr::Value(_)));
-        } else {
-            panic!("Expected Expr::And");
-        }
+    macro_rules! test_expr_constructor {
+        ($test_name:ident, $match:ident, $constructor:ident) => {
+            #[test]
+            fn $test_name() {
+                let expr = Expr::$constructor(Expr::field("name"), Expr::value("John"));
+                if let Expr::$match(lhs, rhs) = expr {
+                    assert!(matches!(*lhs, Expr::Field(_)));
+                    assert!(matches!(*rhs, Expr::Value(_)));
+                } else {
+                    panic!(concat!("Expected Expr::", stringify!($match)));
+                }
+            }
+        };
     }
 
-    #[test]
-    fn test_expr_eq() {
-        let expr = Expr::eq(Expr::field("name"), Expr::value("John"));
-        if let Expr::Eq(lhs, rhs) = expr {
-            assert!(matches!(*lhs, Expr::Field(_)));
-            assert!(matches!(*rhs, Expr::Value(_)));
-        } else {
-            panic!("Expected Expr::Eq");
-        }
-    }
+    test_expr_constructor!(expr_and, And, and);
+    test_expr_constructor!(expr_or, Or, or);
+    test_expr_constructor!(expr_eq, Eq, eq);
+    test_expr_constructor!(expr_ne, Ne, ne);
+    test_expr_constructor!(expr_lt, Lt, lt);
+    test_expr_constructor!(expr_lte, Lte, lte);
+    test_expr_constructor!(expr_gt, Gt, gt);
+    test_expr_constructor!(expr_gte, Gte, gte);
+    test_expr_constructor!(expr_add, Add, add);
+    test_expr_constructor!(expr_sub, Sub, sub);
+    test_expr_constructor!(expr_mul, Mul, mul);
+    test_expr_constructor!(expr_div, Div, div);
 }

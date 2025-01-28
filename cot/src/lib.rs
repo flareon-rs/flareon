@@ -80,7 +80,6 @@ use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use axum::handler::HandlerWithoutStateExt;
-pub use bytes;
 use bytes::Bytes;
 pub use cot_macros::main;
 use derive_more::{Debug, Deref, Display, From};
@@ -96,6 +95,7 @@ use sync_wrapper::SyncWrapper;
 use tower::util::BoxCloneService;
 use tower::{Layer, Service};
 use tracing::info;
+pub use {bytes, http};
 
 use crate::admin::AdminModelManager;
 use crate::cli::Cli;

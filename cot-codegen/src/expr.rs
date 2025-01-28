@@ -151,6 +151,10 @@ enum OpParser {
     Sub(Token![-]),
     Eq(Token![==]),
     Ne(Token![!=]),
+    Lt(Token![<]),
+    Lte(Token![<=]),
+    Gt(Token![>]),
+    Gte(Token![>=]),
     And(Token![&&]),
     Or(Token![||]),
 }
@@ -172,6 +176,14 @@ impl OpParser {
             OpParser::Eq(input.parse()?)
         } else if lookahead.peek(Token![!=]) {
             OpParser::Ne(input.parse()?)
+        } else if lookahead.peek(Token![<=]) {
+            OpParser::Lte(input.parse()?)
+        } else if lookahead.peek(Token![<]) {
+            OpParser::Lt(input.parse()?)
+        } else if lookahead.peek(Token![>=]) {
+            OpParser::Gte(input.parse()?)
+        } else if lookahead.peek(Token![>]) {
+            OpParser::Gt(input.parse()?)
         } else if lookahead.peek(Token![&&]) {
             OpParser::And(input.parse()?)
         } else if lookahead.peek(Token![||]) {
@@ -191,6 +203,10 @@ impl OpParser {
             OpParser::Sub(sub) => sub.span(),
             OpParser::Eq(eq) => eq.span(),
             OpParser::Ne(ne) => ne.span(),
+            OpParser::Lt(lt) => lt.span(),
+            OpParser::Lte(lte) => lte.span(),
+            OpParser::Gt(gt) => gt.span(),
+            OpParser::Gte(gte) => gte.span(),
             OpParser::And(and) => and.span(),
             OpParser::Or(or) => or.span(),
         }
@@ -200,7 +216,12 @@ impl OpParser {
         match self {
             OpParser::Mul(_) | OpParser::Div(_) => InfixBindingPriority::left_to_right(9),
             OpParser::Add(_) | OpParser::Sub(_) => InfixBindingPriority::left_to_right(8),
-            OpParser::Eq(_) | OpParser::Ne(_) => InfixBindingPriority::right_to_left(3),
+            OpParser::Eq(_)
+            | OpParser::Ne(_)
+            | OpParser::Lt(_)
+            | OpParser::Lte(_)
+            | OpParser::Gt(_)
+            | OpParser::Gte(_) => InfixBindingPriority::right_to_left(3),
             OpParser::And(_) => InfixBindingPriority::left_to_right(2),
             OpParser::Or(_) => InfixBindingPriority::left_to_right(1),
         }
@@ -277,6 +298,10 @@ pub enum Expr {
     Or(Box<Expr>, Box<Expr>),
     Eq(Box<Expr>, Box<Expr>),
     Ne(Box<Expr>, Box<Expr>),
+    Lt(Box<Expr>, Box<Expr>),
+    Lte(Box<Expr>, Box<Expr>),
+    Gt(Box<Expr>, Box<Expr>),
+    Gte(Box<Expr>, Box<Expr>),
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
@@ -389,6 +414,10 @@ impl Expr {
             OpParser::Sub(_) => Expr::Sub(Box::new(lhs), Box::new(rhs)),
             OpParser::Eq(_) => Expr::Eq(Box::new(lhs), Box::new(rhs)),
             OpParser::Ne(_) => Expr::Ne(Box::new(lhs), Box::new(rhs)),
+            OpParser::Lt(_) => Expr::Lt(Box::new(lhs), Box::new(rhs)),
+            OpParser::Lte(_) => Expr::Lte(Box::new(lhs), Box::new(rhs)),
+            OpParser::Gt(_) => Expr::Gt(Box::new(lhs), Box::new(rhs)),
+            OpParser::Gte(_) => Expr::Gte(Box::new(lhs), Box::new(rhs)),
             OpParser::And(_) => Expr::And(Box::new(lhs), Box::new(rhs)),
             OpParser::Or(_) => Expr::Or(Box::new(lhs), Box::new(rhs)),
         }
@@ -447,6 +476,26 @@ impl Expr {
                 let lhs_tokens = lhs.as_tokens_impl(mode)?;
                 let rhs_tokens = rhs.as_tokens_impl(mode)?;
                 Some(quote! {#lhs_tokens != #rhs_tokens})
+            }
+            Expr::Lt(lhs, rhs) => {
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
+                Some(quote! {#lhs_tokens < #rhs_tokens})
+            }
+            Expr::Lte(lhs, rhs) => {
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
+                Some(quote! {#lhs_tokens <= #rhs_tokens})
+            }
+            Expr::Gt(lhs, rhs) => {
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
+                Some(quote! {#lhs_tokens > #rhs_tokens})
+            }
+            Expr::Gte(lhs, rhs) => {
+                let lhs_tokens = lhs.as_tokens_impl(mode)?;
+                let rhs_tokens = rhs.as_tokens_impl(mode)?;
+                Some(quote! {#lhs_tokens >= #rhs_tokens})
             }
             Expr::Add(lhs, rhs) => {
                 let lhs_tokens = lhs.as_tokens_impl(mode)?;
@@ -677,6 +726,38 @@ mod tests {
     #[test]
     fn tokens_ne() {
         let input = quote! { x != 42 };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_lt() {
+        let input = quote! { x < 42 };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_lte() {
+        let input = quote! { x <= 42 };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_gt() {
+        let input = quote! { x > 42 };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_gte() {
+        let input = quote! { x >= 42 };
         let expr = unwrap_syn(Expr::parse(input.clone()));
 
         assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
