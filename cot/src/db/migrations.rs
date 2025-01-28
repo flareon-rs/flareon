@@ -12,6 +12,7 @@ use crate::db::migrations::sorter::{MigrationSorter, MigrationSorterError};
 use crate::db::relations::ForeignKeyOnDeletePolicy;
 use crate::db::{model, query, ColumnType, Database, DatabaseField, Identifier, Result};
 
+/// An error that occurred while running migrations.
 #[derive(Debug, Clone, Error)]
 #[non_exhaustive]
 pub enum MigrationEngineError {
@@ -21,12 +22,81 @@ pub enum MigrationEngineError {
 }
 
 /// A migration engine that can run migrations.
+///
+/// # Examples
+///
+/// ```
+/// use cot::db::migrations::{Field, Migration, MigrationDependency, MigrationEngine, Operation};
+/// use cot::db::{Database, DatabaseField, Identifier};
+///
+/// struct MyMigration;
+///
+/// impl Migration for MyMigration {
+///     const APP_NAME: &'static str = "todoapp";
+///     const MIGRATION_NAME: &'static str = "m_0001_initial";
+///     const DEPENDENCIES: &'static [MigrationDependency] = &[];
+///     const OPERATIONS: &'static [Operation] = &[Operation::create_model()
+///         .table_name(Identifier::new("todoapp__my_model"))
+///         .fields(&[
+///             Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
+///                 .primary_key()
+///                 .auto(),
+///             Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE),
+///         ])
+///         .build()];
+/// }
+///
+/// # #[tokio::main]
+/// # async fn main() -> cot::Result<()> {
+/// let engine = MigrationEngine::new([MyMigration])?;
+/// let database = Database::new("sqlite::memory:").await?;
+/// engine.run(&database).await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct MigrationEngine {
     migrations: Vec<MigrationWrapper>,
 }
 
 impl MigrationEngine {
+    /// Creates a new [`MigrationEngine`] from a list of migrations.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if there is a cycle in the migrations.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::{Field, Migration, MigrationDependency, MigrationEngine, Operation};
+    /// use cot::db::{Database, DatabaseField, Identifier};
+    ///
+    /// struct MyMigration;
+    ///
+    /// impl Migration for MyMigration {
+    ///     const APP_NAME: &'static str = "todoapp";
+    ///     const MIGRATION_NAME: &'static str = "m_0001_initial";
+    ///     const DEPENDENCIES: &'static [MigrationDependency] = &[];
+    ///     const OPERATIONS: &'static [Operation] = &[Operation::create_model()
+    ///         .table_name(Identifier::new("todoapp__my_model"))
+    ///         .fields(&[
+    ///             Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
+    ///                 .primary_key()
+    ///                 .auto(),
+    ///             Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE),
+    ///         ])
+    ///         .build()];
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let engine = MigrationEngine::new([MyMigration])?;
+    /// let database = Database::new("sqlite::memory:").await?;
+    /// engine.run(&database).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new<T, V>(migrations: V) -> Result<Self>
     where
         T: DynMigration + Send + Sync + 'static,
@@ -36,7 +106,7 @@ impl MigrationEngine {
         Self::from_wrapper(migrations)
     }
 
-    pub fn from_wrapper(mut migrations: Vec<MigrationWrapper>) -> Result<Self> {
+    fn from_wrapper(mut migrations: Vec<MigrationWrapper>) -> Result<Self> {
         Self::sort_migrations(&mut migrations)?;
         Ok(Self { migrations })
     }
@@ -45,6 +115,7 @@ impl MigrationEngine {
     /// order of applying migrations is consistent and deterministic. Then
     /// determines the correct order of applying migrations based on the
     /// dependencies between them.
+    #[doc(hidden)] // not part of the public API; used in cot-cli
     pub fn sort_migrations<T: DynMigration>(migrations: &mut [T]) -> Result<()> {
         MigrationSorter::new(migrations)
             .sort()
@@ -70,7 +141,6 @@ impl MigrationEngine {
     /// ```
     /// use cot::db::migrations::{Field, Migration, MigrationDependency, MigrationEngine, Operation};
     /// use cot::db::{Database, DatabaseField, Identifier};
-    /// use cot::Result;
     ///
     /// struct MyMigration;
     ///
@@ -90,7 +160,7 @@ impl MigrationEngine {
     /// }
     ///
     /// # #[tokio::main]
-    /// # async fn main() -> Result<()> {
+    /// # async fn main() -> cot::Result<()> {
     /// let engine = MigrationEngine::new([MyMigration])?;
     /// let database = Database::new("sqlite::memory:").await?;
     /// engine.run(&database).await?;
@@ -163,10 +233,9 @@ impl MigrationEngine {
 /// ```
 /// use cot::db::migrations::{Field, Migration, MigrationEngine, Operation};
 /// use cot::db::{Database, DatabaseField, Identifier};
-/// use cot::Result;
 ///
 /// # #[tokio::main]
-/// # async fn main() -> Result<()> {
+/// # async fn main() -> cot::Result<()> {
 /// const OPERATION: Operation = Operation::create_model()
 ///     .table_name(Identifier::new("todoapp__my_model"))
 ///     .fields(&[
@@ -194,12 +263,73 @@ impl Operation {
     }
 
     /// Returns a builder for an operation that creates a model.
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::{Field, Migration, Operation};
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// const OPERATION: Operation = Operation::create_model()
+    ///     .table_name(Identifier::new("todoapp__my_model"))
+    ///     .fields(&[
+    ///         Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
+    ///             .primary_key()
+    ///             .auto(),
+    ///         Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE),
+    ///     ])
+    ///     .build();
+    /// # let database = cot::db::Database::new("sqlite::memory:").await?;
+    /// # OPERATION.forwards(&database).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub const fn create_model() -> CreateModelBuilder {
         CreateModelBuilder::new()
     }
 
     /// Returns a builder for an operation that adds a field to a model.
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::{Field, Migration, Operation};
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// # const CREATE_OPERATION: Operation = Operation::create_model()
+    /// #     .table_name(Identifier::new("todoapp__my_model"))
+    /// #     .fields(&[
+    /// #         Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE)
+    /// #             .primary_key()
+    /// #             .auto(),
+    /// #     ])
+    /// #     .build();
+    /// #
+    /// const OPERATION: Operation = Operation::add_field()
+    ///     .table_name(Identifier::new("todoapp__my_model"))
+    ///     .field(Field::new(
+    ///         Identifier::new("name"),
+    ///         <String as DatabaseField>::TYPE,
+    ///     ))
+    ///     .build();
+    ///
+    /// # let database = cot::db::Database::new("sqlite::memory:").await?;
+    /// # CREATE_OPERATION.forwards(&database).await?;
+    /// # OPERATION.forwards(&database).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub const fn add_field() -> AddFieldBuilder {
         AddFieldBuilder::new()
@@ -214,12 +344,11 @@ impl Operation {
     /// # Examples
     ///
     /// ```
-    /// use cot::db::migrations::{Field, Migration, MigrationEngine, Operation};
+    /// use cot::db::migrations::{Field, Migration, Operation};
     /// use cot::db::{Database, DatabaseField, Identifier};
-    /// use cot::Result;
     ///
     /// # #[tokio::main]
-    /// # async fn main() -> Result<()> {
+    /// # async fn main() -> cot::Result<()> {
     /// const OPERATION: Operation = Operation::create_model()
     ///     .table_name(Identifier::new("todoapp__my_model"))
     ///     .fields(&[
@@ -283,12 +412,11 @@ impl Operation {
     /// # Examples
     ///
     /// ```
-    /// use cot::db::migrations::{Field, Migration, MigrationEngine, Operation};
+    /// use cot::db::migrations::{Field, Migration, Operation};
     /// use cot::db::{Database, DatabaseField, Identifier};
-    /// use cot::Result;
     ///
     /// # #[tokio::main]
-    /// # async fn main() -> Result<()> {
+    /// # async fn main() -> cot::Result<()> {
     /// const OPERATION: Operation = Operation::create_model()
     ///     .table_name(Identifier::new("todoapp__my_model"))
     ///     .fields(&[
@@ -363,6 +491,21 @@ pub struct Field {
 }
 
 impl Field {
+    /// Creates a new field for use in a migration operation.
+    ///
+    /// # Cot CLI Usage
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::Field;
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// let field = Field::new(Identifier::new("name"), <String as DatabaseField>::TYPE);
+    /// ```
     #[must_use]
     pub const fn new(name: Identifier, ty: ColumnType) -> Self {
         Self {
@@ -376,6 +519,27 @@ impl Field {
         }
     }
 
+    /// Marks the field as a foreign key to the given model and field.
+    ///
+    /// # Cot CLI Usage
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI when you wrap
+    /// your field in an [`cot::db::ForeignKey`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::Field;
+    /// use cot::db::{DatabaseField, ForeignKeyOnDeletePolicy, ForeignKeyOnUpdatePolicy, Identifier};
+    ///
+    /// let field = Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE).foreign_key(
+    ///     Identifier::new("todoapp__my_model"),
+    ///     Identifier::new("id"),
+    ///     ForeignKeyOnDeletePolicy::Cascade,
+    ///     ForeignKeyOnUpdatePolicy::Cascade,
+    /// );
+    /// ```
     #[must_use]
     pub const fn foreign_key(
         mut self,
@@ -402,30 +566,107 @@ impl Field {
         self
     }
 
+    /// Marks the field as a primary key.
+    ///
+    /// # Cot CLI Usage
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI when you mark
+    /// your field with a `#[model(primary_key)]` attribute.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::Field;
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// let field = Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE).primary_key();
+    /// ```
     #[must_use]
     pub const fn primary_key(mut self) -> Self {
         self.primary_key = true;
         self
     }
 
+    /// Marks the field as an auto-incrementing value.
+    ///
+    /// # Cot CLI Usage
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI when you wrap
+    /// your field in an [`cot::db::Auto`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::Field;
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// let field = Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE).auto();
+    /// ```
     #[must_use]
     pub const fn auto(mut self) -> Self {
         self.auto_value = true;
         self
     }
 
+    /// Marks the field as nullable.
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI when you wrap
+    /// your field in an [`Option`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::Field;
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// let field = Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE).null();
+    /// ```
     #[must_use]
     pub const fn null(mut self) -> Self {
         self.null = true;
         self
     }
 
+    /// Sets the field to be nullable or not.
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI when you wrap
+    /// your field in an [`Option`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::Field;
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// let field = Field::new(Identifier::new("app"), <String as DatabaseField>::TYPE)
+    ///     .set_null(<String as DatabaseField>::NULLABLE);
+    /// ```
     #[must_use]
     pub const fn set_null(mut self, value: bool) -> Self {
         self.null = value;
         self
     }
 
+    /// Marks the field as unique.
+    ///
+    /// # Cot CLI Usage
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI when you mark
+    /// your field with a `#[model(unique)]` attribute.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::Field;
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// let field = Field::new(Identifier::new("name"), <String as DatabaseField>::TYPE).unique();
+    /// ```
     #[must_use]
     pub const fn unique(mut self) -> Self {
         self.unique = true;
@@ -475,6 +716,30 @@ macro_rules! unwrap_builder_option {
     };
 }
 
+/// A builder for creating a new model.
+///
+/// # Cot CLI Usage
+///
+/// Typically, you shouldn't need to use this directly. Instead, in most
+/// cases, this can be automatically generated by the Cot CLI.
+///
+/// # Examples
+///
+/// ```
+/// use cot::db::migrations::{Field, Operation};
+/// use cot::db::{DatabaseField, Identifier};
+///
+/// # #[tokio::main]
+/// # async fn main() -> cot::Result<()> {
+/// const OPERATION: Operation = Operation::create_model()
+///     .table_name(Identifier::new("todoapp__my_model"))
+///     .fields(&[Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE).primary_key()])
+///     .build();
+/// # let database = cot::db::Database::new("sqlite::memory:").await?;
+/// # OPERATION.forwards(&database).await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Copy, Clone)]
 pub struct CreateModelBuilder {
     table_name: Option<Identifier>,
@@ -490,7 +755,7 @@ impl Default for CreateModelBuilder {
 
 impl CreateModelBuilder {
     #[must_use]
-    pub const fn new() -> Self {
+    const fn new() -> Self {
         Self {
             table_name: None,
             fields: None,
@@ -498,24 +763,116 @@ impl CreateModelBuilder {
         }
     }
 
+    /// Sets the name of the table to create.
+    ///
+    /// # Cot CLI Usage
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::{Field, Operation};
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// const OPERATION: Operation = Operation::create_model()
+    ///     .table_name(Identifier::new("todoapp__my_model"))
+    ///     .fields(&[Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE).primary_key()])
+    ///     .build();
+    /// # let database = cot::db::Database::new("sqlite::memory:").await?;
+    /// # OPERATION.forwards(&database).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub const fn table_name(mut self, table_name: Identifier) -> Self {
         self.table_name = Some(table_name);
         self
     }
 
+    /// Sets the fields to create in the model.
+    ///
+    /// # Cot CLI Usage
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::{Field, Operation};
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// const OPERATION: Operation = Operation::create_model()
+    ///     .table_name(Identifier::new("todoapp__my_model"))
+    ///     .fields(&[Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE).primary_key()])
+    ///     .build();
+    /// # let database = cot::db::Database::new("sqlite::memory:").await?;
+    /// # OPERATION.forwards(&database).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub const fn fields(mut self, fields: &'static [Field]) -> Self {
         self.fields = Some(fields);
         self
     }
 
+    /// Sets the model to be created only if it doesn't already exist.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::{Field, Operation};
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// const OPERATION: Operation = Operation::create_model()
+    ///     .if_not_exists()
+    ///     .table_name(Identifier::new("todoapp__my_model"))
+    ///     .fields(&[Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE).primary_key()])
+    ///     .build();
+    /// # let database = cot::db::Database::new("sqlite::memory:").await?;
+    /// # OPERATION.forwards(&database).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub const fn if_not_exists(mut self) -> Self {
         self.if_not_exists = true;
         self
     }
 
+    /// Builds the operation.
+    ///
+    /// # Cot CLI Usage
+    ///
+    /// Typically, you shouldn't need to use this directly. Instead, in most
+    /// cases, this can be automatically generated by the Cot CLI.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::migrations::{Field, Operation};
+    /// use cot::db::{DatabaseField, Identifier};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// const OPERATION: Operation = Operation::create_model()
+    ///     .table_name(Identifier::new("todoapp__my_model"))
+    ///     .fields(&[Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE).primary_key()])
+    ///     .build();
+    /// # let database = cot::db::Database::new("sqlite::memory:").await?;
+    /// # OPERATION.forwards(&database).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub const fn build(self) -> Operation {
         Operation::new(OperationInner::CreateModel {
@@ -568,20 +925,71 @@ impl AddFieldBuilder {
     }
 }
 
+/// A trait for defining a migration.
+///
+/// # Cot CLI Usage
+///
+/// Typically, you shouldn't need to use this directly. Instead, in most
+/// cases, this can be automatically generated by the Cot CLI.
+///
+/// # Examples
+///
+/// ```
+/// use cot::db::migrations::{Field, Migration, MigrationDependency, Operation};
+/// use cot::db::{DatabaseField, Identifier};
+///
+/// struct MyMigration;
+///
+/// impl Migration for MyMigration {
+///     const APP_NAME: &'static str = "myapp";
+///     const MIGRATION_NAME: &'static str = "m_0001_initial";
+///     const DEPENDENCIES: &'static [MigrationDependency] = &[];
+///     const OPERATIONS: &'static [Operation] = &[Operation::create_model()
+///         .table_name(Identifier::new("todoapp__my_model"))
+///         .fields(&[
+///             Field::new(Identifier::new("id"), <i32 as DatabaseField>::TYPE).primary_key(),
+///         ])
+///         .build()];
+/// }
+/// ```
 pub trait Migration {
+    /// The name of the app that this migration belongs to.
     const APP_NAME: &'static str;
+
+    /// The name of the migration.
     const MIGRATION_NAME: &'static str;
+
+    /// The list of dependencies of the migration.
     const DEPENDENCIES: &'static [MigrationDependency];
+
+    /// The list of operations to apply in the migration.
     const OPERATIONS: &'static [Operation];
 }
 
+/// A trait for defining a migration that can be dynamically applied.
+///
+/// This is mostly useful for use in the [`MigrationEngine`] to allow
+/// migrations to be dynamically loaded from multiple apps. This can also be
+/// used to implement custom migration loading logic, or to implement
+/// migrations that are not statically defined.
+///
+/// This trait has a blanket implementation for types that implement
+/// [`Migration`].
 pub trait DynMigration {
+    /// The name of the app that this migration belongs to.
     fn app_name(&self) -> &str;
+
+    /// The name of the migration.
     fn name(&self) -> &str;
+
+    /// The list of dependencies of the migration.
     fn dependencies(&self) -> &[MigrationDependency];
+
+    /// The list of operations to apply in the migration.
     fn operations(&self) -> &[Operation];
 }
 
+/// A type alias for a dynamic migration that is both [`Send`] and [`Sync`].
 pub type SyncDynMigration = dyn DynMigration + Send + Sync;
 
 impl<T: Migration + Send + Sync + 'static> DynMigration for T {
@@ -674,7 +1082,7 @@ impl DynMigration for Box<SyncDynMigration> {
     }
 }
 
-pub struct MigrationWrapper(Box<SyncDynMigration>);
+pub(crate) struct MigrationWrapper(Box<SyncDynMigration>);
 
 impl MigrationWrapper {
     #[must_use]

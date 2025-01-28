@@ -50,6 +50,19 @@ pub trait ResponseExt: Sized + private::Sealed {
     #[must_use]
     fn builder() -> http::response::Builder;
 
+    /// Create a new HTML response.
+    ///
+    /// This creates a new [`Response`] object with a content type of
+    /// `text/html; charset=utf-8` and given status code and body.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::{Body, StatusCode};
+    ///
+    /// let response = Response::new_html(StatusCode::OK, Body::fixed("Hello world!"));
+    /// ```
     #[must_use]
     fn new_html(status: StatusCode, body: Body) -> Self;
 
@@ -85,6 +98,25 @@ pub trait ResponseExt: Sized + private::Sealed {
     #[cfg(feature = "json")]
     fn new_json<T: ?Sized + serde::Serialize>(status: StatusCode, data: &T) -> crate::Result<Self>;
 
+    /// Create a new redirect response.
+    ///
+    /// This creates a new [`Response`] object with a status code of
+    /// [`StatusCode::SEE_OTHER`] and a location header set to the provided
+    /// location.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::StatusCode;
+    ///
+    /// let response = Response::new_redirect("http://example.com");
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// * [`crate::reverse_redirect!`] – a more ergonomic way to create
+    ///   redirects to internal views
     #[must_use]
     fn new_redirect<T: Into<String>>(location: T) -> Self;
 }

@@ -97,6 +97,7 @@ pub struct DatabaseConfig {
     url: String,
 }
 
+#[cfg(feature = "db")]
 impl DatabaseConfigBuilder {
     #[must_use]
     pub fn build(&self) -> DatabaseConfig {

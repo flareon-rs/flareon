@@ -28,6 +28,17 @@
 //!   care of making your web apps secure by default, defending it against
 //!   common modern web vulnerabilities. You can focus on building your app, not
 //!   securing it.
+//!
+//! ## Guide
+//!
+//! This is an API reference for Cot, which might not be the best place to
+//! start learning Cot. For a more gentle introduction, see the
+//! [Cot guide](https://cot.rs/guide/latest/).
+//!
+//! ## Examples
+//!
+//! To see examples of how to use Cot, see the
+//! [examples in the repository](https://github.com/cot-rs/cot/tree/master/examples).
 
 #![warn(missing_docs, rustdoc::missing_crate_level_docs)]
 #![cfg_attr(
@@ -103,7 +114,7 @@ use crate::middleware::{IntoCotError, IntoCotErrorLayer, IntoCotResponse, IntoCo
 use crate::response::Response;
 use crate::router::RouterService;
 
-/// A type alias for a result that can return a `cot::Error`.
+/// A type alias for a result that can return a [`cot::Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// A type alias for an HTTP status code.
@@ -424,6 +435,23 @@ impl http_body::Body for Body {
     }
 }
 
+/// A wrapper around a handler that's used in [`CotProject`].
+///
+/// It is returned by [`CotProject::into_context`]. Typically, you don't
+/// need to interact with this type directly.
+///
+/// # Examples
+///
+/// ```
+/// use cot::CotProject;
+///
+/// # #[tokio::main]
+/// # async fn main() -> cot::Result<()> {
+/// let project = CotProject::builder().build().await?;
+/// let (context, handler) = project.into_context();
+/// # Ok(())
+/// # }
+/// ```
 pub type BoxedHandler = BoxCloneService<Request, Response, Error>;
 
 /// A Cot project, ready to be run.
@@ -914,6 +942,28 @@ pub async fn run_at(project: CotProject, listener: tokio::net::TcpListener) -> R
     Ok(())
 }
 
+/// Runs the CLI for the given project.
+///
+/// This function takes a [`CotProject`] and runs the CLI for the project. You
+/// typically don't need to call this function directly. Instead, you can use
+/// [`cot::main`] which is a more ergonomic way to run the CLI.
+///
+/// # Errors
+///
+/// This function returns an error if the CLI command fails to execute.
+///
+/// # Examples
+///
+/// ```no_run
+/// use cot::{run_cli, CotProject};
+///
+/// # #[tokio::main]
+/// # async fn main() -> cot::Result<()> {
+/// let project = CotProject::builder().build().await?;
+/// run_cli(project).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn run_cli(mut project: CotProject) -> Result<()> {
     std::mem::take(&mut project.cli).execute(project).await
 }

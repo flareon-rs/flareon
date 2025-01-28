@@ -223,8 +223,35 @@ impl<T: Integer> Render for IntegerField<T> {
 }
 
 /// A trait for numerical types that optionally have minimum and maximum values.
+///
+/// # Examples
+///
+/// ```
+/// use cot::forms::fields::Integer;
+///
+/// assert_eq!(<i8 as Integer>::MIN, Some(-128));
+/// assert_eq!(<i8 as Integer>::MAX, Some(127));
+/// ```
 pub trait Integer: Sized + ToString {
+    /// The minimum value of the type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::forms::fields::Integer;
+    ///
+    /// assert_eq!(<i8 as Integer>::MIN, Some(-128));
+    /// ```
     const MIN: Option<Self>;
+    /// The maximum value of the type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::forms::fields::Integer;
+    ///
+    /// assert_eq!(<i8 as Integer>::MAX, Some(127));
+    /// ```
     const MAX: Option<Self>;
 }
 

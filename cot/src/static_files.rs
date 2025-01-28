@@ -239,11 +239,19 @@ where
 pin_project! {
     /// Future representing the response for a static file request.
     #[project = ResponseFutureProj]
+    #[allow(missing_docs)]  // because of: https://github.com/taiki-e/pin-project-lite/issues/3
     pub enum ResponseFuture<F> {
         /// Response for a static file.
-        StaticFileResponse { response: Response },
+        StaticFileResponse {
+            // A [`Response`] object for a static file.
+            response: Response,
+        },
         /// Response from the inner service.
-        Inner { #[pin] future: F },
+        Inner {
+            // The inner service's future.
+            #[pin]
+            future: F,
+        },
     }
 }
 
