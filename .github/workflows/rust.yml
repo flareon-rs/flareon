@@ -112,7 +112,7 @@ jobs:
         run: cargo nextest run --all-features --run-ignored only
 
       - name: Test docs
-        run: cargo test --doc
+        run: cargo test --all-features --doc
 
   coverage:
     if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository

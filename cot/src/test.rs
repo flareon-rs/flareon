@@ -1,6 +1,5 @@
 //! Test utilities for Cot projects.
 
-use std::collections::HashMap;
 use std::future::poll_fn;
 use std::sync::Arc;
 
