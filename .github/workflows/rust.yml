@@ -55,7 +55,7 @@ jobs:
       # they are not exposed in the same way as normal tests.
       # https://github.com/nextest-rs/nextest/issues/16
       - name: Test docs
-        run: cargo +${{ matrix.rust }} test --doc
+        run: cargo +${{ matrix.rust }} test --all-features --doc
 
   clippy:
     if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
