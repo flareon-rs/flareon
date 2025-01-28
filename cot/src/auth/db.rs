@@ -110,7 +110,7 @@ impl DatabaseUser {
         })?;
 
         let mut user = Self::new(Auto::auto(), username, &password.into());
-        user.save(db).await.map_err(AuthError::backend_error)?;
+        user.insert(db).await.map_err(AuthError::backend_error)?;
 
         Ok(user)
     }
