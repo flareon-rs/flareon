@@ -1,3 +1,5 @@
+//! Database interface implementation – MySQL backend.
+
 use crate::db::sea_query_db::impl_sea_query_db_backend;
 use crate::db::ColumnType;
 

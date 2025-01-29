@@ -119,8 +119,9 @@ macro_rules! impl_sea_query_db_backend {
             }
         }
 
-        /// A wrapper for the internal row type used by [`$sqlx_db_ty`] to provide a
-        /// unified interface for the database operations.
+        #[doc = "A wrapper for the internal row type used by [`"]
+        #[doc = stringify!($sqlx_db_ty)]
+        #[doc = "`] to provide a unified interface for the database operations."]
         #[derive(derive_more::Debug)]
         pub struct $row_name {
             #[debug("...")]
@@ -143,8 +144,9 @@ macro_rules! impl_sea_query_db_backend {
             }
         }
 
-        /// A wrapper for the internal value type used by [`$sqlx_db_ty`] to provide a
-        /// unified interface for the database operations.
+        #[doc = "A wrapper for the internal value type used by [`"]
+        #[doc = stringify!($sqlx_db_ty)]
+        #[doc = "`] to provide a unified interface for the database operations."]
         #[derive(derive_more::Debug)]
         pub struct $value_ref_name<'r> {
             #[debug("...")]

@@ -18,10 +18,38 @@ use crate::request::Request;
 use crate::response::Response;
 use crate::{Body, Error};
 
+/// Middleware that converts a any [`http::Response`] generic type to a
+/// [`cot::Response`].
+///
+/// This is useful for converting a response from a middleware that is
+/// compatible with the `tower` crate to a response that is compatible with
+/// Cot. It's applied automatically by [`cot::CotProjectBuilder::middleware()`]
+/// and is not needed to be added manually.
+///
+/// # Examples
+///
+/// ```rust
+/// use cot::middleware::LiveReloadMiddleware;
+/// use cot::CotProject;
+///
+/// let app = CotProject::builder()
+///     // IntoCotResponseLayer used internally in middleware()
+///     .middleware(LiveReloadMiddleware::new())
+///     .build();
+/// ```
 #[derive(Debug, Copy, Clone)]
 pub struct IntoCotResponseLayer;
 
 impl IntoCotResponseLayer {
+    /// Create a new [`IntoCotResponseLayer`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use cot::middleware::IntoCotResponseLayer;
+    ///
+    /// let middleware = IntoCotResponseLayer::new();
+    /// ```
     #[must_use]
     pub fn new() -> Self {
         Self {}
@@ -42,6 +70,23 @@ impl<S> tower::Layer<S> for IntoCotResponseLayer {
     }
 }
 
+/// Service struct that converts a any [`http::Response`] generic type to a
+/// [`cot::Response`].
+///
+/// Used by [`IntoCotResponseLayer`].
+///
+/// # Examples
+///
+/// ```
+/// use std::any::TypeId;
+///
+/// use cot::middleware::{IntoCotResponse, IntoCotResponseLayer};
+///
+/// assert_eq!(
+///     TypeId::of::<<IntoCotResponseLayer as tower::Layer<()>>::Service>(),
+///     TypeId::of::<IntoCotResponse::<()>>()
+/// );
+/// ```
 #[derive(Debug, Clone)]
 pub struct IntoCotResponse<S> {
     inner: S,
@@ -76,10 +121,38 @@ where
     response.map(|body| Body::wrapper(BoxBody::new(body.map_err(map_err))))
 }
 
+/// Middleware that converts a any error type to a
+/// [`cot::Error`].
+///
+/// This is useful for converting a response from a middleware that is
+/// compatible with the `tower` crate to a response that is compatible with
+/// Cot. It's applied automatically by [`cot::CotProjectBuilder::middleware()`]
+/// and is not needed to be added manually.
+///
+/// # Examples
+///
+/// ```rust
+/// use cot::middleware::LiveReloadMiddleware;
+/// use cot::CotProject;
+///
+/// let app = CotProject::builder()
+///     // IntoCotErrorLayer used internally in middleware()
+///     .middleware(LiveReloadMiddleware::new())
+///     .build();
+/// ```
 #[derive(Debug, Copy, Clone)]
 pub struct IntoCotErrorLayer;
 
 impl IntoCotErrorLayer {
+    /// Create a new [`IntoCotErrorLayer`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use cot::middleware::IntoCotErrorLayer;
+    ///
+    /// let middleware = IntoCotErrorLayer::new();
+    /// ```
     #[must_use]
     pub fn new() -> Self {
         Self {}
@@ -100,6 +173,22 @@ impl<S> tower::Layer<S> for IntoCotErrorLayer {
     }
 }
 
+/// Service struct that converts a any error type to a [`cot::Error`].
+///
+/// Used by [`IntoCotErrorLayer`].
+///
+/// # Examples
+///
+/// ```
+/// use std::any::TypeId;
+///
+/// use cot::middleware::{IntoCotError, IntoCotErrorLayer};
+///
+/// assert_eq!(
+///     TypeId::of::<<IntoCotErrorLayer as tower::Layer<()>>::Service>(),
+///     TypeId::of::<IntoCotError::<()>>()
+/// );
+/// ```
 #[derive(Debug, Clone)]
 pub struct IntoCotError<S> {
     inner: S,

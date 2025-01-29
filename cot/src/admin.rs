@@ -225,6 +225,23 @@ pub trait AdminModel {
     fn display(&self) -> String;
 }
 
+/// The admin app.
+///
+/// # Examples
+///
+/// ```
+/// use cot::admin::AdminApp;
+/// use cot::CotProject;
+///
+/// # #[tokio::main]
+/// # async fn main() -> cot::Result<()> {
+/// CotProject::builder()
+///     .register_app_with_views(AdminApp::new(), "/admin")
+///     .build()
+///     .await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Copy, Clone)]
 pub struct AdminApp;
 
@@ -235,6 +252,23 @@ impl Default for AdminApp {
 }
 
 impl AdminApp {
+    /// Creates an admin app instance.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::admin::AdminApp;
+    /// use cot::CotProject;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// CotProject::builder()
+    ///     .register_app_with_views(AdminApp::new(), "/admin")
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn new() -> Self {
         Self {}

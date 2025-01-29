@@ -108,6 +108,18 @@ impl ProjectConfigBuilder {
     }
 }
 
+/// The configuration for the database.
+///
+/// This is used to configure the database connection. It's useful as part of
+/// the [`ProjectConfig`] struct.
+///
+/// # Examples
+///
+/// ```
+/// use cot::config::DatabaseConfig;
+///
+/// let config = DatabaseConfig::builder().url("sqlite::memory:").build();
+/// ```
 #[cfg(feature = "db")]
 #[derive(Debug, Clone, Builder)]
 #[builder(build_fn(skip, error = std::convert::Infallible))]
@@ -118,6 +130,19 @@ pub struct DatabaseConfig {
 
 #[cfg(feature = "db")]
 impl DatabaseConfigBuilder {
+    /// Builds the database configuration.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if the database URL is not set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::DatabaseConfig;
+    ///
+    /// let config = DatabaseConfig::builder().url("sqlite::memory:").build();
+    /// ```
     #[must_use]
     pub fn build(&self) -> DatabaseConfig {
         DatabaseConfig {
@@ -276,21 +301,74 @@ impl ProjectConfig {
     }
 }
 
+/// A secret key.
+///
+/// This is a wrapper over a byte array, which is used to store a cryptographic
+/// key. This is useful for [`ProjectConfig::secret_key`] and
+/// [`ProjectConfig::fallback_secret_keys`], which are used to sign cookies and
+/// other sensitive data.
+///
+/// # Security
+///
+/// The implementation of the [`PartialEq`] trait for this type is constant-time
+/// to prevent timing attacks.
+///
+/// The implementation of the [`Debug`] trait for this type hides the secret key
+/// to prevent it from being leaked in logs or other debug output.
+///
+/// # Examples
+///
+/// ```
+/// use cot::config::SecretKey;
+///
+/// let key = SecretKey::new(&[1, 2, 3]);
+/// assert_eq!(key.as_bytes(), &[1, 2, 3]);
+/// ```
 #[repr(transparent)]
 #[derive(Clone)]
 pub struct SecretKey(Box<[u8]>);
 
 impl SecretKey {
+    /// Create a new [`SecretKey`] from a byte array.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::SecretKey;
+    ///
+    /// let key = SecretKey::new(&[1, 2, 3]);
+    /// assert_eq!(key.as_bytes(), &[1, 2, 3]);
+    /// ```
     #[must_use]
     pub fn new(hash: &[u8]) -> Self {
         Self(Box::from(hash))
     }
 
+    /// Get the byte array stored in the [`SecretKey`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::SecretKey;
+    ///
+    /// let key = SecretKey::new(&[1, 2, 3]);
+    /// assert_eq!(key.as_bytes(), &[1, 2, 3]);
+    /// ```
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 
+    /// Consume the [`SecretKey`] and return the byte array stored in it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::SecretKey;
+    ///
+    /// let key = SecretKey::new(&[1, 2, 3]);
+    /// assert_eq!(key.into_bytes(), Box::from([1, 2, 3]));
+    /// ```
     #[must_use]
     pub fn into_bytes(self) -> Box<[u8]> {
         self.0

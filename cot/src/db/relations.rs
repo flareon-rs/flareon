@@ -6,6 +6,41 @@ use crate::db::{DatabaseBackend, Model, Result};
 ///
 /// Internally, this is represented either as a primary key (in case the
 /// model has not been retrieved from the database) or as the model itself.
+///
+/// # Examples
+///
+/// ```
+/// use cot::db::{model, Auto, ForeignKey, Model};
+/// use cot::request::{Request, RequestExt};
+/// use cot::response::Response;
+///
+/// #[model]
+/// struct MyModel {
+///     #[model(primary_key)]
+///     id: Auto<i32>,
+///     user: ForeignKey<User>,
+/// }
+///
+/// #[model]
+/// struct User {
+///     #[model(primary_key)]
+///     id: Auto<i32>,
+/// }
+///
+/// async fn index(request: &Request) -> cot::Result<Response> {
+///     let mut user = User { id: Auto::auto() };
+///     user.save(request.db()).await?;
+///
+///     let mut my_model = MyModel {
+///         id: Auto::auto(),
+///         user: ForeignKey::from(user),
+///     };
+///     my_model.save(request.db()).await?;
+///
+///     // ...
+/// #   todo!()
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub enum ForeignKey<T: Model> {
     /// The primary key of the referenced model; used when the model has not
@@ -52,6 +87,13 @@ impl<T: Model> ForeignKey<T> {
     ///
     /// This method will replace the primary key with the model instance if
     /// the primary key is stored in this [`ForeignKey`] instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DatabaseError::ForeignKeyNotFound`] error if the model
+    /// could not be found in the database.
+    ///
+    /// Returns an error if there was a problem communicating with the database.
     pub async fn get<DB: DatabaseBackend>(&mut self, db: &DB) -> Result<&T> {
         match self {
             Self::Model(model) => Ok(model),
@@ -60,7 +102,10 @@ impl<T: Model> ForeignKey<T> {
                     .await?
                     .ok_or(DatabaseError::ForeignKeyNotFound)?;
                 *self = Self::Model(Box::new(model));
-                Ok(self.model().expect("model was just set"))
+                match self.model() {
+                    Some(model) => Ok(model),
+                    None => unreachable!("model was just set"),
+                }
             }
         }
     }
@@ -99,10 +144,14 @@ impl<T: Model> From<&T> for ForeignKey<T> {
 /// - [`ForeignKeyOnUpdatePolicy`]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum ForeignKeyOnDeletePolicy {
+    /// Don't do any additional actions on delete.
     NoAction,
+    /// Prevent the delete if this model instance is referenced by another row.
     #[default]
     Restrict,
+    /// Remove the referencing row if the referenced row is deleted.
     Cascade,
+    /// Set the foreign key in the referencing row to [`None`].
     SetNone,
 }
 
@@ -127,10 +176,15 @@ impl From<ForeignKeyOnDeletePolicy> for sea_query::ForeignKeyAction {
 /// - [`ForeignKeyOnDeletePolicy`]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum ForeignKeyOnUpdatePolicy {
+    /// Don't do any additional actions on update.
     NoAction,
+    /// Prevent the update if this model instance is referenced by another row.
     Restrict,
+    /// Update the foreign key in the referencing row if the referenced row is
+    /// updated.
     #[default]
     Cascade,
+    /// Set the foreign key in the referencing row to [`None`].
     SetNone,
 }
 

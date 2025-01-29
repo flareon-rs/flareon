@@ -97,6 +97,7 @@ pub enum FormFieldValidationError {
     /// The field value is invalid.
     #[error("Value is not valid for this field.")]
     InvalidValue(String),
+    /// Custom error with given message.
     #[error("{0}")]
     Custom(Cow<'static, str>),
 }
@@ -129,9 +130,12 @@ impl FormFieldValidationError {
     }
 }
 
+/// An enum indicating the target of a form validation error.
 #[derive(Debug)]
 pub enum FormErrorTarget<'a> {
+    /// An error targetting a single field.
     Field(&'a str),
+    /// An error targetting the entire form.
     Form,
 }
 
@@ -265,6 +269,7 @@ impl<T: FormContext> Render for T {
 /// Generic options valid for all types of form fields.
 #[derive(Debug)]
 pub struct FormFieldOptions {
+    /// The HTML ID of the form field.
     pub id: String,
     /// Whether the field is required. Note that this really only adds
     /// "required" field to the HTML input element, since by default all
@@ -314,12 +319,16 @@ pub trait FormField: Render {
 ///
 /// This trait is implemented for all types that implement [`FormField`].
 pub trait DynFormField {
+    /// Returns the generic options for the form field.
     fn dyn_options(&self) -> &FormFieldOptions;
 
+    /// Returns the HTML ID of the form field.
     fn dyn_id(&self) -> &str;
 
+    /// Sets the string value of the form field.
     fn dyn_set_value(&mut self, value: Cow<'_, str>);
 
+    /// Renders the form field as HTML.
     fn dyn_render(&self) -> Html;
 }
 

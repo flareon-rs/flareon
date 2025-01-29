@@ -678,6 +678,23 @@ impl CotProjectBuilder<Uninitialized> {
         self
     }
 
+    /// Sets the configuration for the project.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::ProjectConfig;
+    /// use cot::CotProject;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let cot_project = CotProject::builder()
+    ///     .config(ProjectConfig::default())
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn config(mut self, config: ProjectConfig) -> Self {
         self.context.config = Arc::new(config);
@@ -786,6 +803,29 @@ impl CotProjectBuilder<Uninitialized> {
         self.into_builder_with_service().middleware(middleware)
     }
 
+    /// Adds middleware to the project, with access to the project context.
+    ///
+    /// The project context might be useful for creating middlewares that need
+    /// access to the project's configuration, apps, database, etc. An example
+    /// of such middleware is the [`StaticFilesMiddleware`], which iterates
+    /// through all the registered apps and collects the static files from them.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::static_files::StaticFilesMiddleware;
+    /// use cot::{CotApp, CotProject};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let cot_project = CotProject::builder()
+    ///     .middleware_with_context(StaticFilesMiddleware::from_app_context)
+    ///     .build()
+    ///     .await?;
+    ///
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn middleware_with_context<M, F>(
         self,
@@ -888,6 +928,29 @@ where
         }
     }
 
+    /// Adds middleware to the project, with access to the project context.
+    ///
+    /// The project context might be useful for creating middlewares that need
+    /// access to the project's configuration, apps, database, etc. An example
+    /// of such middleware is the [`StaticFilesMiddleware`], which iterates
+    /// through all the registered apps and collects the static files from them.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::static_files::StaticFilesMiddleware;
+    /// use cot::{CotApp, CotProject};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let cot_project = CotProject::builder()
+    ///     .middleware_with_context(StaticFilesMiddleware::from_app_context)
+    ///     .build()
+    ///     .await?;
+    ///
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn middleware_with_context<M, F>(
         self,

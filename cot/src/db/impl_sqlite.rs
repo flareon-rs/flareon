@@ -1,3 +1,5 @@
+//! Database interface implementation – SQLite backend.
+
 use sea_query_binder::SqlxValues;
 
 use crate::db::sea_query_db::impl_sea_query_db_backend;
