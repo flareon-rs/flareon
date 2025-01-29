@@ -1,6 +1,6 @@
 //! Administration panel.
 //!
-//! This module provides a administration panel for managing models
+//! This module provides an administration panel for managing models
 //! registered in the application, straight from the web interface.
 
 use std::marker::PhantomData;
@@ -11,8 +11,8 @@ use derive_more::Debug;
 use rinja::Template;
 
 use crate::auth::AuthRequestExt;
-use crate::forms::fields::Password;
-use crate::forms::{
+use crate::form::fields::Password;
+use crate::form::{
     Form, FormContext, FormErrorTarget, FormField, FormFieldValidationError, FormResult,
 };
 use crate::request::{Request, RequestExt};
@@ -60,7 +60,7 @@ async fn index(mut request: Request) -> cot::Result<Response> {
             Body::fixed(template.render()?),
         ))
     } else {
-        Ok(reverse_redirect!(request, "login"))
+        Ok(reverse_redirect!(request, "login")?)
     }
 }
 
@@ -72,7 +72,7 @@ async fn login(mut request: Request) -> cot::Result<Response> {
         match login_form {
             FormResult::Ok(login_form) => {
                 if authenticate(&mut request, login_form).await? {
-                    return Ok(reverse_redirect!(request, "index"));
+                    return Ok(reverse_redirect!(request, "index")?);
                 }
 
                 let mut context = LoginForm::build_context(&mut request).await?;
@@ -103,7 +103,7 @@ async fn authenticate(request: &mut Request, login_form: LoginForm) -> cot::Resu
     let user = request
         .authenticate(&crate::auth::db::DatabaseUserCredentials::new(
             login_form.username,
-            // TODO unify auth::Password and forms::fields::Password
+            // TODO unify auth::Password and form::fields::Password
             cot::auth::Password::new(login_form.password.into_string()),
         ))
         .await?;
@@ -139,7 +139,7 @@ async fn view_model(mut request: Request) -> cot::Result<Response> {
             Body::fixed(template.render()?),
         ))
     } else {
-        Ok(reverse_redirect!(request, "login"))
+        Ok(reverse_redirect!(request, "login")?)
     }
 }
 
@@ -203,20 +203,25 @@ impl<T: AdminModel + Send + Sync + 'static> AdminModelManager for DefaultAdminMo
     }
 }
 
+/// A model that can be managed by the admin panel.
 #[async_trait]
 pub trait AdminModel {
+    /// Get the objects of this model.
     async fn get_objects(request: &Request) -> cot::Result<Vec<Self>>
     where
         Self: Sized;
 
+    /// Get the name of this model.
     fn name() -> &'static str
     where
         Self: Sized;
 
+    /// Get the URL slug for this model.
     fn url_name() -> &'static str
     where
         Self: Sized;
 
+    /// Get the display text of this model instance.
     fn display(&self) -> String;
 }
 

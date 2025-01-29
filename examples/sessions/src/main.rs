@@ -1,4 +1,4 @@
-use cot::forms::Form;
+use cot::form::Form;
 use cot::middleware::SessionMiddleware;
 use cot::request::{Request, RequestExt};
 use cot::response::{Response, ResponseExt};
@@ -33,7 +33,7 @@ async fn hello(request: Request) -> cot::Result<Response> {
         .expect("Invalid session value")
         .unwrap_or_default();
     if name.is_empty() {
-        return Ok(reverse_redirect!(request, "name"));
+        return Ok(reverse_redirect!(request, "name")?);
     }
 
     let template = IndexTemplate {
@@ -56,7 +56,7 @@ async fn name(mut request: Request) -> cot::Result<Response> {
             .await
             .unwrap();
 
-        return Ok(reverse_redirect!(request, "index"));
+        return Ok(reverse_redirect!(request, "index")?);
     }
 
     let template = NameTemplate { request: &request };

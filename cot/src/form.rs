@@ -11,7 +11,7 @@
 //! all the form data you need, and derive the [`Form`] trait for it.
 //!
 //! ```
-//! use cot::forms::Form;
+//! use cot::form::Form;
 //!
 //! #[derive(Form)]
 //! struct MyForm {
@@ -149,7 +149,7 @@ pub enum FormErrorTarget<'a> {
 /// type.
 ///
 /// ```rust
-/// use cot::forms::Form;
+/// use cot::form::Form;
 ///
 /// #[derive(Form)]
 /// struct MyForm {

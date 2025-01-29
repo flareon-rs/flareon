@@ -3,7 +3,7 @@ mod migrations;
 use cot::config::{DatabaseConfig, ProjectConfig};
 use cot::db::migrations::SyncDynMigration;
 use cot::db::{model, query, Model};
-use cot::forms::Form;
+use cot::form::Form;
 use cot::request::{Request, RequestExt};
 use cot::response::{Response, ResponseExt};
 use cot::router::{Route, Router};
@@ -53,7 +53,7 @@ async fn add_todo(mut request: Request) -> cot::Result<Response> {
         .await?;
     }
 
-    Ok(reverse_redirect!(request, "index"))
+    Ok(reverse_redirect!(request, "index")?)
 }
 
 async fn remove_todo(request: Request) -> cot::Result<Response> {
@@ -69,7 +69,7 @@ async fn remove_todo(request: Request) -> cot::Result<Response> {
             .await?;
     }
 
-    Ok(reverse_redirect!(request, "index"))
+    Ok(reverse_redirect!(request, "index")?)
 }
 
 struct TodoApp;

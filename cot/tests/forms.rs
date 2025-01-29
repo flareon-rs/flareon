@@ -1,4 +1,4 @@
-use cot::forms::{
+use cot::form::{
     Form, FormContext, FormErrorTarget, FormField, FormFieldValidationError, FormResult,
 };
 use cot::test::TestRequestBuilder;

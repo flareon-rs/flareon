@@ -102,7 +102,7 @@ impl FormDeriveBuilder {
         let opt = &field.opt;
 
         self.fields_as_struct_fields
-            .push(quote!(#name: <#ty as #crate_ident::forms::AsFormField>::Type));
+            .push(quote!(#name: <#ty as #crate_ident::form::AsFormField>::Type));
 
         self.fields_as_struct_fields_new.push({
             let custom_options_setters: Vec<_> = if let Some(opt) = opt {
@@ -113,34 +113,34 @@ impl FormDeriveBuilder {
                 Vec::new()
             };
             quote!(#name: {
-                let options = #crate_ident::forms::FormFieldOptions {
+                let options = #crate_ident::form::FormFieldOptions {
                     id: stringify!(#name).to_owned(),
                     required: true,
                 };
-                type Field = <#ty as #crate_ident::forms::AsFormField>::Type;
-                type CustomOptions = <Field as #crate_ident::forms::FormField>::CustomOptions;
+                type Field = <#ty as #crate_ident::form::AsFormField>::Type;
+                type CustomOptions = <Field as #crate_ident::form::FormField>::CustomOptions;
                 let mut custom_options: CustomOptions = ::core::default::Default::default();
                 #( #custom_options_setters; )*
-                <#ty as #crate_ident::forms::AsFormField>::new_field(options, custom_options)
+                <#ty as #crate_ident::form::AsFormField>::new_field(options, custom_options)
             })
         });
 
         self.fields_as_context_from_request
             .push(quote!(stringify!(#name) => {
-                #crate_ident::forms::FormField::set_value(&mut self.#name, value)
+                #crate_ident::form::FormField::set_value(&mut self.#name, value)
             }));
 
         let val_ident = format_ident!("val_{}", name);
         self.fields_as_from_context_vars.push(quote! {
-            let #val_ident = <#ty as #crate_ident::forms::AsFormField>::clean_value(&context.#name).map_err(|error| {
-                context.add_error(#crate_ident::forms::FormErrorTarget::Field(stringify!(#name)), error);
+            let #val_ident = <#ty as #crate_ident::form::AsFormField>::clean_value(&context.#name).map_err(|error| {
+                context.add_error(#crate_ident::form::FormErrorTarget::Field(stringify!(#name)), error);
             })
         });
         self.fields_as_from_context
             .push(quote!(#name: #val_ident.expect("Errors should have been returned by now")));
 
         self.fields_as_errors
-            .push(quote!(#name: Vec<#crate_ident::forms::FormFieldValidationError>));
+            .push(quote!(#name: Vec<#crate_ident::form::FormFieldValidationError>));
 
         self.fields_as_errors_for
             .push(quote!(stringify!(#name) => self.__errors.#name.as_slice()));
@@ -152,7 +152,7 @@ impl FormDeriveBuilder {
             .push(quote!(!self.__errors.#name.is_empty()));
 
         self.fields_as_dyn_field_ref
-            .push(quote!(&self.#name as &dyn #crate_ident::forms::DynFormField));
+            .push(quote!(&self.#name as &dyn #crate_ident::form::DynFormField));
     }
 
     fn build_form_impl(&self) -> TokenStream {
@@ -165,21 +165,21 @@ impl FormDeriveBuilder {
         quote! {
             #[#crate_ident::__private::async_trait]
             #[automatically_derived]
-            impl #crate_ident::forms::Form for #name {
+            impl #crate_ident::form::Form for #name {
                 type Context = #context_struct_name;
 
                 async fn from_request(
                     request: &mut #crate_ident::request::Request
-                ) -> ::core::result::Result<#crate_ident::forms::FormResult<Self>, #crate_ident::forms::FormError> {
-                    let mut context = <Self as #crate_ident::forms::Form>::build_context(request).await?;
+                ) -> ::core::result::Result<#crate_ident::form::FormResult<Self>, #crate_ident::form::FormError> {
+                    let mut context = <Self as #crate_ident::form::Form>::build_context(request).await?;
 
-                    use #crate_ident::forms::FormContext;
+                    use #crate_ident::form::FormContext;
                     #( #fields_as_from_context_vars; )*
 
                     if context.has_errors() {
-                        Ok(#crate_ident::forms::FormResult::ValidationError(context))
+                        Ok(#crate_ident::form::FormResult::ValidationError(context))
                     } else {
-                        Ok(#crate_ident::forms::FormResult::Ok(Self {
+                        Ok(#crate_ident::form::FormResult::Ok(Self {
                             #( #fields_as_from_context, )*
                         }))
                     }
@@ -210,7 +210,7 @@ impl FormDeriveBuilder {
             }
 
             #[automatically_derived]
-            impl #crate_ident::forms::FormContext for #context_struct_name {
+            impl #crate_ident::form::FormContext for #context_struct_name {
                 fn new() -> Self {
                     Self {
                         __errors: ::core::default::Default::default(),
@@ -221,7 +221,7 @@ impl FormDeriveBuilder {
                 fn fields(
                     &self,
                 ) -> impl ::core::iter::DoubleEndedIterator<
-                    Item = &dyn ::cot::forms::DynFormField,
+                    Item = &dyn ::cot::form::DynFormField,
                 > + ::core::iter::ExactSizeIterator + '_ {
                     [#( #fields_as_dyn_field_ref, )*].into_iter()
                 }
@@ -230,7 +230,7 @@ impl FormDeriveBuilder {
                     &mut self,
                     field_id: &str,
                     value: ::std::borrow::Cow<str>,
-                ) -> ::core::result::Result<(), #crate_ident::forms::FormFieldValidationError> {
+                ) -> ::core::result::Result<(), #crate_ident::form::FormFieldValidationError> {
                     match field_id {
                         #( #fields_as_context_from_request, )*
                         _ => {}
@@ -240,10 +240,10 @@ impl FormDeriveBuilder {
 
                 fn errors_for(
                     &self,
-                    target: #crate_ident::forms::FormErrorTarget
-                ) -> &[#crate_ident::forms::FormFieldValidationError] {
+                    target: #crate_ident::form::FormErrorTarget
+                ) -> &[#crate_ident::form::FormFieldValidationError] {
                     match target {
-                        #crate_ident::forms::FormErrorTarget::Field(field_id) => {
+                        #crate_ident::form::FormErrorTarget::Field(field_id) => {
                             match field_id {
                                 #( #fields_as_errors_for, )*
                                 _ => {
@@ -251,7 +251,7 @@ impl FormDeriveBuilder {
                                 }
                             }
                         }
-                        #crate_ident::forms::FormErrorTarget::Form => {
+                        #crate_ident::form::FormErrorTarget::Form => {
                             self.__errors.__form.as_slice()
                         }
                     }
@@ -259,10 +259,10 @@ impl FormDeriveBuilder {
 
                 fn errors_for_mut(
                     &mut self,
-                    target: #crate_ident::forms::FormErrorTarget
-                ) -> &mut Vec<#crate_ident::forms::FormFieldValidationError> {
+                    target: #crate_ident::form::FormErrorTarget
+                ) -> &mut Vec<#crate_ident::form::FormFieldValidationError> {
                     match target {
-                        #crate_ident::forms::FormErrorTarget::Field(field_id) => {
+                        #crate_ident::form::FormErrorTarget::Field(field_id) => {
                             match field_id {
                                 #( #fields_as_errors_for_mut, )*
                                 _ => {
@@ -270,7 +270,7 @@ impl FormDeriveBuilder {
                                 }
                             }
                         }
-                        #crate_ident::forms::FormErrorTarget::Form => {
+                        #crate_ident::form::FormErrorTarget::Form => {
                             self.__errors.__form.as_mut()
                         }
                     }
@@ -291,7 +291,7 @@ impl FormDeriveBuilder {
         quote! {
             #[derive(::core::fmt::Debug, ::core::default::Default)]
             struct #context_struct_errors_name {
-                __form: Vec<#crate_ident::forms::FormFieldValidationError>,
+                __form: Vec<#crate_ident::form::FormFieldValidationError>,
                 #( #fields_as_errors, )*
             }
         }

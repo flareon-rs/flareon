@@ -672,9 +672,11 @@ impl Database {
     /// This method can return an error if the connection to the database could
     /// not be established.
     ///
-    /// This method can return an error if the database URL is not supported.
-    ///
     /// This method can return an error if the database URL is invalid.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the database URL is not supported.
     ///
     /// # Examples
     ///
@@ -1030,10 +1032,54 @@ impl Database {
         self.execute_statement(&delete).await
     }
 
+    /// Executes a raw SQL query.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the query is invalid.
+    ///
+    /// Can return an error if the database connection is lost.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::Database;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let db = Database::new("sqlite::memory:").await?;
+    /// db.raw("CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)")
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn raw(&self, query: &str) -> Result<StatementResult> {
         self.raw_with(query, &[]).await
     }
 
+    /// Executes a raw SQL query with parameters.
+    ///
+    /// # Errors
+    ///
+    /// This method can return an error if the query is invalid.
+    ///
+    /// Can return an error if the database connection is lost.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::Database;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let db = Database::new("sqlite::memory:").await?;
+    /// db.raw("CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)")
+    ///     .await?;
+    /// db.raw_with("SELECT * FROM test WHERE id = ?", &[&1])
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn raw_with(
         &self,
         query: &str,
@@ -1515,6 +1561,20 @@ pub struct NewLimitedStringError<const LIMIT: u32> {
 }
 
 impl<const LIMIT: u32> LimitedString<LIMIT> {
+    /// Creates a new [`LimitedString`] instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the string is longer than the specified limit.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::LimitedString;
+    ///
+    /// let limited_string = LimitedString::<5>::new("short");
+    /// assert!(limited_string.is_ok());
+    /// ```
     pub fn new(
         value: impl Into<String>,
     ) -> std::result::Result<Self, NewLimitedStringError<LIMIT>> {

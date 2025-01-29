@@ -1,4 +1,22 @@
 //! Router for passing requests to their respective views.
+//!
+//! # Examples
+//!
+//! ```
+//! use cot::request::Request;
+//! use cot::response::Response;
+//! use cot::router::{Route, Router};
+//!
+//! async fn home(request: Request) -> cot::Result<Response> {
+//!     Ok(cot::reverse_redirect!(request, "get_page", page = 123)?)
+//! }
+//!
+//! async fn get_page(request: Request) -> cot::Result<Response> {
+//!     todo!()
+//! }
+//!
+//! let router = Router::with_urls([Route::with_handler_and_name("/:page", get_page, "get_page")]);
+//! ```
 
 use std::collections::HashMap;
 use std::fmt::Formatter;
@@ -22,6 +40,25 @@ use crate::{Body, Error, RequestHandler, Result};
 
 pub mod path;
 
+/// A router that can be used to route requests to their respective views.
+///
+/// This struct is used to route requests to their respective views. It can be
+/// created directly by calling the [`Router::with_urls`] method, and that's
+/// what is typically done in [`cot::CotApp::router`] implementations.
+///
+/// # Examples
+///
+/// ```
+/// use cot::request::Request;
+/// use cot::response::Response;
+/// use cot::router::{Route, Router};
+///
+/// async fn home(request: Request) -> cot::Result<Response> {
+///     todo!()
+/// }
+///
+/// let router = Router::with_urls([Route::with_handler_and_name("/", home, "home")]);
+/// ```
 #[derive(Clone, Debug)]
 pub struct Router {
     urls: Vec<Route>,
@@ -29,11 +66,37 @@ pub struct Router {
 }
 
 impl Router {
+    /// Create an empty router.
+    ///
+    /// This router will not route any requests.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::router::Router;
+    ///
+    /// let router = Router::empty();
+    /// ```
     #[must_use]
     pub fn empty() -> Self {
         Self::with_urls(&[])
     }
 
+    /// Create a router with the given routes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::Response;
+    /// use cot::router::{Route, Router};
+    ///
+    /// async fn home(request: Request) -> cot::Result<Response> {
+    ///     todo!()
+    /// }
+    ///
+    /// let router = Router::with_urls([Route::with_handler_and_name("/", home, "home")]);
+    /// ```
     #[must_use]
     pub fn with_urls<T: Into<Vec<Route>>>(urls: T) -> Self {
         let urls = urls.into();
@@ -172,11 +235,46 @@ impl Router {
         Ok(None)
     }
 
+    /// Get the routes in this router.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::Response;
+    /// use cot::router::{Route, Router};
+    ///
+    /// async fn home(request: Request) -> cot::Result<Response> {
+    ///     todo!()
+    /// }
+    ///
+    /// let router = Router::with_urls([Route::with_handler_and_name("/", home, "home")]);
+    /// assert_eq!(router.routes().len(), 1);
+    /// ```
     #[must_use]
     pub fn routes(&self) -> &[Route] {
         &self.urls
     }
 
+    /// Check if this router is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::Response;
+    /// use cot::router::{Route, Router};
+    ///
+    /// async fn home(request: Request) -> cot::Result<Response> {
+    ///     todo!()
+    /// }
+    ///
+    /// let router = Router::empty();
+    /// assert!(router.is_empty());
+    ///
+    /// let router = Router::with_urls([Route::with_handler_and_name("/", home, "home")]);
+    /// assert!(!router.is_empty());
+    /// ```
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.urls.is_empty()
@@ -197,12 +295,35 @@ struct HandlerFound<'a> {
     params: Vec<(String, String)>,
 }
 
+/// A service that routes requests to their respective views.
+///
+/// This is mostly an internal service used by the [`CotApp`](crate::CotApp) to
+/// route requests to their respective views with an interface that is
+/// compatible with the [`tower::Service`] trait.
 #[derive(Debug, Clone)]
 pub struct RouterService {
     router: Arc<Router>,
 }
 
 impl RouterService {
+    /// Create a new router service.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use cot::request::Request;
+    /// use cot::response::Response;
+    /// use cot::router::{Route, Router, RouterService};
+    ///
+    /// async fn home(request: Request) -> cot::Result<Response> {
+    ///     todo!()
+    /// }
+    ///
+    /// let router = Router::with_urls([Route::with_handler_and_name("/", home, "home")]);
+    /// let service = RouterService::new(Arc::new(router));
+    /// ```
     #[must_use]
     pub fn new(router: Arc<Router>) -> Self {
         Self { router }
@@ -224,6 +345,21 @@ impl tower::Service<Request> for RouterService {
     }
 }
 
+/// A route that can be used to route requests to their respective views.
+///
+/// # Examples
+///
+/// ```
+/// use cot::request::Request;
+/// use cot::response::Response;
+/// use cot::router::{Route, Router};
+///
+/// async fn home(request: Request) -> cot::Result<Response> {
+///     todo!()
+/// }
+///
+/// let router = Router::with_urls([Route::with_handler_and_name("/", home, "home")]);
+/// ```
 #[derive(Debug, Clone)]
 pub struct Route {
     url: Arc<PathMatcher>,
@@ -232,6 +368,21 @@ pub struct Route {
 }
 
 impl Route {
+    /// Create a new route with the given handler.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::Response;
+    /// use cot::router::{Route, Router};
+    ///
+    /// async fn home(request: Request) -> cot::Result<Response> {
+    ///     todo!()
+    /// }
+    ///
+    /// let route = Route::with_handler("/", home);
+    /// ```
     #[must_use]
     pub fn with_handler<V: RequestHandler + Send + Sync + 'static>(url: &str, view: V) -> Self {
         Self {
@@ -241,6 +392,21 @@ impl Route {
         }
     }
 
+    /// Create a new route with the given handler and name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::Response;
+    /// use cot::router::{Route, Router};
+    ///
+    /// async fn home(request: Request) -> cot::Result<Response> {
+    ///     todo!()
+    /// }
+    ///
+    /// let route = Route::with_handler_and_name("/", home, "home");
+    /// ```
     #[must_use]
     pub fn with_handler_and_name<T: Into<String>, V: RequestHandler + Send + Sync + 'static>(
         url: &str,
@@ -254,6 +420,22 @@ impl Route {
         }
     }
 
+    /// Create a new route with the given router.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::Response;
+    /// use cot::router::{Route, Router};
+    ///
+    /// async fn home(request: Request) -> cot::Result<Response> {
+    ///     todo!()
+    /// }
+    ///
+    /// let router = Router::with_urls([Route::with_handler_and_name("/", home, "home")]);
+    /// let route = Route::with_router("/", router);
+    /// ```
     #[must_use]
     pub fn with_router(url: &str, router: Router) -> Self {
         Self {
@@ -263,11 +445,44 @@ impl Route {
         }
     }
 
+    /// Get the URL for this route.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::Response;
+    /// use cot::router::{Route, Router};
+    ///
+    /// async fn home(request: Request) -> cot::Result<Response> {
+    ///     todo!()
+    /// }
+    ///
+    /// let route = Route::with_handler("/test", home);
+    /// assert_eq!(route.url(), "/test");
+    /// ```
     #[must_use]
     pub fn url(&self) -> String {
         self.url.to_string()
     }
 
+    /// Get the name of this route, if it was created with the
+    /// [`Self::with_handler_and_name`] function.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::Response;
+    /// use cot::router::{Route, Router};
+    ///
+    /// async fn home(request: Request) -> cot::Result<Response> {
+    ///     todo!()
+    /// }
+    ///
+    /// let route = Route::with_handler_and_name("/", home, "home");
+    /// assert_eq!(route.name(), Some("home"));
+    /// ```
     #[must_use]
     pub fn name(&self) -> Option<&str> {
         self.name.as_ref().map(|name| name.0.as_str())
@@ -283,9 +498,10 @@ impl Route {
 
     #[must_use]
     pub(crate) fn router(&self) -> Option<&Router> {
+        #[allow(clippy::match_wildcard_for_single_variants)]
         match &self.view {
             RouteInner::Router(router) => Some(router),
-            _ => None,
+            RouteInner::Handler(_) => None,
         }
     }
 }
@@ -320,7 +536,12 @@ impl Debug for RouteInner {
     }
 }
 
-/// Reverse a URL for a view by name and given params.
+/// Get a URL for a view by its registered name and given params.
+///
+/// # Return value
+///
+/// Returns a [`cot::Result<String>`] that contains the URL for the view. You
+/// will typically want to append `?` to the macro call to get the URL.
 ///
 /// # Examples
 ///
@@ -335,7 +556,7 @@ impl Debug for RouteInner {
 ///         StatusCode::OK,
 ///         Body::fixed(format!(
 ///             "Hello! The URL for this view is: {}",
-///             reverse!(request, "home")
+///             reverse!(request, "home")?
 ///         )),
 ///     ))
 /// }
@@ -348,15 +569,21 @@ macro_rules! reverse {
         use $crate::request::RequestExt;
         $request
             .router()
-            .reverse($view_name, &$crate::reverse_param_map!($( $($key = $value),* )?))?
+            .reverse($view_name, &$crate::reverse_param_map!($( $($key = $value),* )?))
     }};
 }
 
-/// Reverse a URL for a view by name and given params and return a response with
-/// a redirect.
+/// Get a URL for a view by its registered name and given params and return a
+/// response with a redirect.
 ///
 /// This macro is a shorthand for creating a response with a redirect to a URL
 /// generated by the [`reverse!`] macro.
+///
+/// # Return value
+///
+/// Returns a [`cot::Result<cot::Response>`] that contains the URL for the view.
+/// You will typically want to append `?` to the macro call to get the
+/// [`cot::Response`] object.
 ///
 /// # Examples
 ///
@@ -367,21 +594,19 @@ macro_rules! reverse {
 /// use cot::router::{Route, Router};
 ///
 /// async fn infinite_loop(request: Request) -> cot::Result<Response> {
-///     Ok(reverse_redirect!(request, "home"))
+///     Ok(reverse_redirect!(request, "home")?)
 /// }
 ///
 /// let router = Router::with_urls([Route::with_handler_and_name("/", infinite_loop, "home")]);
 /// ```
 #[macro_export]
 macro_rules! reverse_redirect {
-    ($request:expr, $view_name:literal $(, $($key:expr => $value:expr),*)?) => {
-        <$crate::response::Response as $crate::response::ResponseExt>::new_redirect(
-            $crate::reverse!(
-                $request,
-                $view_name,
-                $( $($key => $value),* )?
-            )
-        )
+    ($request:expr, $view_name:literal $(, $($key:ident = $value:expr),*)?) => {
+        $crate::reverse!(
+            $request,
+            $view_name,
+            $( $($key = $value),* )?
+        ).map(|url| <$crate::response::Response as $crate::response::ResponseExt>::new_redirect(url))
     };
 }
 
@@ -511,6 +736,29 @@ mod tests {
         let sub_router = Router::with_urls(vec![sub_route]);
         let route = Route::with_router("/test", sub_router);
         assert_eq!(route.url.to_string(), "/test");
+    }
+
+    #[test]
+    fn test_reverse_macro() {
+        let route = Route::with_handler_and_name("/test/:id", MockHandler, "test");
+        let router = Router::with_urls(vec![route]);
+
+        let request = TestRequestBuilder::get("/").router(router).build();
+        let url = reverse!(request, "test", id = 123).unwrap();
+
+        assert_eq!(url, "/test/123");
+    }
+
+    #[test]
+    fn test_reverse_redirect_macro() {
+        let route = Route::with_handler_and_name("/test/:id", MockHandler, "test");
+        let router = Router::with_urls(vec![route]);
+
+        let request = TestRequestBuilder::get("/").router(router).build();
+        let response = cot::reverse_redirect!(request, "test", id = 123).unwrap();
+
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(response.headers().get("location").unwrap(), "/test/123");
     }
 
     fn test_request() -> Request {

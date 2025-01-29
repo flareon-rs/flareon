@@ -148,6 +148,7 @@ impl Client {
 pub struct TestRequestBuilder {
     method: http::Method,
     url: String,
+    router: Option<Router>,
     session: Option<Session>,
     config: Option<Arc<ProjectConfig>>,
     #[cfg(feature = "db")]
@@ -270,6 +271,28 @@ impl TestRequestBuilder {
     /// ```
     pub fn with_default_config(&mut self) -> &mut Self {
         self.config = Some(Arc::new(ProjectConfig::default()));
+        self
+    }
+
+    /// Add a router to the request builder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::Request;
+    /// use cot::response::Response;
+    /// use cot::router::{Route, Router};
+    /// use cot::test::TestRequestBuilder;
+    ///
+    /// async fn index(request: Request) -> cot::Result<Response> {
+    ///     todo!()
+    /// }
+    ///
+    /// let router = Router::with_urls([Route::with_handler_and_name("/", index, "index")]);
+    /// let request = TestRequestBuilder::get("/").router(router).build();
+    /// ```
+    pub fn router(&mut self, router: Router) -> &mut Self {
+        self.router = Some(router);
         self
     }
 
@@ -420,7 +443,7 @@ impl TestRequestBuilder {
         let app_context = AppContext::new(
             self.config.clone().unwrap_or_default(),
             Vec::new(),
-            Arc::new(Router::empty()),
+            Arc::new(self.router.clone().unwrap_or_else(Router::empty)),
             #[cfg(feature = "db")]
             self.database.clone(),
         );

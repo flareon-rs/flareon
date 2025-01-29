@@ -13,6 +13,7 @@ use crate::db::{
 /// or delete rows.
 ///
 /// # Example
+///
 /// ```
 /// use cot::db::model;
 /// use cot::db::query::Query;
@@ -68,6 +69,7 @@ impl<T: Model> Query<T> {
     /// Create a new query.
     ///
     /// # Example
+    ///
     /// ```
     /// use cot::db::model;
     /// use cot::db::query::Query;
@@ -92,6 +94,7 @@ impl<T: Model> Query<T> {
     /// Set the filter expression for the query.
     ///
     /// # Example
+    ///
     /// ```
     /// use cot::db::model;
     /// use cot::db::query::{Expr, Query};
@@ -253,6 +256,7 @@ pub enum Expr {
     /// ```
     And(Box<Expr>, Box<Expr>),
     /// An `OR` expression.
+    ///
     /// # Example
     ///
     /// ```
@@ -888,6 +892,25 @@ impl Expr {
         Self::Div(Box::new(lhs), Box::new(rhs))
     }
 
+    /// Returns the expression as a [`sea_query::SimpleExpr`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::db::query::Expr;
+    /// use cot::db::Identifier;
+    /// use sea_query::IntoColumnRef;
+    ///
+    /// let expr = Expr::eq(Expr::field("id"), Expr::value(5));
+    ///
+    /// assert_eq!(
+    ///     expr.as_sea_query_expr(),
+    ///     sea_query::SimpleExpr::eq(
+    ///         sea_query::SimpleExpr::Column(Identifier::new("id").into_column_ref()),
+    ///         sea_query::SimpleExpr::Value(sea_query::Value::Int(Some(5)))
+    ///     )
+    /// );
+    /// ```
     #[must_use]
     pub fn as_sea_query_expr(&self) -> sea_query::SimpleExpr {
         match self {
@@ -941,8 +964,52 @@ impl<T> FieldRef<T> {
 
 /// A trait for types that can be compared in database expressions.
 pub trait ExprEq<T> {
+    /// Creates an expression that checks if the field is equal to the given
+    /// value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::query::{Expr, ExprEq, Query};
+    /// use cot::db::{model, query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = <MyModel as cot::db::Model>::Fields::id.eq(5);
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id == 5)
+    /// );
+    /// ```
     fn eq<V: IntoField<T>>(self, other: V) -> Expr;
 
+    /// Creates an expression that checks if the field is not equal to the given
+    /// value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::query::{Expr, ExprEq, Query};
+    /// use cot::db::{model, query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = <MyModel as cot::db::Model>::Fields::id.ne(5);
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id != 5)
+    /// );
+    /// ```
     fn ne<V: IntoField<T>>(self, other: V) -> Expr;
 }
 
@@ -958,33 +1025,222 @@ impl<T: ToDbFieldValue + 'static> ExprEq<T> for FieldRef<T> {
 
 /// A trait for database types that can be added to each other.
 pub trait ExprAdd<T> {
+    /// Creates an expression that adds the field to the given value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::query::{Expr, ExprAdd, Query};
+    /// use cot::db::{model, query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = <MyModel as cot::db::Model>::Fields::id.add(5);
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(Expr::eq(Expr::field("id"), expr)),
+    ///     query!(MyModel, $id == $id + 5)
+    /// );
+    /// ```
     fn add<V: Into<T>>(self, other: V) -> Expr;
 }
 
 /// A trait for database types that can be subtracted from each other.
 pub trait ExprSub<T> {
+    /// Creates an expression that subtracts the field from the given value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::query::{Expr, ExprSub, Query};
+    /// use cot::db::{model, query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = <MyModel as cot::db::Model>::Fields::id.sub(5);
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(Expr::eq(Expr::field("id"), expr)),
+    ///     query!(MyModel, $id == $id - 5)
+    /// );
+    /// ```
     fn sub<V: Into<T>>(self, other: V) -> Expr;
 }
 
 /// A trait for database types that can be multiplied by each other.
 pub trait ExprMul<T> {
+    /// Creates an expression that multiplies the field by the given value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::query::{Expr, ExprMul, Query};
+    /// use cot::db::{model, query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = <MyModel as cot::db::Model>::Fields::id.mul(2);
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(Expr::eq(Expr::field("id"), expr)),
+    ///     query!(MyModel, $id == $id * 2)
+    /// );
+    /// ```
     fn mul<V: Into<T>>(self, other: V) -> Expr;
 }
 
 /// A trait for database types that can be divided by each other.
 pub trait ExprDiv<T> {
+    /// Creates an expression that divides the field by the given value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::query::{Expr, ExprDiv, Query};
+    /// use cot::db::{model, query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = <MyModel as cot::db::Model>::Fields::id.div(2);
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(Expr::eq(Expr::field("id"), expr)),
+    ///     query!(MyModel, $id == $id / 2)
+    /// );
+    /// ```
     fn div<V: Into<T>>(self, other: V) -> Expr;
 }
 
 /// A trait for database types that can be ordered.
 pub trait ExprOrd<T> {
-    fn lt<V: Into<T>>(self, other: V) -> Expr;
+    /// Creates an expression that checks if the field is less than the given
+    /// value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::query::{Expr, ExprOrd, Query};
+    /// use cot::db::{model, query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = <MyModel as cot::db::Model>::Fields::id.lt(5);
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id < 5)
+    /// );
+    /// ```
+    fn lt<V: IntoField<T>>(self, other: V) -> Expr;
+    /// Creates an expression that checks if the field is less than or equal to
+    /// the given value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::query::{Expr, ExprOrd, Query};
+    /// use cot::db::{model, query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = <MyModel as cot::db::Model>::Fields::id.lte(5);
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id <= 5)
+    /// );
+    /// ```
+    fn lte<V: IntoField<T>>(self, other: V) -> Expr;
 
-    fn lte<V: Into<T>>(self, other: V) -> Expr;
+    /// Creates an expression that checks if the field is greater than the given
+    /// value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::query::{Expr, ExprOrd, Query};
+    /// use cot::db::{model, query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = <MyModel as cot::db::Model>::Fields::id.gt(5);
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id > 5)
+    /// );
+    /// ```
+    fn gt<V: IntoField<T>>(self, other: V) -> Expr;
 
-    fn gt<V: Into<T>>(self, other: V) -> Expr;
+    /// Creates an expression that checks if the field is greater than or equal
+    /// to the given value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::db::query::{Expr, ExprOrd, Query};
+    /// use cot::db::{model, query};
+    ///
+    /// #[model]
+    /// struct MyModel {
+    ///     #[model(primary_key)]
+    ///     id: i32,
+    /// };
+    ///
+    /// let expr = <MyModel as cot::db::Model>::Fields::id.gte(5);
+    ///
+    /// assert_eq!(
+    ///     <Query<MyModel>>::new().filter(expr),
+    ///     query!(MyModel, $id >= 5)
+    /// );
+    /// ```
+    fn gte<V: IntoField<T>>(self, other: V) -> Expr;
+}
 
-    fn gte<V: Into<T>>(self, other: V) -> Expr;
+impl<T: ToDbFieldValue + Ord + 'static> ExprOrd<T> for FieldRef<T> {
+    fn lt<V: IntoField<T>>(self, other: V) -> Expr {
+        Expr::lt(self.as_expr(), Expr::value(other.into_field()))
+    }
+
+    fn lte<V: IntoField<T>>(self, other: V) -> Expr {
+        Expr::lte(self.as_expr(), Expr::value(other.into_field()))
+    }
+
+    fn gt<V: IntoField<T>>(self, other: V) -> Expr {
+        Expr::gt(self.as_expr(), Expr::value(other.into_field()))
+    }
+
+    fn gte<V: IntoField<T>>(self, other: V) -> Expr {
+        Expr::gte(self.as_expr(), Expr::value(other.into_field()))
+    }
 }
 
 macro_rules! impl_expr {
@@ -1003,24 +1259,6 @@ macro_rules! impl_num_expr {
         impl_expr!($ty, ExprSub, sub);
         impl_expr!($ty, ExprMul, mul);
         impl_expr!($ty, ExprDiv, div);
-
-        impl ExprOrd<$ty> for FieldRef<$ty> {
-            fn lt<V: Into<$ty>>(self, other: V) -> Expr {
-                Expr::lt(self.as_expr(), Expr::value(other.into()))
-            }
-
-            fn lte<V: Into<$ty>>(self, other: V) -> Expr {
-                Expr::lte(self.as_expr(), Expr::value(other.into()))
-            }
-
-            fn gt<V: Into<$ty>>(self, other: V) -> Expr {
-                Expr::gt(self.as_expr(), Expr::value(other.into()))
-            }
-
-            fn gte<V: Into<$ty>>(self, other: V) -> Expr {
-                Expr::gte(self.as_expr(), Expr::value(other.into()))
-            }
-        }
     };
 }
 
@@ -1035,7 +1273,29 @@ impl_num_expr!(u64);
 impl_num_expr!(f32);
 impl_num_expr!(f64);
 
+/// A trait for database types that can be converted to the field type.
+///
+/// This trait is mostly a helper trait to make comparisons like `$id == 5`
+/// where `id` is of type [`Auto`] or [`ForeignKey`] easier to write and more
+/// readable.
+///
+/// # Example
+///
+/// ```
+/// use cot::db::query::{Expr, ExprEq, Query};
+/// use cot::db::{model, query, Auto};
+///
+/// #[model]
+/// struct MyModel {
+///     #[model(primary_key)]
+///     id: Auto<i32>,
+/// };
+///
+/// // uses the `IntoField` trait to convert the `5` to `Auto<i32>`
+/// let expr = <MyModel as cot::db::Model>::Fields::id.eq(5);
+/// ```
 pub trait IntoField<T> {
+    /// Converts the type to the field type.
     fn into_field(self) -> T;
 }
 

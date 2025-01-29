@@ -7,7 +7,7 @@ use std::num::{
 
 use derive_more::Deref;
 
-use crate::forms::{AsFormField, FormField, FormFieldOptions, FormFieldValidationError};
+use crate::form::{AsFormField, FormField, FormFieldOptions, FormFieldValidationError};
 use crate::{Html, Render};
 
 macro_rules! impl_form_field {
@@ -227,7 +227,7 @@ impl<T: Integer> Render for IntegerField<T> {
 /// # Examples
 ///
 /// ```
-/// use cot::forms::fields::Integer;
+/// use cot::form::fields::Integer;
 ///
 /// assert_eq!(<i8 as Integer>::MIN, Some(-128));
 /// assert_eq!(<i8 as Integer>::MAX, Some(127));
@@ -238,7 +238,7 @@ pub trait Integer: Sized + ToString {
     /// # Examples
     ///
     /// ```
-    /// use cot::forms::fields::Integer;
+    /// use cot::form::fields::Integer;
     ///
     /// assert_eq!(<i8 as Integer>::MIN, Some(-128));
     /// ```
@@ -248,7 +248,7 @@ pub trait Integer: Sized + ToString {
     /// # Examples
     ///
     /// ```
-    /// use cot::forms::fields::Integer;
+    /// use cot::form::fields::Integer;
     ///
     /// assert_eq!(<i8 as Integer>::MAX, Some(127));
     /// ```

@@ -9,7 +9,7 @@
 </head>
 <body>
 <h1>Hello!</h1>
-<form id="todo-form" action="{{ cot::reverse!(request, "name") }}" method="post">
+<form id="todo-form" action="{{ cot::reverse!(request, "name")? }}" method="post">
     <input type="text" id="name" name="name" placeholder="Please enter your name" required>
     <button type="submit">Submit</button>
 </form>

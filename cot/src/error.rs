@@ -87,7 +87,7 @@ impl_error_from_repr!(rinja::Error);
 impl_error_from_repr!(crate::router::path::ReverseError);
 #[cfg(feature = "db")]
 impl_error_from_repr!(crate::db::DatabaseError);
-impl_error_from_repr!(crate::forms::FormError);
+impl_error_from_repr!(crate::form::FormError);
 impl_error_from_repr!(crate::auth::AuthError);
 #[cfg(feature = "json")]
 impl_error_from_repr!(serde_json::Error);
@@ -135,7 +135,7 @@ pub(crate) enum ErrorRepr {
     Database(#[from] crate::db::DatabaseError),
     /// An error occurred while parsing a form.
     #[error("Failed to process a form: {0}")]
-    Form(#[from] crate::forms::FormError),
+    Form(#[from] crate::form::FormError),
     /// An error occurred while trying to authenticate a user.
     #[error("Failed to authenticate user: {0}")]
     Authentication(#[from] crate::auth::AuthError),

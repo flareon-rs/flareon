@@ -9,7 +9,7 @@
 </head>
 <body>
 <h1>TODO List</h1>
-<form id="todo-form" action="{{ cot::reverse!(request, "add-todo") }}" method="post">
+<form id="todo-form" action="{{ cot::reverse!(request, "add-todo")? }}" method="post">
     <input type="text" id="title" name="title" placeholder="Enter a new TODO" required>
     <button type="submit">Add TODO</button>
 </form>
@@ -17,7 +17,7 @@
     {% for todo in todo_items %}
     <li>
         {% let todo_id = todo.id %}
-        <form action="{{ cot::reverse!(request, "remove-todo", todo_id = todo_id) }}" method="post">
+        <form action="{{ cot::reverse!(request, "remove-todo", todo_id = todo_id)? }}" method="post">
             <span>{{ todo.title }}</span>
             <button type="submit">Remove</button>
         </form>

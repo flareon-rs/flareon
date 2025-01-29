@@ -1,4 +1,4 @@
-use cot::forms::Form;
+use cot::form::Form;
 use cot::request::Request;
 
 #[derive(Debug, Form)]

@@ -118,6 +118,55 @@ impl DatabaseUser {
         Ok(user)
     }
 
+    /// Get a user by their integer ID. Returns [`None`] if the user does not
+    /// exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there was an error querying the database.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the user ID provided is not an integer.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::auth::db::DatabaseUser;
+    /// use cot::auth::{Password, UserId};
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::{Body, StatusCode};
+    ///
+    /// async fn view(request: &Request) -> cot::Result<Response> {
+    ///     let user = DatabaseUser::create_user(
+    ///         request.db(),
+    ///         "testuser".to_string(),
+    ///         &Password::new("password123"),
+    ///     )
+    ///     .await?;
+    ///
+    ///     let user_from_db = DatabaseUser::get_by_id(request.db(), UserId::Int(user.id())).await?;
+    ///
+    ///     Ok(Response::new_html(
+    ///         StatusCode::OK,
+    ///         Body::fixed("User created!"),
+    ///     ))
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// #     use cot::test::{TestDatabase, TestRequestBuilder};
+    /// #     let mut test_database = TestDatabase::new_sqlite().await?;
+    /// #     test_database.with_auth().run_migrations().await;
+    /// #     let request = TestRequestBuilder::get("/")
+    /// #         .with_db_auth(test_database.database())
+    /// #         .build();
+    /// #     view(&request).await?;
+    /// #     test_database.cleanup().await?;
+    /// #     Ok(())
+    /// # }
+    /// ```
     pub async fn get_by_id<DB: DatabaseBackend>(db: &DB, id: UserId) -> Result<Option<Self>> {
         let id = id.as_int().expect("User ID should be an integer");
 
@@ -129,6 +178,51 @@ impl DatabaseUser {
         Ok(db_user)
     }
 
+    /// Get a user by their username. Returns [`None`] if the user does not
+    /// exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there was an error querying the database.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::auth::db::DatabaseUser;
+    /// use cot::auth::{Password, UserId};
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::{Body, StatusCode};
+    ///
+    /// async fn view(request: &Request) -> cot::Result<Response> {
+    ///     let user = DatabaseUser::create_user(
+    ///         request.db(),
+    ///         "testuser".to_string(),
+    ///         &Password::new("password123"),
+    ///     )
+    ///     .await?;
+    ///
+    ///     let user_from_db = DatabaseUser::get_by_username(request.db(), "testuser").await?;
+    ///
+    ///     Ok(Response::new_html(
+    ///         StatusCode::OK,
+    ///         Body::fixed("User created!"),
+    ///     ))
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// #     use cot::test::{TestDatabase, TestRequestBuilder};
+    /// #     let mut test_database = TestDatabase::new_sqlite().await?;
+    /// #     test_database.with_auth().run_migrations().await;
+    /// #     let request = TestRequestBuilder::get("/")
+    /// #         .with_db_auth(test_database.database())
+    /// #         .build();
+    /// #     view(&request).await?;
+    /// #     test_database.cleanup().await?;
+    /// #     Ok(())
+    /// # }
+    /// ```
     pub async fn get_by_username<DB: DatabaseBackend>(
         db: &DB,
         username: &str,
@@ -144,6 +238,11 @@ impl DatabaseUser {
         Ok(db_user)
     }
 
+    /// Authenticate a user.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there was an error querying the database.
     pub async fn authenticate<DB: DatabaseBackend>(
         db: &DB,
         credentials: &DatabaseUserCredentials,
@@ -177,18 +276,98 @@ impl DatabaseUser {
             // TODO: benchmark this to make sure it works as expected
             let dummy_hash = PasswordHash::from_password(credentials.password());
             if let PasswordVerificationResult::Invalid = dummy_hash.verify(credentials.password()) {
-                panic!("Password hash verification should never fail for a newly generated hash");
+                unreachable!(
+                    "Password hash verification should never fail for a newly generated hash"
+                );
             }
             Ok(None)
         }
     }
 
+    /// Get the ID of the user.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::auth::db::DatabaseUser;
+    /// use cot::auth::{Password, UserId};
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::{Body, StatusCode};
+    ///
+    /// async fn view(request: &Request) -> cot::Result<Response> {
+    ///     let user = DatabaseUser::create_user(
+    ///         request.db(),
+    ///         "testuser".to_string(),
+    ///         &Password::new("password123"),
+    ///     )
+    ///     .await?;
+    ///
+    ///     Ok(Response::new_html(
+    ///         StatusCode::OK,
+    ///         Body::fixed(format!("User ID: {}", user.id())),
+    ///     ))
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// #     use cot::test::{TestDatabase, TestRequestBuilder};
+    /// #     let mut test_database = TestDatabase::new_sqlite().await?;
+    /// #     test_database.with_auth().run_migrations().await;
+    /// #     let request = TestRequestBuilder::get("/")
+    /// #         .with_db_auth(test_database.database())
+    /// #         .build();
+    /// #     view(&request).await?;
+    /// #     test_database.cleanup().await?;
+    /// #     Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn id(&self) -> i64 {
-        self.id
-            .expect("called DatabaseUser::id() on an unsaved instance")
+        match self.id {
+            Auto::Fixed(id) => id,
+            Auto::Auto => unreachable!("DatabaseUser constructed with an unknown ID"),
+        }
     }
 
+    /// Get the username of the user.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::auth::db::DatabaseUser;
+    /// use cot::auth::{Password, UserId};
+    /// use cot::request::{Request, RequestExt};
+    /// use cot::response::{Response, ResponseExt};
+    /// use cot::{Body, StatusCode};
+    ///
+    /// async fn view(request: &Request) -> cot::Result<Response> {
+    ///     let user = DatabaseUser::create_user(
+    ///         request.db(),
+    ///         "testuser".to_string(),
+    ///         &Password::new("password123"),
+    ///     )
+    ///     .await?;
+    ///
+    ///     Ok(Response::new_html(
+    ///         StatusCode::OK,
+    ///         Body::fixed(user.username().to_string()),
+    ///     ))
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// #     use cot::test::{TestDatabase, TestRequestBuilder};
+    /// #     let mut test_database = TestDatabase::new_sqlite().await?;
+    /// #     test_database.with_auth().run_migrations().await;
+    /// #     let request = TestRequestBuilder::get("/")
+    /// #         .with_db_auth(test_database.database())
+    /// #         .build();
+    /// #     view(&request).await?;
+    /// #     test_database.cleanup().await?;
+    /// #     Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn username(&self) -> &str {
         &self.username

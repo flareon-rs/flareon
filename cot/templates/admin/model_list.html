@@ -5,6 +5,6 @@
 {% block content %}
 {% let request = request %}
 {% for model in model_managers %}
-    <a href="{{ cot::reverse!(request, "view_model", model_name = model.url_name()) }}">{{ model.name() }}</a>
+    <a href="{{ cot::reverse!(request, "view_model", model_name = model.url_name())? }}">{{ model.name() }}</a>
 {% endfor %}
 {% endblock %}
