@@ -82,6 +82,7 @@ impl_error_from_repr!(crate::forms::FormError);
 impl_error_from_repr!(crate::auth::AuthError);
 #[cfg(feature = "json")]
 impl_error_from_repr!(serde_json::Error);
+impl_error_from_repr!(crate::request::PathParamsDeserializerError);
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -140,6 +141,9 @@ pub(crate) enum ErrorRepr {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+    /// An error occurred while trying to parse path parameters.
+    #[error("Could not parse path parameters: {0}")]
+    PathParametersParse(#[from] crate::request::PathParamsDeserializerError),
 }
 
 #[cfg(test)]
