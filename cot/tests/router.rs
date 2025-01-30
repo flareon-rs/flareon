@@ -55,7 +55,7 @@ async fn project() -> CotProject {
         fn router(&self) -> Router {
             Router::with_urls([
                 Route::with_handler_and_name("/", index, "index"),
-                Route::with_handler_and_name("/get/:name", parameterized, "parameterized"),
+                Route::with_handler_and_name("/get/{name}", parameterized, "parameterized"),
             ])
         }
     }

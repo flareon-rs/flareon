@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn router_reverse_with_param() {
-        let route = Route::with_handler_and_name("/test/:id", MockHandler, "test");
+        let route = Route::with_handler_and_name("/test/{id}", MockHandler, "test");
         let router = Router::with_urls(vec![route.clone()]);
         let mut params = ReverseParamMap::new();
         params.insert("id", "123");
@@ -494,8 +494,8 @@ mod tests {
 
     #[test]
     fn route_with_handler_and_params() {
-        let route = Route::with_handler("/test/:id", MockHandler);
-        assert_eq!(route.url.to_string(), "/test/:id");
+        let route = Route::with_handler("/test/{id}", MockHandler);
+        assert_eq!(route.url.to_string(), "/test/{id}");
     }
 
     #[test]

@@ -23,9 +23,52 @@ impl PathMatcher {
         let mut parts = Vec::new();
         let mut state = State::Literal { start: 0 };
 
-        for (index, ch) in path_pattern.chars().map(Some).chain([None]).enumerate() {
+        let mut char_iter = path_pattern
+            .chars()
+            .map(Some)
+            .chain([None])
+            .enumerate()
+            .peekable();
+        loop {
+            let Some((index, ch)) = char_iter.next() else {
+                break;
+            };
+
             match (ch, state) {
-                (Some('/') | None, State::Param { start }) => {
+                (Some('{') | None, State::Literal { start }) => {
+                    let literal = &path_pattern[start..index];
+                    if literal.is_empty() {
+                        if index != 0 && ch != None {
+                            panic!("Consecutive parameters are not allowed");
+                        }
+                    } else {
+                        parts.push(PathPart::Literal(literal.to_string()));
+                    }
+                    state = State::Param { start: index + 1 };
+                }
+                (Some('{'), State::Param { start }) => {
+                    if start == index {
+                        // escaped `{`
+                        state = State::Literal { start: index };
+                    } else {
+                        panic!("Unclosed parameter: `{}`", &path_pattern[start..index]);
+                    }
+                }
+                (Some('}'), State::Literal { start }) => {
+                    let next_char = char_iter.peek().map(|(_, ch)| *ch).unwrap_or_default();
+
+                    if next_char == Some('}') {
+                        // escaped `}`
+                        let literal = &path_pattern[start..index + 1];
+                        parts.push(PathPart::Literal(literal.to_string()));
+
+                        char_iter.next();
+                        state = State::Literal { start: index + 2 };
+                    } else {
+                        panic!("Closing brace encountered without opening brace");
+                    }
+                }
+                (Some('}'), State::Param { start }) => {
                     let param_name = &path_pattern[start..index];
                     assert!(
                         Self::is_param_name_valid(param_name),
@@ -35,17 +78,10 @@ impl PathMatcher {
                     parts.push(PathPart::Param {
                         name: param_name.to_string(),
                     });
-                    state = State::Literal { start: index };
+                    state = State::Literal { start: index + 1 };
                 }
-                (Some(':') | None, State::Literal { start }) => {
-                    let literal = &path_pattern[start..index];
-                    if !literal.is_empty() {
-                        parts.push(PathPart::Literal(literal.to_string()));
-                    }
-                    state = State::Param { start: index + 1 };
-                }
-                (Some(':'), State::Param { .. }) => {
-                    panic!("Consecutive parameters are not allowed");
+                (Some('/') | None, State::Param { start }) => {
+                    panic!("Unclosed parameter: `{}`", &path_pattern[start..index]);
                 }
                 _ => {}
             }
@@ -222,8 +258,11 @@ enum PathPart {
 impl Display for PathPart {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PathPart::Literal(s) => write!(f, "{s}"),
-            PathPart::Param { name } => write!(f, ":{name}"),
+            PathPart::Literal(s) => {
+                let s = s.replace("{", "{{").replace("}", "}}");
+                write!(f, "{s}")
+            }
+            PathPart::Param { name } => write!(f, "{{{name}}}"),
         }
     }
 }
@@ -265,8 +304,17 @@ mod tests {
     }
 
     #[test]
+    fn path_parser_escaped() {
+        let path_parser = PathMatcher::new("/users/{{{{{{escaped}}}}}}");
+        assert_eq!(
+            path_parser.capture("/users/{{{escaped}}}"),
+            Some(CaptureResult::new(vec![], ""))
+        );
+    }
+
+    #[test]
     fn path_parser_single_param() {
-        let path_parser = PathMatcher::new("/users/:id");
+        let path_parser = PathMatcher::new("/users/{id}");
         assert_eq!(
             path_parser.capture("/users/123"),
             Some(CaptureResult::new(vec![PathParam::new("id", "123")], ""))
@@ -287,7 +335,7 @@ mod tests {
 
     #[test]
     fn path_parser_multiple_params() {
-        let path_parser = PathMatcher::new("/users/:id/posts/:post_id");
+        let path_parser = PathMatcher::new("/users/{id}/posts/{post_id}");
         assert_eq!(
             path_parser.capture("/users/123/posts/456"),
             Some(CaptureResult::new(
@@ -313,30 +361,60 @@ mod tests {
     #[test]
     #[should_panic(expected = "Consecutive parameters are not allowed")]
     fn path_parser_consecutive_params() {
-        let _ = PathMatcher::new("/users/:id:post_id");
+        let _ = PathMatcher::new("/users/{id}{post_id}");
     }
 
     #[test]
     #[should_panic(expected = "Invalid parameter name: ``")]
     fn path_parser_invalid_name_empty() {
-        let _ = PathMatcher::new("/users/:");
+        let _ = PathMatcher::new("/users/{}");
     }
 
     #[test]
     #[should_panic(expected = "Invalid parameter name: `123`")]
     fn path_parser_invalid_name_numeric() {
-        let _ = PathMatcher::new("/users/:123");
+        let _ = PathMatcher::new("/users/{123}");
     }
 
     #[test]
     #[should_panic(expected = "Invalid parameter name: `abc#$%`")]
     fn path_parser_invalid_name_non_alphanumeric() {
-        let _ = PathMatcher::new("/users/:abc#$%");
+        let _ = PathMatcher::new("/users/{abc#$%}");
+    }
+
+    #[test]
+    #[should_panic(expected = "Unclosed parameter: `foo`")]
+    fn path_parser_unclosed() {
+        let _ = PathMatcher::new("/users/{foo");
+    }
+
+    #[test]
+    #[should_panic(expected = "Closing brace encountered without opening brace")]
+    fn path_parser_missing_opening_brace() {
+        let _ = PathMatcher::new("/users/foo}");
+    }
+
+    #[test]
+    #[should_panic(expected = "Unclosed parameter: `foo`")]
+    fn path_parser_unclosed_slash() {
+        let _ = PathMatcher::new("/users/{foo/bar");
+    }
+
+    #[test]
+    #[should_panic(expected = "Unclosed parameter: `foo`")]
+    fn path_parser_unclosed_double() {
+        let _ = PathMatcher::new("/users/{foo{bar");
+    }
+
+    #[test]
+    fn path_parser_display() {
+        let path_parser = PathMatcher::new("/users/{id}/posts/{{escaped}}");
+        assert_eq!(format!("{}", path_parser), "/users/{id}/posts/{{escaped}}");
     }
 
     #[test]
     fn reverse_with_valid_params() {
-        let path_parser = PathMatcher::new("/users/:id/posts/:post_id");
+        let path_parser = PathMatcher::new("/users/{id}/posts/{post_id}");
         let mut params = ReverseParamMap::new();
         params.insert("id", "123");
         params.insert("post_id", "456");
@@ -348,7 +426,7 @@ mod tests {
 
     #[test]
     fn reverse_with_missing_param() {
-        let path_parser = PathMatcher::new("/users/:id/posts/:post_id");
+        let path_parser = PathMatcher::new("/users/{id}/posts/{post_id}");
         let mut params = ReverseParamMap::new();
         params.insert("id", "123");
         let result = path_parser.reverse(&params);
@@ -361,7 +439,7 @@ mod tests {
 
     #[test]
     fn reverse_with_extra_param() {
-        let path_parser = PathMatcher::new("/users/:id/posts/:post_id");
+        let path_parser = PathMatcher::new("/users/{id}/posts/{post_id}");
         let mut params = ReverseParamMap::new();
         params.insert("id", "123");
         params.insert("post_id", "456");
