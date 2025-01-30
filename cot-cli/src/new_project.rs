@@ -37,7 +37,7 @@ impl CotSource<'_> {
             CotSource::Path(path) => {
                 format!(
                     "path = \"{}\"",
-                    path.display().to_string().replace("\\", "\\\\")
+                    path.display().to_string().replace('\\', "\\\\")
                 )
             }
             CotSource::PublishedCrate => format!("version = \"{}\"", env!("CARGO_PKG_VERSION")),

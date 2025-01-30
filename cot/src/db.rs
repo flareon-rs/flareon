@@ -639,7 +639,7 @@ impl Database {
 
         let mut insert_statement = sea_query::Query::insert()
             .into_table(T::TABLE_NAME)
-            .columns(value_identifiers.iter().cloned())
+            .columns(value_identifiers.iter().copied())
             .values(
                 filtered_values
                     .into_iter()

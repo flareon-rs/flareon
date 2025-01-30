@@ -38,9 +38,10 @@ impl PathMatcher {
                 (Some('{') | None, State::Literal { start }) => {
                     let literal = &path_pattern[start..index];
                     if literal.is_empty() {
-                        if index != 0 && ch != None {
-                            panic!("Consecutive parameters are not allowed");
-                        }
+                        assert!(
+                            index == 0 || ch.is_none(),
+                            "Consecutive parameters are not allowed"
+                        );
                     } else {
                         parts.push(PathPart::Literal(literal.to_string()));
                     }
@@ -59,7 +60,7 @@ impl PathMatcher {
 
                     if next_char == Some('}') {
                         // escaped `}`
-                        let literal = &path_pattern[start..index + 1];
+                        let literal = &path_pattern[start..=index];
                         parts.push(PathPart::Literal(literal.to_string()));
 
                         char_iter.next();
@@ -76,7 +77,7 @@ impl PathMatcher {
                     );
 
                     parts.push(PathPart::Param {
-                        name: param_name.to_string(),
+                        name: (*param_name).to_string(),
                     });
                     state = State::Literal { start: index + 1 };
                 }
@@ -259,7 +260,7 @@ impl Display for PathPart {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PathPart::Literal(s) => {
-                let s = s.replace("{", "{{").replace("}", "}}");
+                let s = s.replace('{', "{{").replace('}', "}}");
                 write!(f, "{s}")
             }
             PathPart::Param { name } => write!(f, "{{{name}}}"),
@@ -417,9 +418,15 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Closing brace encountered without opening brace")]
+    fn path_parser_escaping_unclosed() {
+        let _ = PathMatcher::new("/users/{{{foo}}/bar");
+    }
+
+    #[test]
     fn path_parser_display() {
         let path_parser = PathMatcher::new("/users/{id}/posts/{{escaped}}");
-        assert_eq!(format!("{}", path_parser), "/users/{id}/posts/{{escaped}}");
+        assert_eq!(format!("{path_parser}"), "/users/{id}/posts/{{escaped}}");
     }
 
     #[test]
