@@ -89,7 +89,7 @@ impl CotApp for TodoApp {
         Router::with_urls([
             Route::with_handler_and_name("/", index, "index"),
             Route::with_handler_and_name("/todos/add", add_todo, "add-todo"),
-            Route::with_handler_and_name("/todos/:todo_id/remove", remove_todo, "remove-todo"),
+            Route::with_handler_and_name("/todos/{todo_id}/remove", remove_todo, "remove-todo"),
         ])
     }
 }
