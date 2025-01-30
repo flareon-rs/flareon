@@ -69,7 +69,7 @@ impl PathMatcher {
                     }
                 }
                 (Some('}'), State::Param { start }) => {
-                    let param_name = &path_pattern[start..index];
+                    let param_name = &path_pattern[start..index].trim();
                     assert!(
                         Self::is_param_name_valid(param_name),
                         "Invalid parameter name: `{param_name}`"
@@ -331,6 +331,16 @@ mod tests {
             ))
         );
         assert_eq!(path_parser.capture("/users/"), None);
+    }
+
+    #[test]
+    fn path_parser_param_whitespace() {
+        let path_parser = PathMatcher::new("/users/{ id }");
+
+        assert_eq!(
+            path_parser.capture("/users/123"),
+            Some(CaptureResult::new(vec![PathParam::new("id", "123")], ""))
+        );
     }
 
     #[test]
