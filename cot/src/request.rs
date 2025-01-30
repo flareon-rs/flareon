@@ -20,6 +20,7 @@ use bytes::Bytes;
 #[cfg(feature = "json")]
 use cot::headers::JSON_CONTENT_TYPE;
 use indexmap::IndexMap;
+pub use path_params_deserializer::PathParamsDeserializerError;
 use tower_sessions::Session;
 
 #[cfg(feature = "db")]
@@ -28,6 +29,8 @@ use crate::error::ErrorRepr;
 use crate::headers::FORM_CONTENT_TYPE;
 use crate::router::Router;
 use crate::{Body, Result};
+
+mod path_params_deserializer;
 
 /// HTTP request type.
 pub type Request = http::Request<Body>;
@@ -449,9 +452,43 @@ impl PathParams {
         self.params.insert(name, value);
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.params
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.params.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.params.is_empty()
+    }
+
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&str> {
         self.params.get(name).map(String::as_str)
+    }
+
+    #[must_use]
+    pub fn get_index(&self, index: usize) -> Option<&str> {
+        self.params
+            .get_index(index)
+            .map(|(_, value)| value.as_str())
+    }
+
+    #[must_use]
+    pub fn key_at_index(&self, index: usize) -> Option<&str> {
+        self.params.get_index(index).map(|(key, _)| key.as_str())
+    }
+
+    pub fn parse<'de, T: serde::Deserialize<'de>>(
+        &'de self,
+    ) -> std::result::Result<T, PathParamsDeserializerError> {
+        T::deserialize(path_params_deserializer::PathParamsDeserializer::new(self))
     }
 }
 
@@ -464,7 +501,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_form_data() {
+    async fn form_data() {
         let mut request = http::Request::builder()
             .method(http::Method::POST)
             .header(http::header::CONTENT_TYPE, FORM_CONTENT_TYPE)
@@ -477,7 +514,7 @@ mod tests {
 
     #[cfg(feature = "json")]
     #[tokio::test]
-    async fn test_json() {
+    async fn json() {
         let mut request = http::Request::builder()
             .method(http::Method::POST)
             .header(http::header::CONTENT_TYPE, JSON_CONTENT_TYPE)
@@ -489,7 +526,7 @@ mod tests {
     }
 
     #[test]
-    fn test_path_params() {
+    fn path_params() {
         let mut path_params = PathParams::new();
         path_params.insert("name".into(), "world".into());
 
@@ -498,7 +535,29 @@ mod tests {
     }
 
     #[test]
-    fn test_query_pairs() {
+    fn path_params_parse() {
+        let mut path_params = PathParams::new();
+        path_params.insert("hello".into(), "world".into());
+        path_params.insert("foo".into(), "bar".into());
+
+        #[derive(Debug, PartialEq, Eq, serde::Deserialize)]
+        struct Params {
+            hello: String,
+            foo: String,
+        }
+
+        let params: Params = path_params.parse().unwrap();
+        assert_eq!(
+            params,
+            Params {
+                hello: "world".to_string(),
+                foo: "bar".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn create_query_pairs() {
         let bytes = Bytes::from_static(b"hello=world&foo=bar");
         let pairs: Vec<_> = query_pairs(&bytes).collect();
         assert_eq!(

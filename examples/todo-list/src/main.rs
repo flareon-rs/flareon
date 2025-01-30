@@ -57,11 +57,7 @@ async fn add_todo(mut request: Request) -> cot::Result<Response> {
 }
 
 async fn remove_todo(request: Request) -> cot::Result<Response> {
-    let todo_id = request
-        .path_params()
-        .get("todo_id")
-        .expect("todo_id not found");
-    let todo_id = todo_id.parse::<i32>().expect("todo_id is not a number");
+    let todo_id: i32 = request.path_params().parse()?;
 
     {
         query!(TodoItem, $id == todo_id)
