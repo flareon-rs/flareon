@@ -196,7 +196,7 @@ pub trait User {
     ///         // thanks to this, the session hash is invalidated when the user changes their password
     ///         // and the user is automatically logged out
     ///
-    ///         let mut mac = SessionAuthHash::new_from_slice(secret_key.as_bytes())
+    ///         let mut mac = SessionAuthHmac::new_from_slice(secret_key.as_bytes())
     ///             .expect("HMAC can take key of any size");
     ///         mac.update(self.password.as_str().as_bytes());
     ///         let hmac_data = mac.finalize().into_bytes();
