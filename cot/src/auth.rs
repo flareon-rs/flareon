@@ -40,6 +40,14 @@ pub enum AuthError {
     /// An error occurred while accessing the user object.
     #[error("Error while accessing the user object")]
     UserBackend(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+    /// The credentials type provided to [`AuthBackend::authenticate`] is not
+    /// supported.
+    #[error("Tried to authenticate with an unsupported credentials type")]
+    CredentialsTypeNotSupported,
+    /// The [`UserId`] type provided to [`AuthBackend::get_user_by_id`] is not
+    /// supported.
+    #[error("Tried to get a user by an unsupported user ID type")]
+    UserIdTypeNotSupported,
 }
 
 impl AuthError {
@@ -958,6 +966,8 @@ pub trait AuthBackend: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the user object cannot be fetched.
+    ///
+    /// Returns an error if the credentials type is not supported.
     async fn authenticate(
         &self,
         request: &Request,
@@ -972,6 +982,8 @@ pub trait AuthBackend: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the user object cannot be fetched.
+    ///
+    /// Returns an error if the user ID type is not supported.
     ///
     /// # Examples
     ///

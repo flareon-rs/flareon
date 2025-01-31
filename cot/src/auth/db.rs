@@ -146,7 +146,7 @@ impl DatabaseUser {
     ///     )
     ///     .await?;
     ///
-    ///     let user_from_db = DatabaseUser::get_by_id(request.db(), UserId::Int(user.id())).await?;
+    ///     let user_from_db = DatabaseUser::get_by_id(request.db(), user.id()).await?;
     ///
     ///     Ok(Response::new_html(
     ///         StatusCode::OK,
@@ -167,9 +167,7 @@ impl DatabaseUser {
     /// #     Ok(())
     /// # }
     /// ```
-    pub async fn get_by_id<DB: DatabaseBackend>(db: &DB, id: UserId) -> Result<Option<Self>> {
-        let id = id.as_int().expect("User ID should be an integer");
-
+    pub async fn get_by_id<DB: DatabaseBackend>(db: &DB, id: i64) -> Result<Option<Self>> {
         let db_user = query!(DatabaseUser, $id == id)
             .get(db)
             .await
@@ -503,7 +501,7 @@ impl AuthBackend for DatabaseUserBackend {
                 .await
                 .map(|user| user.map(|user| Box::new(user) as Box<dyn User + Send + Sync>))?)
         } else {
-            Ok(None)
+            Err(AuthError::CredentialsTypeNotSupported)
         }
     }
 
@@ -512,6 +510,10 @@ impl AuthBackend for DatabaseUserBackend {
         request: &Request,
         id: UserId,
     ) -> Result<Option<Box<dyn User + Send + Sync>>> {
+        let UserId::Int(id) = id else {
+            return Err(AuthError::UserIdTypeNotSupported);
+        };
+
         #[allow(trivial_casts)] // Upcast to the correct Box type
         Ok(DatabaseUser::get_by_id(request.db(), id)
             .await?
@@ -648,9 +650,7 @@ mod tests {
             .expect_get::<DatabaseUser>()
             .returning(move |_| Ok(Some(user.clone())));
 
-        let result = DatabaseUser::get_by_id(&mock_db, UserId::Int(1))
-            .await
-            .unwrap();
+        let result = DatabaseUser::get_by_id(&mock_db, 1).await.unwrap();
         assert!(result.is_some());
         assert_eq!(result.unwrap().username(), "testuser");
     }
