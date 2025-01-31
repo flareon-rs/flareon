@@ -4,7 +4,7 @@ use thiserror::Error;
 #[error("Cycle detected in the graph")]
 pub struct CycleDetected;
 
-#[doc(hidden)] // not part of public API
+#[doc(hidden)] // not part of public API, used in the Cot CLI
 pub fn apply_permutation<T>(items: &mut [T], order: &mut [usize]) {
     for i in 0..order.len() {
         let mut current = i;

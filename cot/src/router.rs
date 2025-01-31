@@ -740,7 +740,7 @@ mod tests {
 
     #[test]
     fn test_reverse_macro() {
-        let route = Route::with_handler_and_name("/test/:id", MockHandler, "test");
+        let route = Route::with_handler_and_name("/test/{id}", MockHandler, "test");
         let router = Router::with_urls(vec![route]);
 
         let request = TestRequestBuilder::get("/").router(router).build();
@@ -751,7 +751,7 @@ mod tests {
 
     #[test]
     fn test_reverse_redirect_macro() {
-        let route = Route::with_handler_and_name("/test/:id", MockHandler, "test");
+        let route = Route::with_handler_and_name("/test/{id}", MockHandler, "test");
         let router = Router::with_urls(vec![route]);
 
         let request = TestRequestBuilder::get("/").router(router).build();
