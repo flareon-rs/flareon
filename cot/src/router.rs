@@ -15,7 +15,9 @@
 //!     todo!()
 //! }
 //!
-//! let router = Router::with_urls([Route::with_handler_and_name("/:page", get_page, "get_page")]);
+//! let router = Router::with_urls([Route::with_handler_and_name(
+//!     "/{page}", get_page, "get_page",
+//! )]);
 //! ```
 
 use std::collections::HashMap;

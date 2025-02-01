@@ -753,6 +753,11 @@ impl TestDatabase {
 
     /// Run the migrations on the test database.
     ///
+    /// # Panics
+    ///
+    /// Panics if the migration engine could not be initialized or if the
+    /// migrations could not be run.
+    ///
     /// # Examples
     ///
     /// ```
@@ -811,6 +816,11 @@ impl TestDatabase {
     /// This removes the test database and closes the connection. Note that this
     /// means that the database will not be dropped if the test panics, nor will
     /// it be dropped if you don't call this function.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database could not be closed or if the database
+    /// could not be dropped.
     ///
     /// # Examples
     ///

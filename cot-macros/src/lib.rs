@@ -127,7 +127,7 @@ pub fn dbtest(_args: TokenStream, input: TokenStream) -> TokenStream {
 /// An attribute macro that defines an entry point to a Cot-powered app.
 ///
 /// This macro is meant to wrap a function returning
-/// [`cot::Result<cot::CotProject>`]. It should initialize a `CotProject` and
+/// [`cot::Result<cot::CotProject>`]. It should initialize a [`CotProject`] and
 /// return it, while the macro takes care of initializing an async runtime,
 /// creating a CLI and running the app.
 ///

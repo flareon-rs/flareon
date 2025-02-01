@@ -1,3 +1,5 @@
+//! A command line interface for Cot-based applications.
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;

@@ -837,6 +837,7 @@ impl GeneratedMigration {
     /// operation that creates given model.
     #[must_use]
     fn get_create_ops_map(operations: &[DynOperation]) -> HashMap<syn::Type, usize> {
+        #[allow(clippy::match_wildcard_for_single_variants)] // we only care about CreateModel here
         operations
             .iter()
             .enumerate()

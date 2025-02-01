@@ -434,8 +434,10 @@ impl CotProjectBuilder<Uninitialized> {
     ///
     /// The project context might be useful for creating middlewares that need
     /// access to the project's configuration, apps, database, etc. An example
-    /// of such middleware is the [`StaticFilesMiddleware`], which iterates
-    /// through all the registered apps and collects the static files from them.
+    /// of such middleware is the
+    /// [`StaticFilesMiddleware`](cot::static_files::StaticFilesMiddleware),
+    /// which iterates through all the registered apps and collects the
+    /// static files from them.
     ///
     /// # Examples
     ///
@@ -559,8 +561,10 @@ where
     ///
     /// The project context might be useful for creating middlewares that need
     /// access to the project's configuration, apps, database, etc. An example
-    /// of such middleware is the [`StaticFilesMiddleware`], which iterates
-    /// through all the registered apps and collects the static files from them.
+    /// of such middleware is the
+    /// [`StaticFilesMiddleware`](cot::static_files::StaticFilesMiddleware),
+    /// which iterates through all the registered apps and collects the
+    /// static files from them.
     ///
     /// # Examples
     ///

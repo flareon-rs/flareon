@@ -44,7 +44,7 @@ pub enum AuthError {
     /// supported.
     #[error("Tried to authenticate with an unsupported credentials type")]
     CredentialsTypeNotSupported,
-    /// The [`UserId`] type provided to [`AuthBackend::get_user_by_id`] is not
+    /// The [`UserId`] type provided to [`AuthBackend::get_by_id`] is not
     /// supported.
     #[error("Tried to get a user by an unsupported user ID type")]
     UserIdTypeNotSupported,

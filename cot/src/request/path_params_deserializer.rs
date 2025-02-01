@@ -5,20 +5,31 @@ use serde::de::{DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess
 use serde::Deserializer;
 use thiserror::Error;
 
+/// An error that occurs when deserializing path parameters.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Error)]
 pub enum PathParamsDeserializerError {
     /// Invalid number of path parameters
     #[error("Invalid number of path parameters: expected {expected}, got {actual}")]
-    InvalidParamNumber { expected: usize, actual: usize },
+    InvalidParamNumber {
+        /// The expected number of path parameters.
+        expected: usize,
+        /// The actual number of path parameters that were provided.
+        actual: usize,
+    },
     /// A value cannot be parsed into given type.
     #[error("Failed to parse value `{value}` as `{expected_type}`")]
     ParseError {
+        /// The value that was provided.
         value: String,
+        /// The expected type name.
         expected_type: &'static str,
     },
     /// Deserialization into given type is not supported.
     #[error("Deserializing `{type_name}` is not supported")]
-    UnsupportedType { type_name: &'static str },
+    UnsupportedType {
+        /// The type name that was provided.
+        type_name: &'static str,
+    },
     /// An error that doesn't fit any other variant.
     #[error("{0}")]
     Custom(String),
@@ -369,6 +380,7 @@ impl<'de> ValueDeserializer<'de> {
         Self { key: None, value }
     }
 
+    #[allow(clippy::unnecessary_wraps)] // allows to use the same `deserialize_value!` macro
     fn get_single_value(&self) -> Result<&'de str, PathParamsDeserializerError> {
         Ok(self.value)
     }

@@ -429,6 +429,32 @@ pub(crate) struct RouteName(pub(crate) String);
 
 /// Path parameters extracted from the request URL, and available as a map of
 /// strings.
+///
+/// This struct is meant to be mainly used using the [`PathParams::parse`]
+/// method, which will deserialize the path parameters into a type `T`
+/// implementing `serde::DeserializeOwned`. If needed, you can also access the
+/// path parameters directly using the [`PathParams::get`] method.
+///
+/// # Examples
+///
+/// ```
+/// use cot::request::{PathParams, Request, RequestExt};
+/// use cot::response::Response;
+/// ///
+/// use cot::test::TestRequestBuilder;
+///
+/// async fn my_handler(mut request: Request) -> cot::Result<Response> {
+///     let path_params = request.path_params();
+///     let name = path_params.get("name").unwrap();
+///
+///     // using more ergonomic syntax:
+///     let name: String = request.path_params().parse()?;
+///
+///     let name = println!("Hello, {}!", name);
+///     // ...
+///     # todo!()
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct PathParams {
     params: IndexMap<String, String>,
@@ -441,6 +467,17 @@ impl Default for PathParams {
 }
 
 impl PathParams {
+    /// Creates a new [`PathParams`] instance.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::PathParams;
+    ///
+    /// let mut path_params = PathParams::new();
+    /// path_params.insert("name".into(), "world".into());
+    /// assert_eq!(path_params.get("name"), Some("world"));
+    /// ```
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -448,31 +485,97 @@ impl PathParams {
         }
     }
 
+    /// Inserts a new path parameter.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::PathParams;
+    ///
+    /// let mut path_params = PathParams::new();
+    /// path_params.insert("name".into(), "world".into());
+    /// assert_eq!(path_params.get("name"), Some("world"));
+    /// ```
     pub fn insert(&mut self, name: String, value: String) {
         self.params.insert(name, value);
     }
 
+    /// Iterates over the path parameters.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::PathParams;
+    ///
+    /// let mut path_params = PathParams::new();
+    /// path_params.insert("name".into(), "world".into());
+    /// for (name, value) in path_params.iter() {
+    ///     println!("{}: {}", name, value);
+    /// }
+    /// ```
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.params
             .iter()
             .map(|(name, value)| (name.as_str(), value.as_str()))
     }
 
+    /// Returns the number of path parameters.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::PathParams;
+    ///
+    /// let path_params = PathParams::new();
+    /// assert_eq!(path_params.len(), 0);
+    /// ```
     #[must_use]
     pub fn len(&self) -> usize {
         self.params.len()
     }
 
+    /// Returns `true` if the path parameters are empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::PathParams;
+    ///
+    /// let path_params = PathParams::new();
+    /// assert!(path_params.is_empty());
+    /// ```
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.params.is_empty()
     }
 
+    /// Returns the value of a path parameter.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::PathParams;
+    ///
+    /// let mut path_params = PathParams::new();
+    /// path_params.insert("name".into(), "world".into());
+    /// assert_eq!(path_params.get("name"), Some("world"));
+    /// ```
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&str> {
         self.params.get(name).map(String::as_str)
     }
 
+    /// Returns the value of a path parameter at the given index.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::PathParams;
+    ///
+    /// let mut path_params = PathParams::new();
+    /// path_params.insert("name".into(), "world".into());
+    /// assert_eq!(path_params.get_index(0), Some("world"));
+    /// ```
     #[must_use]
     pub fn get_index(&self, index: usize) -> Option<&str> {
         self.params
@@ -480,11 +583,52 @@ impl PathParams {
             .map(|(_, value)| value.as_str())
     }
 
+    /// Returns the key of a path parameter at the given index.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::PathParams;
+    ///
+    /// let mut path_params = PathParams::new();
+    /// path_params.insert("name".into(), "world".into());
+    /// assert_eq!(path_params.key_at_index(0), Some("name"));
+    /// ```
     #[must_use]
     pub fn key_at_index(&self, index: usize) -> Option<&str> {
         self.params.get_index(index).map(|(key, _)| key.as_str())
     }
 
+    /// Deserializes the path parameters into a type `T` implementing
+    /// `serde::DeserializeOwned`.
+    ///
+    /// # Errors
+    ///
+    /// Throws an error if the path parameters could not be deserialized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::request::PathParams;
+    /// use serde::Deserialize;
+    ///
+    /// # fn main() -> Result<(), cot::Error> {
+    /// let mut path_params = PathParams::new();
+    /// path_params.insert("hello".into(), "world".into());
+    /// path_params.insert("name".into(), "john".into());
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Params {
+    ///     hello: String,
+    ///     name: String,
+    /// }
+    ///
+    /// let params: Params = path_params.parse()?;
+    /// assert_eq!(params.hello, "world");
+    /// assert_eq!(params.name, "john");
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn parse<'de, T: serde::Deserialize<'de>>(
         &'de self,
     ) -> std::result::Result<T, PathParamsDeserializerError> {

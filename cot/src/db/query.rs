@@ -1,3 +1,5 @@
+//! Database query builder.
+
 use std::marker::PhantomData;
 
 use derive_more::Debug;

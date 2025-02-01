@@ -438,16 +438,51 @@ pub struct DatabaseUserCredentials {
 }
 
 impl DatabaseUserCredentials {
+    /// Create a new instance of the database user credentials.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::auth::db::DatabaseUserCredentials;
+    /// use cot::auth::Password;
+    ///
+    /// let credentials =
+    ///     DatabaseUserCredentials::new(String::from("testuser"), Password::new("password123"));
+    /// ```
     #[must_use]
     pub fn new(username: String, password: Password) -> Self {
         Self { username, password }
     }
 
+    /// Get the username of the user.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::auth::db::DatabaseUserCredentials;
+    /// use cot::auth::Password;
+    ///
+    /// let credentials =
+    ///     DatabaseUserCredentials::new(String::from("testuser"), Password::new("password123"));
+    /// assert_eq!(credentials.username(), "testuser");
+    /// ```
     #[must_use]
     pub fn username(&self) -> &str {
         &self.username
     }
 
+    /// Get the password of the user.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cot::auth::db::DatabaseUserCredentials;
+    /// use cot::auth::Password;
+    ///
+    /// let credentials =
+    ///     DatabaseUserCredentials::new(String::from("testuser"), Password::new("password123"));
+    /// assert!(!credentials.password().as_str().is_empty());
+    /// ```
     #[must_use]
     pub fn password(&self) -> &Password {
         &self.password
