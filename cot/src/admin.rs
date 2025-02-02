@@ -282,9 +282,9 @@ impl CotApp for AdminApp {
 
     fn router(&self) -> Router {
         Router::with_urls([
-            crate::Route::with_handler_and_name("/", index, "index"),
-            crate::Route::with_handler_and_name("/login", login, "login"),
-            crate::Route::with_handler_and_name("/{model_name}", view_model, "view_model"),
+            crate::router::Route::with_handler_and_name("/", index, "index"),
+            crate::router::Route::with_handler_and_name("/login", login, "login"),
+            crate::router::Route::with_handler_and_name("/{model_name}", view_model, "view_model"),
         ])
     }
 

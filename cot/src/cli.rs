@@ -180,7 +180,7 @@ impl CliTask for CollectStatic {
             .expect("required argument");
         println!("Collecting static files into {:?}", dir);
 
-        StaticFiles::from(&project.context)
+        StaticFiles::from(project.context())
             .collect_into(dir)
             .map_err(|e| Error::new(ErrorRepr::CollectStatic { source: e }))?;
 

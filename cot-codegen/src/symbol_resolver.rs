@@ -327,11 +327,11 @@ impl Display for ModulePath {
 
 #[cfg(test)]
 mod tests {
-    use cot_codegen::symbol_resolver::VisibleSymbolKind;
     use quote::{quote, ToTokens};
     use syn::parse_quote;
 
     use super::*;
+    use crate::symbol_resolver::VisibleSymbolKind;
 
     #[test]
     fn imports() {

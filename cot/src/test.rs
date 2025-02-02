@@ -16,10 +16,12 @@ use crate::db::migrations::{
 };
 #[cfg(feature = "db")]
 use crate::db::Database;
+use crate::handler::BoxedHandler;
+use crate::project::prepare_request;
 use crate::request::{Request, RequestExt};
 use crate::response::Response;
 use crate::router::Router;
-use crate::{prepare_request, AppContext, Body, BoxedHandler, CotProject, Result};
+use crate::{AppContext, Body, CotProject, Result};
 
 /// A test client for making requests to a Cot project.
 ///

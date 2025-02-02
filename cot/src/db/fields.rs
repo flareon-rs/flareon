@@ -1,7 +1,5 @@
 //! `DatabaseField` implementations for common types.
 
-use cot::db::DatabaseField;
-
 #[cfg(feature = "mysql")]
 use crate::db::impl_mysql::MySqlValueRef;
 #[cfg(feature = "postgres")]
@@ -9,8 +7,8 @@ use crate::db::impl_postgres::PostgresValueRef;
 #[cfg(feature = "sqlite")]
 use crate::db::impl_sqlite::SqliteValueRef;
 use crate::db::{
-    Auto, ColumnType, DatabaseError, DbFieldValue, DbValue, ForeignKey, FromDbValue, LimitedString,
-    Model, PrimaryKey, Result, SqlxValueRef, ToDbFieldValue, ToDbValue,
+    Auto, ColumnType, DatabaseError, DatabaseField, DbFieldValue, DbValue, ForeignKey, FromDbValue,
+    LimitedString, Model, PrimaryKey, Result, SqlxValueRef, ToDbFieldValue, ToDbValue,
 };
 
 macro_rules! impl_from_sqlite_default {

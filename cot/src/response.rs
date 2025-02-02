@@ -160,9 +160,9 @@ impl ResponseExt for Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::body::BodyInner;
     use crate::headers::HTML_CONTENT_TYPE;
     use crate::response::{Response, ResponseExt};
-    use crate::BodyInner;
 
     #[test]
     fn response_new_html() {

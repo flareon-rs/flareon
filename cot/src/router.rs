@@ -27,16 +27,16 @@ use std::task::{Context, Poll};
 
 use axum::http::StatusCode;
 use bytes::Bytes;
-use cot::request::{PathParams, RouteName};
 use derive_more::Debug;
 use tracing::debug;
 
 use crate::error::ErrorRepr;
 use crate::error_page::ErrorPageTrigger;
-use crate::request::Request;
+use crate::handler::RequestHandler;
+use crate::request::{PathParams, Request, RouteName};
 use crate::response::{Response, ResponseExt};
 use crate::router::path::{CaptureResult, PathMatcher, ReverseParamMap};
-use crate::{Body, Error, RequestHandler, Result};
+use crate::{Body, Error, Result};
 
 pub mod path;
 
@@ -614,8 +614,8 @@ macro_rules! reverse_redirect {
 mod tests {
     use super::*;
     use crate::request::Request;
+    use crate::response::Response;
     use crate::test::TestRequestBuilder;
-    use crate::Response;
 
     struct MockHandler;
 

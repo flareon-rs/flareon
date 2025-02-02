@@ -17,8 +17,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-#[cfg(feature = "json")]
-use cot::headers::JSON_CONTENT_TYPE;
 use indexmap::IndexMap;
 pub use path_params_deserializer::PathParamsDeserializerError;
 use tower_sessions::Session;
@@ -27,6 +25,8 @@ use tower_sessions::Session;
 use crate::db::Database;
 use crate::error::ErrorRepr;
 use crate::headers::FORM_CONTENT_TYPE;
+#[cfg(feature = "json")]
+use crate::headers::JSON_CONTENT_TYPE;
 use crate::router::Router;
 use crate::{Body, Result};
 
