@@ -1,14 +1,17 @@
 //! Test utilities for Cot projects.
 
+use std::any::Any;
 use std::future::poll_fn;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use derive_more::Debug;
 use tower::Service;
 use tower_sessions::{MemoryStore, Session};
 
 #[cfg(feature = "db")]
 use crate::auth::db::DatabaseUserBackend;
+use crate::auth::{AuthBackend, NoAuthBackend, User, UserId};
 use crate::config::ProjectConfig;
 #[cfg(feature = "db")]
 use crate::db::migrations::{
@@ -21,14 +24,14 @@ use crate::project::prepare_request;
 use crate::request::{Request, RequestExt};
 use crate::response::Response;
 use crate::router::Router;
-use crate::{AppContext, Body, CotProject, Result};
+use crate::{Body, Bootstrapper, Project, ProjectContext, Result};
 
 /// A test client for making requests to a Cot project.
 ///
 /// Useful for End-to-End testing Cot projects.
 #[derive(Debug)]
 pub struct Client {
-    context: Arc<AppContext>,
+    context: Arc<ProjectContext>,
     handler: BoxedHandler,
 }
 
@@ -39,18 +42,37 @@ impl Client {
     ///
     /// ```
     /// use cot::test::Client;
-    /// use cot::CotProject;
+    /// use cot::Project;
+    ///    use cot::config::ProjectConfig;
+    ///
+    /// struct MyProject;
+    /// impl Project for MyProject {
+    ///     fn config(&self, config_name: &str) -> cot::Result<ProjectConfig> {
+    ///         Ok(ProjectConfig::default())
+    ///     }
+    /// }
     ///
     /// # #[tokio::main]
     /// # async fn main() -> cot::Result<()> {
-    /// let mut client = Client::new(CotProject::builder().build().await?);
-    /// let response = client.get("/").await;
+    /// let mut client = Client::new(MyProject).await;
+    /// let response = client.get("/").await?;
+    /// assert!(!response.into_body().into_bytes().await?.is_empty());
     /// # Ok(())
     /// }
     /// ```
     #[must_use]
-    pub fn new(project: CotProject) -> Self {
-        let (context, handler) = project.into_context();
+    pub async fn new<P>(project: P) -> Self
+    where
+        P: Project + 'static,
+    {
+        let config = project.config("test").expect("Could not get test config");
+        let bootstrapper = Bootstrapper::new(project)
+            .with_config(config)
+            .boot()
+            .await
+            .expect("Could not boot project");
+
+        let (context, handler) = bootstrapper.into_context_and_handler();
         Self {
             context: Arc::new(context),
             handler,
@@ -59,24 +81,32 @@ impl Client {
 
     /// Send a GET request to the given path.
     ///
+    /// # Errors
+    ///
+    /// Propagates any errors that the request handler might return.
+    ///
     /// # Examples
     ///
     /// ```
     /// use cot::test::Client;
-    /// use cot::CotProject;
+    /// use cot::Project;
+    ///    use cot::config::ProjectConfig;
+    ///
+    /// struct MyProject;
+    /// impl Project for MyProject {
+    ///     fn config(&self, config_name: &str) -> cot::Result<ProjectConfig> {
+    ///         Ok(ProjectConfig::default())
+    ///     }
+    /// }
     ///
     /// # #[tokio::main]
     /// # async fn main() -> cot::Result<()> {
-    /// let mut client = Client::new(CotProject::builder().build().await?);
+    /// let mut client = Client::new(MyProject).await;
     /// let response = client.get("/").await?;
     /// assert!(!response.into_body().into_bytes().await?.is_empty());
     /// # Ok(())
     /// }
     /// ```
-    ///
-    /// # Errors
-    ///
-    /// Propagates any errors that the request handler might return.
     pub async fn get(&mut self, path: &str) -> Result<Response> {
         self.request(match http::Request::get(path).body(Body::empty()) {
             Ok(request) => request,
@@ -89,25 +119,32 @@ impl Client {
 
     /// Send a request to the given path.
     ///
+    /// # Errors
+    ///
+    /// Propagates any errors that the request handler might return.
+    ///
     /// # Examples
     ///
     /// ```
     /// use cot::test::Client;
-    /// use cot::CotProject;
-    /// use cot::Body;
+    /// use cot::{Body, Project};
+    /// use cot::config::ProjectConfig;
+    ///
+    /// struct MyProject;
+    /// impl Project for MyProject {
+    ///     fn config(&self, config_name: &str) -> cot::Result<ProjectConfig> {
+    ///         Ok(ProjectConfig::default())
+    ///     }
+    /// }
     ///
     /// # #[tokio::main]
     /// # async fn main() -> cot::Result<()> {
-    /// let mut client = Client::new(CotProject::builder().build().await?);
+    /// let mut client = Client::new(MyProject).await;
     /// let response = client.request(cot::http::Request::get("/").body(Body::empty()).unwrap()).await?;
     /// assert!(!response.into_body().into_bytes().await?.is_empty());
     /// # Ok(())
     /// }
     /// ```
-    ///
-    /// # Errors
-    ///
-    /// Propagates any errors that the request handler might return.
     pub async fn request(&mut self, mut request: Request) -> Result<Response> {
         prepare_request(&mut request, self.context.clone());
 
@@ -146,18 +183,74 @@ impl Client {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct TestRequestBuilder {
     method: http::Method,
     url: String,
     router: Option<Router>,
     session: Option<Session>,
     config: Option<Arc<ProjectConfig>>,
+    auth_backend: Option<AuthBackendWrapper>,
     #[cfg(feature = "db")]
     database: Option<Arc<Database>>,
     form_data: Option<Vec<(String, String)>>,
     #[cfg(feature = "json")]
     json_data: Option<String>,
+}
+
+/// A wrapper over an auth backend that is cloneable.
+#[derive(Debug, Clone)]
+struct AuthBackendWrapper {
+    #[debug("..")]
+    inner: Arc<dyn AuthBackend>,
+}
+
+impl AuthBackendWrapper {
+    pub(crate) fn new<AB>(inner: AB) -> Self
+    where
+        AB: AuthBackend + 'static,
+    {
+        Self {
+            inner: Arc::new(inner),
+        }
+    }
+}
+
+#[async_trait]
+impl AuthBackend for AuthBackendWrapper {
+    async fn authenticate(
+        &self,
+        request: &Request,
+        credentials: &(dyn Any + Send + Sync),
+    ) -> cot::auth::Result<Option<Box<dyn User + Send + Sync>>> {
+        self.inner.authenticate(request, credentials).await
+    }
+
+    async fn get_by_id(
+        &self,
+        request: &Request,
+        id: UserId,
+    ) -> cot::auth::Result<Option<Box<dyn User + Send + Sync>>> {
+        self.inner.get_by_id(request, id).await
+    }
+}
+
+impl Default for TestRequestBuilder {
+    fn default() -> Self {
+        Self {
+            method: http::Method::GET,
+            url: "/".to_string(),
+            router: None,
+            session: None,
+            config: None,
+            auth_backend: None,
+            #[cfg(feature = "db")]
+            database: None,
+            form_data: None,
+            #[cfg(feature = "json")]
+            json_data: None,
+        }
+    }
 }
 
 impl TestRequestBuilder {
@@ -276,6 +369,23 @@ impl TestRequestBuilder {
         self
     }
 
+    /// Add an authentication backend to the request builder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::auth::NoAuthBackend;
+    /// use cot::test::TestRequestBuilder;
+    ///
+    /// let request = TestRequestBuilder::get("/")
+    ///     .auth_backend(NoAuthBackend)
+    ///     .build();
+    /// ```
+    pub fn auth_backend<T: AuthBackend + 'static>(&mut self, auth_backend: T) -> &mut Self {
+        self.auth_backend = Some(AuthBackendWrapper::new(auth_backend));
+        self
+    }
+
     /// Add a router to the request builder.
     ///
     /// # Examples
@@ -354,12 +464,10 @@ impl TestRequestBuilder {
 
     #[cfg(feature = "db")]
     pub fn with_db_auth(&mut self, db: Arc<Database>) -> &mut Self {
-        let auth_backend = DatabaseUserBackend;
-        let config = ProjectConfig::builder().auth_backend(auth_backend).build();
-
+        self.auth_backend(DatabaseUserBackend);
         self.with_session();
-        self.config(config);
         self.database(db);
+
         self
     }
 
@@ -442,10 +550,18 @@ impl TestRequestBuilder {
             unreachable!("Test request should be valid");
         };
 
-        let app_context = AppContext::new(
+        let auth_backend = std::mem::take(&mut self.auth_backend);
+        #[allow(trivial_casts)]
+        let auth_backend = match auth_backend {
+            Some(auth_backend) => Box::new(auth_backend) as Box<dyn AuthBackend>,
+            None => Box::new(NoAuthBackend),
+        };
+
+        let app_context = ProjectContext::initialized(
             self.config.clone().unwrap_or_default(),
             Vec::new(),
             Arc::new(self.router.clone().unwrap_or_else(Router::empty)),
+            auth_backend,
             #[cfg(feature = "db")]
             self.database.clone(),
         );

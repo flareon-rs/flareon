@@ -225,14 +225,14 @@ impl HtmlTag {
         write!(&mut result, "<{}", self.tag).expect(FAIL_MSG);
 
         for (key, value) in &self.attributes {
-            write!(&mut result, " {}=\"", key).expect(FAIL_MSG);
+            write!(&mut result, " {key}=\"").expect(FAIL_MSG);
             rinja::filters::Html
                 .write_escaped_str(&mut result, value)
                 .expect(FAIL_MSG);
             write!(&mut result, "\"").expect(FAIL_MSG);
         }
         for key in &self.boolean_attributes {
-            write!(&mut result, " {}", key).expect(FAIL_MSG);
+            write!(&mut result, " {key}").expect(FAIL_MSG);
         }
 
         write!(&mut result, " />").expect(FAIL_MSG);

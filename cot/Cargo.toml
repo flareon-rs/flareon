@@ -43,10 +43,12 @@ sync_wrapper.workspace = true
 thiserror.workspace = true
 time.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+toml = { workspace = true, features = ["parse"] }
 tower = { workspace = true, features = ["util"] }
 tower-livereload = { workspace = true, optional = true }
 tower-sessions = { workspace = true, features = ["memory-store"] }
 tracing.workspace = true
+url = { workspace = true, features = ["serde"], optional = true }
 
 [dev-dependencies]
 async-stream.workspace = true
@@ -72,7 +74,7 @@ ignored = [
 default = ["sqlite", "postgres", "mysql", "json"]
 full = ["default", "fake", "live-reload"]
 fake = ["dep:fake"]
-db = []
+db = ["dep:url"]
 sqlite = ["db", "sea-query/backend-sqlite", "sea-query-binder/sqlx-sqlite", "sqlx/sqlite"]
 postgres = ["db", "sea-query/backend-postgres", "sea-query-binder/sqlx-postgres", "sqlx/postgres"]
 mysql = ["db", "sea-query/backend-mysql", "sea-query-binder/sqlx-mysql", "sqlx/mysql"]

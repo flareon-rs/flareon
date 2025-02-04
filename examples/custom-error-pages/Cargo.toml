@@ -1,0 +1,9 @@
+[package]
+name = "example-custom-error-pages"
+version = "0.1.0"
+publish = false
+description = "Custom Error Pages - Cot example."
+edition = "2021"
+
+[dependencies]
+cot = { path = "../../cot" }

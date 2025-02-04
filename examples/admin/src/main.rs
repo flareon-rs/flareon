@@ -1,13 +1,15 @@
 use cot::__private::async_trait;
 use cot::admin::AdminApp;
 use cot::auth::db::{DatabaseUser, DatabaseUserApp};
+use cot::cli::CliMetadata;
 use cot::config::{DatabaseConfig, ProjectConfig};
 use cot::middleware::SessionMiddleware;
+use cot::project::{WithApps, WithConfig};
 use cot::request::Request;
 use cot::response::{Response, ResponseExt};
 use cot::router::{Route, Router};
 use cot::static_files::StaticFilesMiddleware;
-use cot::{AppContext, Body, CotApp, CotProject, StatusCode};
+use cot::{App, AppBuilder, Body, BoxedHandler, Project, ProjectContext, StatusCode};
 use rinja::Template;
 
 #[derive(Debug, Template)]
@@ -26,12 +28,12 @@ async fn index(request: Request) -> cot::Result<Response> {
 struct HelloApp;
 
 #[async_trait]
-impl CotApp for HelloApp {
+impl App for HelloApp {
     fn name(&self) -> &'static str {
         env!("CARGO_PKG_NAME")
     }
 
-    async fn init(&self, context: &mut AppContext) -> cot::Result<()> {
+    async fn init(&self, context: &mut ProjectContext) -> cot::Result<()> {
         // TODO use transaction
         let user = DatabaseUser::get_by_username(context.database(), "admin").await?;
         if user.is_none() {
@@ -46,26 +48,43 @@ impl CotApp for HelloApp {
     }
 }
 
-#[cot::main]
-async fn main() -> cot::Result<CotProject> {
-    let cot_project = CotProject::builder()
-        .config(
-            ProjectConfig::builder()
-                .database_config(
-                    DatabaseConfig::builder()
-                        .url("sqlite://db.sqlite3?mode=rwc")
-                        .build(),
-                )
-                .build(),
-        )
-        .with_cli(cot::cli::metadata!())
-        .register_app(DatabaseUserApp::new())
-        .register_app_with_views(AdminApp::new(), "/admin")
-        .register_app_with_views(HelloApp, "")
-        .middleware_with_context(StaticFilesMiddleware::from_app_context)
-        .middleware(SessionMiddleware::new())
-        .build()
-        .await?;
+struct AdminProject;
 
-    Ok(cot_project)
+impl Project for AdminProject {
+    fn cli_metadata(&self) -> CliMetadata {
+        cot::cli::metadata!()
+    }
+
+    fn config(&self, _config_name: &str) -> cot::Result<ProjectConfig> {
+        Ok(ProjectConfig::builder()
+            .debug(true)
+            .database(
+                DatabaseConfig::builder()
+                    .url("sqlite://db.sqlite3?mode=rwc")
+                    .build(),
+            )
+            .build())
+    }
+
+    fn register_apps(&self, modules: &mut AppBuilder, _app_context: &ProjectContext<WithConfig>) {
+        modules.register(DatabaseUserApp::new());
+        modules.register_with_views(AdminApp::new(), "/admin");
+        modules.register_with_views(HelloApp, "");
+    }
+
+    fn middlewares(
+        &self,
+        handler: cot::project::RootHandlerBuilder,
+        app_context: &ProjectContext<WithApps>,
+    ) -> BoxedHandler {
+        handler
+            .middleware(StaticFilesMiddleware::from_app_context(app_context))
+            .middleware(SessionMiddleware::new())
+            .build()
+    }
+}
+
+#[cot::main]
+fn main() -> impl Project {
+    AdminProject
 }

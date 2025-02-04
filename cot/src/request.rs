@@ -63,7 +63,7 @@ pub trait RequestExt: private::Sealed {
     /// }
     /// ```
     #[must_use]
-    fn context(&self) -> &crate::AppContext;
+    fn context(&self) -> &crate::ProjectContext;
 
     /// Get the project configuration.
     ///
@@ -329,9 +329,9 @@ impl private::Sealed for Request {}
 
 #[async_trait]
 impl RequestExt for Request {
-    fn context(&self) -> &crate::AppContext {
+    fn context(&self) -> &crate::ProjectContext {
         self.extensions()
-            .get::<Arc<crate::AppContext>>()
+            .get::<Arc<crate::ProjectContext>>()
             .expect("AppContext extension missing")
     }
 

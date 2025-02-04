@@ -115,6 +115,12 @@ pre.small {
     font-size: .75rem;
 }
 
+pre.config {
+    background-color: #fff;
+    border: 1px solid #d9dde1;
+    padding: 1em;
+}
+
 samp {
     font-family: "Noto Sans Mono", monospace;
 }

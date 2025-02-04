@@ -83,6 +83,7 @@ impl From<Error> for rinja::Error {
     }
 }
 
+impl_error_from_repr!(toml::de::Error);
 impl_error_from_repr!(rinja::Error);
 impl_error_from_repr!(crate::router::path::ReverseError);
 #[cfg(feature = "db")]
@@ -99,6 +100,18 @@ pub(crate) enum ErrorRepr {
     /// A custom user error occurred.
     #[error("{0}")]
     Custom(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// An error occurred while trying to load the config.
+    #[error("Could not read the config file at `{config}` or `config/{config}.toml`")]
+    LoadConfig {
+        config: String,
+        source: std::io::Error,
+    },
+    /// An error occurred while trying to parse the config.
+    #[error("Could not parse the config: {source}")]
+    ParseConfig {
+        #[from]
+        source: toml::de::Error,
+    },
     /// An error occurred while trying to start the server.
     #[error("Could not start server: {source}")]
     StartServer { source: std::io::Error },

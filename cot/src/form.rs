@@ -176,7 +176,7 @@ pub enum FormErrorTarget<'a> {
 /// including the implementation of the [`FormContext`] trait for the context
 /// type.
 ///
-/// ```rust
+/// ```
 /// use cot::form::Form;
 ///
 /// #[derive(Form)]

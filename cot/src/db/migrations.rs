@@ -5,13 +5,12 @@ mod sorter;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
-use cot::db::relations::ForeignKeyOnUpdatePolicy;
 use sea_query::{ColumnDef, StringLen};
 use thiserror::Error;
 use tracing::info;
 
 use crate::db::migrations::sorter::{MigrationSorter, MigrationSorterError};
-use crate::db::relations::ForeignKeyOnDeletePolicy;
+use crate::db::relations::{ForeignKeyOnDeletePolicy, ForeignKeyOnUpdatePolicy};
 use crate::db::{model, query, ColumnType, Database, DatabaseField, Identifier, Result};
 
 /// An error that occurred while running migrations.
@@ -1386,9 +1385,31 @@ mod tests {
             .build()];
     }
 
+    struct DummyMigration;
+
+    impl Migration for DummyMigration {
+        const APP_NAME: &'static str = "testapp";
+        const MIGRATION_NAME: &'static str = "m_0002_custom";
+        const DEPENDENCIES: &'static [MigrationDependency] = &[];
+        const OPERATIONS: &'static [Operation] = &[];
+    }
+
     #[cot_macros::dbtest]
     async fn test_migration_engine_run(test_db: &mut TestDatabase) {
         let engine = MigrationEngine::new([TestMigration]).unwrap();
+
+        let result = engine.run(&test_db.database()).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[cot_macros::dbtest]
+    async fn test_migration_engine_multiple_migrations_run(test_db: &mut TestDatabase) {
+        let engine = MigrationEngine::new([
+            &TestMigration as &SyncDynMigration,
+            &DummyMigration as &SyncDynMigration,
+        ])
+        .unwrap();
 
         let result = engine.run(&test_db.database()).await;
 

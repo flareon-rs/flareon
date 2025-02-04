@@ -1,9 +1,10 @@
 use std::fmt::Display;
 
-use cot::request::PathParams;
 use serde::de::{DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor};
 use serde::Deserializer;
 use thiserror::Error;
+
+use crate::request::PathParams;
 
 /// An error that occurs when deserializing path parameters.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Error)]

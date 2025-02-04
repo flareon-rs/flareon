@@ -1,9 +1,14 @@
+use cot::cli::CliMetadata;
+use cot::config::ProjectConfig;
 use cot::form::Form;
 use cot::middleware::SessionMiddleware;
+use cot::project::{WithApps, WithConfig};
 use cot::request::{Request, RequestExt};
 use cot::response::{Response, ResponseExt};
 use cot::router::{Route, Router};
-use cot::{reverse_redirect, Body, CotApp, CotProject, StatusCode};
+use cot::{
+    reverse_redirect, App, AppBuilder, Body, BoxedHandler, Project, ProjectContext, StatusCode,
+};
 use rinja::Template;
 
 #[derive(Debug, Template)]
@@ -69,7 +74,7 @@ async fn name(mut request: Request) -> cot::Result<Response> {
 
 struct HelloApp;
 
-impl CotApp for HelloApp {
+impl App for HelloApp {
     fn name(&self) -> &'static str {
         env!("CARGO_PKG_NAME")
     }
@@ -82,14 +87,31 @@ impl CotApp for HelloApp {
     }
 }
 
-#[cot::main]
-async fn main() -> cot::Result<CotProject> {
-    let cot_project = CotProject::builder()
-        .with_cli(cot::cli::metadata!())
-        .register_app_with_views(HelloApp, "")
-        .middleware(SessionMiddleware::new())
-        .build()
-        .await?;
+struct SessionsProject;
 
-    Ok(cot_project)
+impl Project for SessionsProject {
+    fn cli_metadata(&self) -> CliMetadata {
+        cot::cli::metadata!()
+    }
+
+    fn config(&self, _config_name: &str) -> cot::Result<ProjectConfig> {
+        Ok(ProjectConfig::dev_default())
+    }
+
+    fn register_apps(&self, modules: &mut AppBuilder, _app_context: &ProjectContext<WithConfig>) {
+        modules.register_with_views(HelloApp, "");
+    }
+
+    fn middlewares(
+        &self,
+        handler: cot::project::RootHandlerBuilder,
+        _app_context: &ProjectContext<WithApps>,
+    ) -> BoxedHandler {
+        handler.middleware(SessionMiddleware::new()).build()
+    }
+}
+
+#[cot::main]
+fn main() -> impl Project {
+    SessionsProject
 }

@@ -1,11 +1,12 @@
 use cot::bytes::Bytes;
-use cot::config::ProjectConfig;
+use cot::cli::CliMetadata;
 use cot::middleware::LiveReloadMiddleware;
+use cot::project::{RootHandlerBuilder, WithApps, WithConfig};
 use cot::request::Request;
 use cot::response::{Response, ResponseExt};
 use cot::router::{Route, Router};
 use cot::static_files::StaticFilesMiddleware;
-use cot::{static_files, Body, CotApp, CotProject, StatusCode};
+use cot::{static_files, App, AppBuilder, Body, BoxedHandler, Project, ProjectContext, StatusCode};
 use rinja::Template;
 
 #[derive(Debug, Template)]
@@ -21,7 +22,7 @@ async fn index(request: Request) -> cot::Result<Response> {
 
 struct {{ app_name }};
 
-impl CotApp for {{ app_name }} {
+impl App for {{ app_name }} {
     fn name(&self) -> &'static str {
         env!("CARGO_CRATE_NAME")
     }
@@ -35,16 +36,30 @@ impl CotApp for {{ app_name }} {
     }
 }
 
-#[cot::main]
-async fn main() -> cot::Result<CotProject> {
-    let project = CotProject::builder()
-        .config(ProjectConfig::builder().build())
-        .with_cli(cot::cli::metadata!())
-        .register_app_with_views({{ app_name }}, "")
-        .middleware_with_context(StaticFilesMiddleware::from_app_context)
-        .middleware(LiveReloadMiddleware::new())
-        .build()
-        .await?;
+struct {{ project_struct_name }};
 
-    Ok(project)
+impl Project for {{ project_struct_name }} {
+    fn cli_metadata(&self) -> CliMetadata {
+        cot::cli::metadata!()
+    }
+
+    fn register_apps(&self, modules: &mut AppBuilder, _app_context: &ProjectContext<WithConfig>) {
+        modules.register_with_views({{ app_name }}, "");
+    }
+
+    fn middlewares(
+        &self,
+        handler: RootHandlerBuilder,
+        context: &ProjectContext<WithApps>,
+    ) -> BoxedHandler {
+        handler
+            .middleware(StaticFilesMiddleware::from_app_context(context))
+            .middleware(LiveReloadMiddleware::from_app_context(context))
+            .build()
+    }
+}
+
+#[cot::main]
+fn main() -> impl Project {
+    {{ project_struct_name }}
 }
