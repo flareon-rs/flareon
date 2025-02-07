@@ -14,6 +14,7 @@ use crate::{Bootstrapper, Error, Result};
 
 const CONFIG_PARAM: &str = "config";
 const COLLECT_STATIC_SUBCOMMAND: &str = "collect-static";
+const CHECK_SUBCOMMAND: &str = "check";
 const LISTEN_PARAM: &str = "listen";
 const COLLECT_STATIC_DIR_PARAM: &str = "dir";
 
@@ -43,6 +44,7 @@ impl Cli {
         tasks.insert(None, Box::new(default_task));
 
         let mut cli = Self { command, tasks };
+        cli.add_task(Check);
         cli.add_task(CollectStatic);
 
         cli
@@ -239,6 +241,26 @@ impl CliTask for CollectStatic {
     }
 }
 
+struct Check;
+#[async_trait(?Send)]
+impl CliTask for Check {
+    fn subcommand(&self) -> Command {
+        Command::new(CHECK_SUBCOMMAND).about(
+            "Verifies the configuration, including connections to the database and other services",
+        )
+    }
+
+    async fn execute(
+        &mut self,
+        _matches: &ArgMatches,
+        bootstrapper: Bootstrapper<WithConfig>,
+    ) -> Result<()> {
+        bootstrapper.boot().await?;
+        println!("Success verifying the configuration");
+        Ok(())
+    }
+}
+
 /// A macro to generate a [`CliMetadata`] struct from the Cargo manifest.
 #[macro_export]
 macro_rules! metadata {
@@ -259,9 +281,9 @@ use crate::static_files::StaticFiles;
 
 #[cfg(test)]
 mod tests {
-
     use bytes::Bytes;
     use clap::Command;
+    use cot::test::serial_guard;
     use tempfile::tempdir;
     use thiserror::__private::AsDisplay;
 
@@ -368,5 +390,47 @@ mod tests {
 
         assert!(result.is_ok());
         assert!(temp_path.join("test.txt").exists());
+    }
+
+    #[tokio::test]
+    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
+    async fn check_execute() {
+        let config = r#"secret_key = "123abc""#;
+        let result = test_check(config).await;
+
+        assert!(result.is_ok(), "{:?}", result);
+    }
+
+    #[tokio::test]
+    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
+    #[cfg(feature = "db")]
+    async fn check_execute_db_fail() {
+        let config = r#"
+        [database]
+        url = "postgresql://invalid:invalid@invalid/invalid"
+        "#;
+        let result = test_check(config).await;
+
+        assert!(result.is_err());
+    }
+
+    async fn test_check(config: &str) -> Result<()> {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("config").clone();
+        std::fs::create_dir_all(&config_path).unwrap();
+        std::fs::write(config_path.join("test.toml"), config).unwrap();
+
+        let mut check = Check;
+        let matches = Check.subcommand().get_matches_from(Vec::<&str>::new());
+
+        struct TestProject;
+        impl cot::Project for TestProject {}
+
+        // ensure the tests run sequentially when setting the current directory
+        let _guard = serial_guard();
+
+        std::env::set_current_dir(&temp_dir).unwrap();
+        let bootstrapper = Bootstrapper::new(TestProject).with_config_name("test")?;
+        check.execute(&matches, bootstrapper).await
     }
 }

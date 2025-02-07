@@ -32,7 +32,7 @@ use derive_more::Debug;
 use futures_util::FutureExt;
 use http::request::Parts;
 use tower::{Layer, Service};
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use crate::admin::AdminModelManager;
 #[cfg(feature = "db")]
@@ -908,11 +908,46 @@ impl Bootstrapper<Uninitialized> {
         self.project.register_tasks(&mut cli);
 
         let common_options = cli.get_common_options();
-        let config = self.project.config(common_options.config())?;
-
-        let self_with_context = self.with_config(config);
+        let self_with_context = self.with_config_name(common_options.config())?;
 
         cli.execute(self_with_context).await
+    }
+
+    /// Reads the configuration of the project and moves to the next
+    /// bootstrapping phase.
+    ///
+    /// # Errors
+    ///
+    /// This method may return an error if it cannot read the configuration of
+    /// the project.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::config::ProjectConfig;
+    /// use cot::{Bootstrapper, Project};
+    ///
+    /// struct MyProject;
+    /// impl Project for MyProject {
+    ///     fn config(&self, config_name: &str) -> cot::Result<ProjectConfig> {
+    ///         Ok(ProjectConfig::default())
+    ///     }
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> cot::Result<()> {
+    /// let bootstrapper = Bootstrapper::new(MyProject)
+    ///     .with_config_name("test")?
+    ///     .boot()
+    ///     .await?;
+    /// let (context, handler) = bootstrapper.into_context_and_handler();
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_config_name(self, config_name: &str) -> cot::Result<Bootstrapper<WithConfig>> {
+        let config = self.project.config(config_name)?;
+
+        Ok(self.with_config(config))
     }
 
     /// Sets the configuration for the project.
@@ -950,11 +985,17 @@ impl Bootstrapper<Uninitialized> {
 }
 
 fn read_config(config: &str) -> cot::Result<ProjectConfig> {
+    trace!(config, "Reading project configuration");
     let result = match std::fs::read_to_string(config) {
         Ok(config_content) => Ok(config_content),
         Err(_err) => {
             // try to read the config from the `config` directory if it's not a file
             let path = PathBuf::from("config").join(config).with_extension("toml");
+            trace!(
+                config,
+                path = %path.display(),
+                "Failed to read config as a file; trying to read from the `config` directory"
+            );
 
             std::fs::read_to_string(&path)
         }
@@ -1853,6 +1894,7 @@ fn response_cot_to_axum(response: Response) -> axum::response::Response {
 
 #[cfg(test)]
 mod tests {
+    use cot::test::serial_guard;
 
     use super::*;
     use crate::auth::UserId;
@@ -1935,7 +1977,10 @@ mod tests {
         let config_file_path = config_dir.as_path().join("dev.toml");
         std::fs::write(config_file_path, config).unwrap();
 
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        // ensure the tests run sequentially when setting the current directory
+        let _guard = serial_guard();
+
+        std::env::set_current_dir(&temp_dir).unwrap();
         let config = TestProject.config("dev").unwrap();
 
         assert!(!config.debug);
