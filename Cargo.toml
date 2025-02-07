@@ -20,8 +20,10 @@ license = "MIT OR Apache-2.0"
 version = "0.1.0"
 
 [workspace.lints.rust]
-missing_debug_implementations = "warn"
+deprecated-safe = "warn"
+keyword-idents = "warn"
 missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
 trivial_casts = "warn"
 trivial_numeric_casts = "warn"
 unreachable_pub = "warn"
