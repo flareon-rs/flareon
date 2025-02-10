@@ -17,7 +17,6 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "MIT OR Apache-2.0"
-version = "0.1.0"
 
 [workspace.lints.rust]
 missing_debug_implementations = "warn"
@@ -48,9 +47,9 @@ chrono = { version = "0.4", default-features = false }
 clap = { version = "4", features = ["deprecated"] }
 clap-verbosity-flag = { version = "3", default-features = false }
 convert_case = "0.6"
-cot = { path = "cot" }
-cot_codegen = { path = "cot-codegen" }
-cot_macros = { path = "cot-macros" }
+cot = { version = "0.1.0", path = "cot" }
+cot_codegen = { version = "0.1.0", path = "cot-codegen" }
+cot_macros = { version = "0.1.0", path = "cot-macros" }
 darling = "0.20"
 derive_builder = "0.20"
 derive_more = "1"
