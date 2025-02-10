@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Model{% endblock %}
+
+{% block content -%}
+{%- let request = request -%}
+{%- let model = model -%}
+<h2>Remove {{ model.name() }}</h2>
+    <p class="main-dialog">Are you sure you want to remove <strong>{{ object.display() }}</strong>?</p>
+
+    <form action="" method="post">
+        <div class="form-actions">
+            <a href="{{ cot::reverse!(request, "view_model", model_name = model.url_name())? }}" class="btn secondary">Cancel</a>
+            <button type="submit" class="btn danger">Remove</button>
+        </div>
+    </form>
+</form>
+{%- endblock %}

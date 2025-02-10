@@ -12,6 +12,9 @@
 //! use cot::response::ResponseExt;
 //! ```
 
+use bytes::Bytes;
+use cot::error_page::ErrorPageTrigger;
+
 use crate::headers::HTML_CONTENT_TYPE;
 #[cfg(feature = "json")]
 use crate::headers::JSON_CONTENT_TYPE;
@@ -155,6 +158,17 @@ impl ResponseExt for Response {
             .body(Body::empty())
             .expect(RESPONSE_BUILD_FAILURE)
     }
+}
+
+pub(crate) fn not_found_response(message: Option<String>) -> Response {
+    let mut response = Response::new_html(
+        StatusCode::NOT_FOUND,
+        Body::fixed(Bytes::from("404 Not Found")),
+    );
+    response
+        .extensions_mut()
+        .insert(ErrorPageTrigger::NotFound { message });
+    response
 }
 
 #[cfg(test)]

@@ -2,9 +2,14 @@
 
 {% block title %}Home{% endblock %}
 
-{% block content %}
-{% let request = request %}
-{% for model in model_managers %}
-    <a href="{{ cot::reverse!(request, "view_model", model_name = model.url_name())? }}">{{ model.name() }}</a>
-{% endfor %}
-{% endblock %}
+{% block content -%}
+{%- let request = request -%}
+
+<h2>Choose a model to manage</h2>
+
+<ul class="model-list">
+{%- for model in model_managers -%}
+    <li><a href="{{ cot::reverse!(request, "view_model", model_name = model.url_name())? }}">{{ model.name() }}</a></li>
+{%- endfor -%}
+</ul>
+{%- endblock -%}

@@ -5,9 +5,13 @@ use std::num::{
     NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize,
 };
 
-use derive_more::Deref;
+#[cfg(feature = "db")]
+use cot::db::Auto;
 use rinja::filters::HtmlSafe;
 
+use crate::auth::{Password, PasswordHash};
+#[cfg(feature = "db")]
+use crate::db::LimitedString;
 use crate::form::{AsFormField, FormField, FormFieldOptions, FormFieldValidationError};
 use crate::html::HtmlTag;
 
@@ -71,6 +75,9 @@ impl Display for StringField {
         if let Some(max_length) = self.custom_options.max_length {
             tag.attr("maxlength", &max_length.to_string());
         }
+        if let Some(value) = &self.value {
+            tag.attr("value", value);
+        }
 
         write!(f, "{}", tag.render())
     }
@@ -93,53 +100,27 @@ impl AsFormField for String {
         }
         Ok(value.to_owned())
     }
-}
 
-/// A newtype for String holding a password.
-///
-/// This type is used to avoid accidentally logging or displaying passwords in
-/// debug output or other places where the password should be kept secret.
-///
-/// This type also implements `AsFormField` to allow it to be used in forms as
-/// an HTML password field.
-#[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deref)]
-pub struct Password(pub String);
-
-impl Password {
-    /// Creates a new `Password` from a string.
-    #[must_use]
-    pub fn new<T: Into<String>>(password: T) -> Self {
-        Self(password.into())
-    }
-
-    /// Returns the password as a string.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Consumes the `Password` and returns the inner string.
-    #[must_use]
-    pub fn into_string(self) -> String {
-        self.0
+    fn to_field_value(&self) -> String {
+        self.to_owned()
     }
 }
 
-impl Debug for Password {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Password").field(&"********").finish()
-    }
-}
+#[cfg(feature = "db")]
+impl<const LEN: u32> AsFormField for LimitedString<LEN> {
+    type Type = StringField;
 
-impl Display for Password {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "********")
-    }
-}
+    fn clean_value(field: &Self::Type) -> Result<Self, FormFieldValidationError> {
+        let value = check_required(field)?;
 
-impl From<String> for Password {
-    fn from(password: String) -> Self {
-        Self(password)
+        if value.len() > LEN as usize {
+            return Err(FormFieldValidationError::maximum_length_exceeded(LEN));
+        }
+        Ok(LimitedString::new(value.to_owned()).expect("length has already been checked"))
+    }
+
+    fn to_field_value(&self) -> String {
+        self.to_string()
     }
 }
 
@@ -164,6 +145,8 @@ impl Display for PasswordField {
         if let Some(max_length) = self.custom_options.max_length {
             tag.attr("maxlength", &max_length.to_string());
         }
+        // we don't set the value attribute for password fields
+        // to avoid leaking the password in the HTML
 
         write!(f, "{}", tag.render())
     }
@@ -186,6 +169,33 @@ impl AsFormField for Password {
         }
 
         Ok(Password::new(value))
+    }
+
+    fn to_field_value(&self) -> String {
+        self.as_str().to_owned()
+    }
+}
+
+impl AsFormField for PasswordHash {
+    type Type = PasswordField;
+
+    fn clean_value(field: &Self::Type) -> Result<Self, FormFieldValidationError> {
+        let value = check_required(field)?;
+
+        if let Some(max_length) = field.custom_options.max_length {
+            if value.len() > max_length as usize {
+                return Err(FormFieldValidationError::maximum_length_exceeded(
+                    max_length,
+                ));
+            }
+        }
+
+        Ok(PasswordHash::from_password(&Password::new(value)))
+    }
+
+    fn to_field_value(&self) -> String {
+        // cannot return the original password
+        String::new()
     }
 }
 
@@ -224,6 +234,9 @@ impl<T: Integer> Display for IntegerField<T> {
         }
         if let Some(max) = &self.custom_options.max {
             tag.attr("max", &max.to_string());
+        }
+        if let Some(value) = &self.value {
+            tag.attr("value", value);
         }
 
         write!(f, "{}", tag.render())
@@ -311,6 +324,10 @@ macro_rules! impl_integer_as_form_field {
                     .parse()
                     .map_err(|_| FormFieldValidationError::invalid_value(value))
             }
+
+            fn to_field_value(&self) -> String {
+                self.to_string()
+            }
         }
     };
 }
@@ -361,6 +378,12 @@ impl Display for BoolField {
             return write!(f, "{}", bool_input.render());
         }
 
+        if let Some(value) = &self.value {
+            if value == "1" {
+                bool_input.bool_attr("checked");
+            }
+        }
+
         // Web browsers don't send anything when a checkbox is unchecked, so we
         // need to add a hidden input to send a "false" value.
         let mut hidden_input = HtmlTag::input("hidden");
@@ -407,10 +430,22 @@ impl AsFormField for bool {
         }
         Ok(value.to_owned())
     }
+
+    fn to_field_value(&self) -> String {
+        String::from(if *self { "1" } else { "0" })
+    }
 }
 
 impl<T: AsFormField> AsFormField for Option<T> {
     type Type = T::Type;
+
+    fn new_field(
+        mut options: FormFieldOptions,
+        custom_options: <Self::Type as FormField>::CustomOptions,
+    ) -> Self::Type {
+        options.required = false;
+        Self::Type::with_options(options, custom_options)
+    }
 
     fn clean_value(field: &Self::Type) -> Result<Self, FormFieldValidationError> {
         let value = T::clean_value(field);
@@ -418,6 +453,45 @@ impl<T: AsFormField> AsFormField for Option<T> {
             Ok(value) => Ok(Some(value)),
             Err(FormFieldValidationError::Required) => Ok(None),
             Err(error) => Err(error),
+        }
+    }
+
+    fn to_field_value(&self) -> String {
+        match self {
+            Some(value) => value.to_field_value(),
+            None => String::new(),
+        }
+    }
+}
+
+#[cfg(feature = "db")]
+impl<T: AsFormField> AsFormField for Auto<T> {
+    type Type = T::Type;
+
+    fn new_field(
+        mut options: FormFieldOptions,
+        custom_options: <Self::Type as FormField>::CustomOptions,
+    ) -> Self::Type {
+        options.required = false;
+        Self::Type::with_options(options, custom_options)
+    }
+
+    fn clean_value(field: &Self::Type) -> Result<Self, FormFieldValidationError>
+    where
+        Self: Sized,
+    {
+        let value = T::clean_value(field);
+        match value {
+            Ok(value) => Ok(Auto::fixed(value)),
+            Err(FormFieldValidationError::Required) => Ok(Auto::auto()),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn to_field_value(&self) -> String {
+        match self {
+            Auto::Fixed(value) => value.to_field_value(),
+            Auto::Auto => String::new(),
         }
     }
 }
@@ -445,6 +519,7 @@ mod tests {
         let field = StringField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
+                name: "test".to_owned(),
                 required: true,
             },
             StringFieldOptions {
@@ -462,6 +537,7 @@ mod tests {
         let field = PasswordField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
+                name: "test".to_owned(),
                 required: true,
             },
             PasswordFieldOptions {
@@ -479,6 +555,7 @@ mod tests {
         let field = IntegerField::<i32>::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
+                name: "test".to_owned(),
                 required: true,
             },
             IntegerFieldOptions {
@@ -498,6 +575,7 @@ mod tests {
         let field = BoolField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
+                name: "test".to_owned(),
                 required: true,
             },
             BoolFieldOptions {
@@ -515,6 +593,7 @@ mod tests {
         let field = BoolField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
+                name: "test".to_owned(),
                 required: true,
             },
             BoolFieldOptions {
@@ -532,6 +611,7 @@ mod tests {
         let mut field = StringField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
+                name: "test".to_owned(),
                 required: true,
             },
             StringFieldOptions {
@@ -548,6 +628,7 @@ mod tests {
         let mut field = StringField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
+                name: "test".to_owned(),
                 required: true,
             },
             StringFieldOptions {
@@ -564,6 +645,7 @@ mod tests {
         let mut field = PasswordField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
+                name: "test".to_owned(),
                 required: true,
             },
             PasswordFieldOptions {
@@ -580,6 +662,7 @@ mod tests {
         let mut field = IntegerField::<i32>::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
+                name: "test".to_owned(),
                 required: true,
             },
             IntegerFieldOptions {
@@ -597,6 +680,7 @@ mod tests {
         let mut field = BoolField::with_options(
             FormFieldOptions {
                 id: "test".to_owned(),
+                name: "test".to_owned(),
                 required: true,
             },
             BoolFieldOptions {

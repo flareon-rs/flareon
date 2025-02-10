@@ -63,6 +63,7 @@ futures = { version = "0.3", default-features = false }
 futures-core = { version = "0.3", default-features = false }
 futures-util = { version = "0.3", default-features = false }
 glob = "0.3"
+heck = "0.5"
 hex = "0.4"
 hmac = "0.13.0-pre.4"
 http = "1.1"

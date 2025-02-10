@@ -92,7 +92,7 @@ impl<'a, T: DynMigration> MigrationSorter<'a, T> {
                     app_name: migration.app_name().to_owned(),
                     migration_name: migration.name().to_owned(),
                 });
-            };
+            }
 
             for operation in migration.operations() {
                 if let OperationInner::CreateModel { table_name, .. } = operation.inner {

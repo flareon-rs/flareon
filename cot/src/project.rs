@@ -1711,7 +1711,7 @@ pub async fn run_at(
         {
             Ok(response) => match response {
                 Ok(response) => match response.extensions().get::<ErrorPageTrigger>() {
-                    Some(trigger) => Err(ErrorResponse::ErrorPageTrigger(*trigger)),
+                    Some(trigger) => Err(ErrorResponse::ErrorPageTrigger(trigger.clone())),
                     None => Ok(response),
                 },
                 Err(error) => Err(ErrorResponse::ErrorReturned(error)),
@@ -1782,7 +1782,9 @@ fn build_cot_error_page(
 ) -> axum::response::Response {
     match error_response {
         ErrorResponse::ErrorPageTrigger(trigger) => match trigger {
-            ErrorPageTrigger::NotFound => error_page::handle_not_found(diagnostics),
+            ErrorPageTrigger::NotFound { message } => {
+                error_page::handle_not_found(message, diagnostics)
+            }
         },
         ErrorResponse::ErrorReturned(error) => {
             error_page::handle_response_error(error, diagnostics)
@@ -1797,7 +1799,7 @@ fn build_custom_error_page(
     error_response: &ErrorResponse,
 ) -> axum::response::Response {
     match error_response {
-        ErrorResponse::ErrorPageTrigger(ErrorPageTrigger::NotFound) => {
+        ErrorResponse::ErrorPageTrigger(ErrorPageTrigger::NotFound { .. }) => {
             not_found_handler.handle().map_or_else(
                 |error| {
                     error!(

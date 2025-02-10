@@ -3,8 +3,9 @@ use std::future::Future;
 use async_trait::async_trait;
 use tower::util::BoxCloneService;
 
+use crate::error::ErrorRepr;
 use crate::request::Request;
-use crate::response::Response;
+use crate::response::{not_found_response, Response};
 use crate::{Error, Result};
 
 /// A function that takes a request and returns a response.
@@ -31,7 +32,14 @@ where
     R: for<'a> Future<Output = Result<Response>> + Send,
 {
     async fn handle(&self, request: Request) -> Result<Response> {
-        self(request).await
+        let response = self(request).await;
+        match response {
+            Ok(response) => Ok(response),
+            Err(error) => match error.inner {
+                ErrorRepr::NotFound { message } => Ok(not_found_response(message)),
+                _ => Err(error),
+            },
+        }
     }
 }
 
