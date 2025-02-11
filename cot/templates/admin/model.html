@@ -1,9 +1,39 @@
 {% extends "base.html" %}
 
-{% block title %}Model{% endblock %}
+{% block title %}{{ model.name() }}{% endblock %}
 
-{% block content %}
-{% for object in objects %}
-    <pre>{{ object.display() }}</pre>
-{% endfor %}
-{% endblock %}
+{% block content -%}
+{%- let request = request -%}
+{%- let model = model -%}
+<div class="model-header">
+    <h2>{{ model.name() }}</h2>
+    <div class="action-box">
+        <a class="btn primary" href="{{ cot::reverse!(request, "create_model_instance", model_name = model.url_name())? }}">Create {{ model.name() }} {% include "icons/plus.svg" %}</a>
+    </div>
+</div>
+
+<div class="models-wrapper">
+    <table class="models">
+        <thead>
+            <tr>
+                <th>Object</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {%- for object in objects -%}
+            <tr>
+                {%- let edit_link = cot::reverse!(request, "edit_model_instance", model_name = model.url_name(), pk = object.id())? -%}
+                {%- let remove_link = cot::reverse!(request, "remove_model_instance", model_name = model.url_name(), pk = object.id())? -%}
+                <td><a href="{{ edit_link }}">{{ object.display() }}</a></td>
+                <td class="model-actions-cell"><a href="{{ edit_link }}" class="edit-model" title="Edit this {{ model.name() }}">{% include "icons/pencil.svg" %}</a> <a href="{{ remove_link }}" class="remove-model" title="Remove this {{ model.name() }}">{% include "icons/trash.svg" %}</a></td>
+            </tr>
+        {%- endfor -%}
+        </tbody>
+    </table>
+
+    <footer>
+        Displaying {{ objects.len() }} {{ model.name() }}{{ objects.len()|pluralize }}.
+    </footer>
+</div>
+{%- endblock %}

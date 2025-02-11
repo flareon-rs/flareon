@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_edit %}Edit{% else %}Create{% endif %} {{ model.name() }}{% endblock %}
+
+{% block content -%}
+{%- let request = request -%}
+<h2>{% if is_edit %}Edit{% else %}Create{% endif %} {{ model.name() }}</h2>
+
+<form class="model-form" action="" method="post">
+{%- for field in form_context.fields() -%}
+    {%- let required = field.dyn_options().required -%}
+    <div class="form-row">
+        <label for="{{ field.dyn_id() }}">{% if required %}<strong>{% endif %}{{ field.dyn_options().name }}:{% if required %}</strong>{% endif %}</label>
+        <div>
+            {{ field|safe }}
+
+            {%- let field_errors = form_context.errors_for(FormErrorTarget::Field(field.dyn_id())) -%}
+            {%- if !field_errors.is_empty() -%}
+            <ul class="field-errors">
+            {% for error in form_context.errors_for(FormErrorTarget::Field(field.dyn_id())) %}
+                <li>{{ error }}</li>
+            {% endfor %}
+            </ul>
+            {%- endif -%}
+        </div>
+    </div>
+{%- endfor -%}
+
+    <div class="form-actions">
+        <button type="submit" class="btn primary">Save</button>
+    </div>
+</form>
+{%- endblock %}

@@ -1,3 +1,4 @@
+{%- let request = request -%}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,6 +9,11 @@
     <link rel="stylesheet" href="/static/admin/admin.css">
 </head>
 <body class="{% block body_class %}{% endblock %}">
-{% block content %}{% endblock %}
+<header id="header">
+    <div id="branding"><a href="{{ cot::reverse!(request, "index")? }}"><h1>Cot Administration</h1></a></div>
+</header>
+<main>
+    {% block content %}{% endblock %}
+</main>
 </body>
 </html>

@@ -198,6 +198,12 @@ pub trait Form: Sized {
     /// from the request.
     async fn from_request(request: &mut Request) -> Result<FormResult<Self>, FormError>;
 
+    /// Creates the context for the form from `self`.
+    ///
+    /// This is useful for pre-populating forms with objects created in the code
+    /// or obtained externally, such as from a database.
+    fn to_context(&self) -> Self::Context;
+
     /// Builds the context for the form from a request.
     ///
     /// Note that this doesn't try to convert the values from the form fields
@@ -247,8 +253,7 @@ pub trait FormContext: Debug {
         Self: Sized;
 
     /// Returns an iterator over the fields in the form.
-    fn fields(&self)
-        -> impl DoubleEndedIterator<Item = &dyn DynFormField> + ExactSizeIterator + '_;
+    fn fields(&self) -> Box<dyn DoubleEndedIterator<Item = &dyn DynFormField> + '_>;
 
     /// Sets the value of a form field.
     ///
@@ -283,6 +288,8 @@ pub trait FormContext: Debug {
 pub struct FormFieldOptions {
     /// The HTML ID of the form field.
     pub id: String,
+    /// Display name of the form field.
+    pub name: String,
     /// Whether the field is required. Note that this really only adds
     /// "required" field to the HTML input element, since by default all
     /// fields are required. If you want to make a field optional, just use
@@ -313,6 +320,11 @@ pub trait FormField: Display {
         &self.options().id
     }
 
+    /// Returns the display name of the form field.
+    fn name(&self) -> &str {
+        &self.options().name
+    }
+
     /// Returns the string value of the form field.
     fn value(&self) -> Option<&str>;
 
@@ -337,6 +349,9 @@ pub trait DynFormField: Display {
     /// Returns the HTML ID of the form field.
     fn dyn_id(&self) -> &str;
 
+    /// Returns the string value of the form field.
+    fn dyn_value(&self) -> Option<&str>;
+
     /// Sets the string value of the form field.
     fn dyn_set_value(&mut self, value: Cow<'_, str>);
 }
@@ -348,6 +363,10 @@ impl<T: FormField> DynFormField for T {
 
     fn dyn_id(&self) -> &str {
         FormField::id(self)
+    }
+
+    fn dyn_value(&self) -> Option<&str> {
+        FormField::value(self)
     }
 
     fn dyn_set_value(&mut self, value: Cow<'_, str>) {
@@ -390,4 +409,7 @@ pub trait AsFormField {
     fn clean_value(field: &Self::Type) -> Result<Self, FormFieldValidationError>
     where
         Self: Sized;
+
+    /// Returns `self` as a value that can be set with [`FormField::set_value`].
+    fn to_field_value(&self) -> String;
 }

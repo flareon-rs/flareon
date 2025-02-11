@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use convert_case::{Case, Casing};
+use heck::ToPascalCase;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use tracing::trace;
@@ -60,8 +60,8 @@ pub fn new_project(
         anyhow::bail!("destination `{}` already exists", path.display());
     }
 
-    let project_struct_name = format!("{}Project", project_name.to_case(Case::Pascal));
-    let app_name = format!("{}App", project_name.to_case(Case::Pascal));
+    let project_struct_name = format!("{}Project", project_name.to_pascal_case());
+    let app_name = format!("{}App", project_name.to_pascal_case());
     let cot_source = cot_source.as_cargo_toml_source();
     let dev_secret_key = generate_secret_key();
 

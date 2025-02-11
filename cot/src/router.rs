@@ -27,18 +27,15 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use axum::http::StatusCode;
-use bytes::Bytes;
 use derive_more::Debug;
 use tracing::debug;
 
 use crate::error::ErrorRepr;
-use crate::error_page::ErrorPageTrigger;
 use crate::handler::RequestHandler;
 use crate::request::{PathParams, Request, RouteName};
-use crate::response::{Response, ResponseExt};
+use crate::response::{not_found_response, Response};
 use crate::router::path::{CaptureResult, PathMatcher, ReverseParamMap};
-use crate::{Body, Error, Result};
+use crate::{Error, Result};
 
 pub mod path;
 
@@ -128,7 +125,7 @@ impl Router {
             result.handler.handle(request).await
         } else {
             debug!("Not found: {}", request_path);
-            Ok(handle_not_found())
+            Ok(not_found_response(None))
         }
     }
 
@@ -508,15 +505,6 @@ impl Route {
     }
 }
 
-fn handle_not_found() -> Response {
-    let mut response = Response::new_html(
-        StatusCode::NOT_FOUND,
-        Body::fixed(Bytes::from("404 Not Found")),
-    );
-    response.extensions_mut().insert(ErrorPageTrigger::NotFound);
-    response
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) enum RouteKind {
     Handler,
@@ -614,10 +602,13 @@ macro_rules! reverse_redirect {
 
 #[cfg(test)]
 mod tests {
+    use bytes::Bytes;
+
     use super::*;
     use crate::request::Request;
-    use crate::response::Response;
+    use crate::response::{Response, ResponseExt};
     use crate::test::TestRequestBuilder;
+    use crate::{Body, StatusCode};
 
     struct MockHandler;
 

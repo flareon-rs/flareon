@@ -4,7 +4,7 @@
 
 {% block body_class %}login{% endblock %}
 
-{% block content %}
+{% block content -%}
 <div class="container">
     <form action="" method="post">
         {% if form.has_errors() %}
@@ -31,7 +31,9 @@
             {% endfor %}
         </div>
 
-        <button type="submit">Sign in</button>
+        <div class="button-box">
+            <button class="btn primary" type="submit">Sign in</button>
+        </div>
     </form>
 </div>
-{% endblock %}
+{%- endblock %}

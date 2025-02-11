@@ -2,7 +2,7 @@
 
 use std::any::Any;
 use std::future::poll_fn;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use derive_more::Debug;
@@ -1079,8 +1079,9 @@ impl DynMigration for TestMigration {
 ///
 /// This is mostly useful for tests that need to modify some global state (e.g.
 /// environment variables or current working directory).
-pub(crate) fn serial_guard() -> MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    let lock = LOCK.get_or_init(|| Mutex::new(()));
+#[cfg(test)]
+pub(crate) fn serial_guard() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    let lock = LOCK.get_or_init(|| std::sync::Mutex::new(()));
     lock.lock().expect("Failed to lock serial test guard")
 }

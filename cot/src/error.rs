@@ -12,7 +12,7 @@ use crate::error::backtrace::{Backtrace as CotBacktrace, __cot_create_backtrace}
 /// An error that can occur while using Cot.
 #[derive(Debug)]
 pub struct Error {
-    inner: ErrorRepr,
+    pub(crate) inner: ErrorRepr,
     #[debug(skip)]
     backtrace: CotBacktrace,
 }
@@ -41,6 +41,40 @@ impl Error {
         E: Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
     {
         Self::new(ErrorRepr::Custom(error.into()))
+    }
+
+    /// Create a new "404 Not Found" error without a message.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::Error;
+    ///
+    /// let error = Error::not_found();
+    /// ```
+    #[must_use]
+    pub fn not_found() -> Self {
+        Self::new(ErrorRepr::NotFound { message: None })
+    }
+
+    /// Create a new "404 Not Found" error with a message.
+    ///
+    /// Note that the message is only displayed when Cot's debug mode is
+    /// enabled. It will not be exposed to the user in production.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cot::Error;
+    ///
+    /// let id = 123;
+    /// let error = Error::not_found_message(format!("User with id={id} not found"));
+    /// ```
+    #[must_use]
+    pub fn not_found_message(message: String) -> Self {
+        Self::new(ErrorRepr::NotFound {
+            message: Some(message),
+        })
     }
 
     #[must_use]
@@ -130,6 +164,9 @@ pub(crate) enum ErrorRepr {
         expected: &'static str,
         actual: String,
     },
+    /// Could not find a route for the request.
+    #[error("Not found: {message:?}")]
+    NotFound { message: Option<String> },
     /// Could not create a response object.
     #[error("Could not create a response object: {0}")]
     ResponseBuilder(#[from] http::Error),

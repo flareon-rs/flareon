@@ -3,7 +3,7 @@ use cot::admin::AdminApp;
 use cot::auth::db::{DatabaseUser, DatabaseUserApp};
 use cot::cli::CliMetadata;
 use cot::config::{DatabaseConfig, ProjectConfig};
-use cot::middleware::SessionMiddleware;
+use cot::middleware::{LiveReloadMiddleware, SessionMiddleware};
 use cot::project::{WithApps, WithConfig};
 use cot::request::Request;
 use cot::response::{Response, ResponseExt};
@@ -80,6 +80,7 @@ impl Project for AdminProject {
         handler
             .middleware(StaticFilesMiddleware::from_app_context(app_context))
             .middleware(SessionMiddleware::new())
+            .middleware(LiveReloadMiddleware::new())
             .build()
     }
 }

@@ -30,12 +30,10 @@ fn new_project_compile_test() {
     let status = output.status;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(status.success(), "status: {}, stderr: {}", status, stderr);
+    assert!(status.success(), "status: {status}, stderr: {stderr}");
     assert!(
         stdout.contains("Success verifying the configuration"),
-        "status: {}, stderr: {}",
-        status,
-        stderr
+        "status: {status}, stderr: {stderr}"
     );
 }
 

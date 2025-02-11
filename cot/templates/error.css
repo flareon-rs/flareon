@@ -94,13 +94,13 @@ table th.index {
     text-align: right;
 }
 
-table th, td {
+table th, table td {
     padding: .4rem;
     border-bottom-color: #d9dde1;
     border-bottom-width: 1px;
 }
 
-table.compact th, td {
+table.compact th, table.compact td {
     padding: .1rem .25rem;
 }
 

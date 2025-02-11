@@ -7,6 +7,7 @@ use std::any::Any;
 use std::borrow::Cow;
 
 use async_trait::async_trait;
+use cot::form::{FormContext, FormResult};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha512;
 use thiserror::Error;
@@ -19,6 +20,7 @@ use crate::auth::{
 use crate::config::SecretKey;
 use crate::db::migrations::SyncDynMigration;
 use crate::db::{model, query, Auto, DatabaseBackend, LimitedString, Model};
+use crate::form::Form;
 use crate::request::{Request, RequestExt};
 use crate::App;
 
@@ -27,7 +29,7 @@ pub mod migrations;
 pub(crate) const MAX_USERNAME_LENGTH: u32 = 255;
 
 /// A user stored in the database.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Form)]
 #[model]
 pub struct DatabaseUser {
     id: Auto<i64>,
@@ -403,23 +405,90 @@ impl User for DatabaseUser {
 
 #[async_trait]
 impl AdminModel for DatabaseUser {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     async fn get_objects(request: &Request) -> crate::Result<Vec<Self>> {
-        Ok(DatabaseUser::objects()
-            .all(request.db())
-            .await
-            .map_err(AuthError::backend_error)?)
+        Ok(Self::objects().all(request.db()).await?)
+    }
+
+    async fn get_object_by_id(request: &Request, id: &str) -> cot::Result<Option<Self>>
+    where
+        Self: Sized,
+    {
+        let id = Self::parse_id(id)?;
+
+        Ok(query!(Self, $id == id).get(request.db()).await?)
     }
 
     fn name() -> &'static str {
-        "DatabaseUser"
+        "Database User"
     }
 
     fn url_name() -> &'static str {
         "database_user"
     }
 
+    fn id(&self) -> String {
+        self.id().to_string()
+    }
+
     fn display(&self) -> String {
-        format!("{self:?}")
+        self.username.as_str().to_owned()
+    }
+
+    fn form_context() -> Box<dyn FormContext>
+    where
+        Self: Sized,
+    {
+        Box::new(<Self as Form>::Context::new())
+    }
+
+    fn form_context_from_self(&self) -> Box<dyn FormContext> {
+        Box::new(<Self as Form>::to_context(self))
+    }
+
+    async fn save_from_request(
+        request: &mut Request,
+        object_id: Option<&str>,
+    ) -> cot::Result<Option<Box<dyn FormContext>>>
+    where
+        Self: Sized,
+    {
+        let form_result = <Self as Form>::from_request(request).await?;
+        match form_result {
+            FormResult::Ok(mut object_from_form) => {
+                if let Some(object_id) = object_id {
+                    let id = Self::parse_id(object_id)?;
+
+                    object_from_form.set_primary_key(Auto::fixed(id));
+                    object_from_form.update(request.db()).await?;
+                } else {
+                    object_from_form.insert(request.db()).await?;
+                }
+                Ok(None)
+            }
+            FormResult::ValidationError(context) => Ok(Some(Box::new(context))),
+        }
+    }
+
+    async fn remove_by_id(request: &mut Request, object_id: &str) -> cot::Result<()>
+    where
+        Self: Sized,
+    {
+        let id = Self::parse_id(object_id)?;
+
+        query!(Self, $id == id).delete(request.db()).await?;
+
+        Ok(())
+    }
+}
+
+impl DatabaseUser {
+    fn parse_id(id: &str) -> cot::Result<i64> {
+        id.parse::<i64>()
+            .map_err(|_| cot::Error::not_found_message(format!("Invalid DatabaseUser ID: `{id}`")))
     }
 }
 

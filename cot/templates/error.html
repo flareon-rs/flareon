@@ -23,6 +23,11 @@
     {% else %}
 {% endmatch %}
 
+{% if let Some(error_message) = error_message %}
+<h2>Error message</h2>
+<pre>{{ error_message }}</pre>
+{% endif %}
+
 {% if !error_data.is_empty() -%}
 <h2>Error chain</h2>
 

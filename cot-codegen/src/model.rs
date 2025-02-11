@@ -1,5 +1,5 @@
-use convert_case::{Case, Casing};
 use darling::{FromDeriveInput, FromField, FromMeta};
+use heck::ToSnakeCase;
 use syn::spanned::Spanned;
 
 #[cfg(feature = "symbol-resolver")]
@@ -95,7 +95,7 @@ impl ModelOpts {
         let table_name = if let Some(table_name) = &args.table_name {
             table_name.clone()
         } else {
-            original_name.to_string().to_case(Case::Snake)
+            original_name.to_string().to_snake_case()
         };
 
         let primary_key_field = self.get_primary_key_field(&fields)?;

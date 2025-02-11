@@ -397,7 +397,7 @@ mod tests {
         let config = r#"secret_key = "123abc""#;
         let result = test_check(config).await;
 
-        assert!(result.is_ok(), "{:?}", result);
+        assert!(result.is_ok(), "{result:?}");
     }
 
     #[tokio::test]

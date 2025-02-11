@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use darling::{FromDeriveInput, FromField};
+use heck::ToTitleCase;
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote, ToTokens, TokenStreamExt};
+use quote::{format_ident, quote, ToTokens};
 
 use crate::cot_ident;
 
@@ -52,6 +53,7 @@ impl FormOpts {
             fields_as_context_from_request: Vec::with_capacity(self.field_count()),
             fields_as_from_context_vars: Vec::with_capacity(self.field_count()),
             fields_as_from_context: Vec::with_capacity(self.field_count()),
+            fields_as_to_context: Vec::with_capacity(self.field_count()),
             fields_as_errors: Vec::with_capacity(self.field_count()),
             fields_as_errors_for: Vec::with_capacity(self.field_count()),
             fields_as_errors_for_mut: Vec::with_capacity(self.field_count()),
@@ -81,6 +83,7 @@ struct FormDeriveBuilder {
     fields_as_context_from_request: Vec<TokenStream>,
     fields_as_from_context_vars: Vec<TokenStream>,
     fields_as_from_context: Vec<TokenStream>,
+    fields_as_to_context: Vec<TokenStream>,
     fields_as_errors: Vec<TokenStream>,
     fields_as_errors_for: Vec<TokenStream>,
     fields_as_errors_for_mut: Vec<TokenStream>,
@@ -92,21 +95,33 @@ struct FormDeriveBuilder {
 
 impl ToTokens for FormDeriveBuilder {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        tokens.append_all(self.build_form_impl());
-        tokens.append_all(self.build_form_context_impl());
-        tokens.append_all(self.build_errors_struct());
+        let form_impl = self.build_form_impl();
+        let form_context_impl = self.build_form_context_impl();
+        let errors_struct = self.build_errors_struct();
+
+        let new_tokens = quote! {
+            const _: () = {
+                #form_impl
+                #form_context_impl
+                #errors_struct
+            };
+        };
+
+        new_tokens.to_tokens(tokens);
     }
 }
 
 impl FormDeriveBuilder {
     fn push_field(&mut self, field: &Field) {
         let crate_ident = cot_ident();
-        let name = field.ident.as_ref().unwrap();
+        let field_ident = field.ident.as_ref().unwrap();
         let ty = &field.ty;
         let opt = &field.opt;
 
+        let name = field_ident.to_string().to_title_case();
+
         self.fields_as_struct_fields
-            .push(quote!(#name: <#ty as #crate_ident::form::AsFormField>::Type));
+            .push(quote!(#field_ident: <#ty as #crate_ident::form::AsFormField>::Type));
 
         self.fields_as_struct_fields_new.push({
             let custom_options_setters: Vec<_> = if let Some(opt) = opt {
@@ -116,9 +131,10 @@ impl FormDeriveBuilder {
             } else {
                 Vec::new()
             };
-            quote!(#name: {
+            quote!(#field_ident: {
                 let options = #crate_ident::form::FormFieldOptions {
-                    id: stringify!(#name).to_owned(),
+                    id: stringify!(#field_ident).to_owned(),
+                    name: #name.to_owned(),
                     required: true,
                 };
                 type Field = <#ty as #crate_ident::form::AsFormField>::Type;
@@ -130,36 +146,39 @@ impl FormDeriveBuilder {
         });
 
         self.fields_as_context_from_request
-            .push(quote!(stringify!(#name) => {
-                #crate_ident::form::FormField::set_value(&mut self.#name, value)
+            .push(quote!(stringify!(#field_ident) => {
+                #crate_ident::form::FormField::set_value(&mut self.#field_ident, value)
             }));
 
-        let val_ident = format_ident!("val_{}", name);
+        let val_ident = format_ident!("val_{}", field_ident);
         self.fields_as_from_context_vars.push(quote! {
-            let #val_ident = <#ty as #crate_ident::form::AsFormField>::clean_value(&context.#name).map_err(|error| {
-                context.add_error(#crate_ident::form::FormErrorTarget::Field(stringify!(#name)), error);
+            let #val_ident = <#ty as #crate_ident::form::AsFormField>::clean_value(&context.#field_ident).map_err(|error| {
+                context.add_error(#crate_ident::form::FormErrorTarget::Field(stringify!(#field_ident)), error);
             })
         });
-        self.fields_as_from_context
-            .push(quote!(#name: #val_ident.expect("Errors should have been returned by now")));
+        self.fields_as_from_context.push(
+            quote!(#field_ident: #val_ident.expect("Errors should have been returned by now")),
+        );
+        self.fields_as_to_context
+            .push(quote!(context.#field_ident.set_value(::std::borrow::Cow::Owned(self.#field_ident.to_field_value()))));
 
         self.fields_as_errors
-            .push(quote!(#name: Vec<#crate_ident::form::FormFieldValidationError>));
+            .push(quote!(#field_ident: Vec<#crate_ident::form::FormFieldValidationError>));
 
         self.fields_as_errors_for
-            .push(quote!(stringify!(#name) => self.__errors.#name.as_slice()));
+            .push(quote!(stringify!(#field_ident) => self.__errors.#field_ident.as_slice()));
 
         self.fields_as_errors_for_mut
-            .push(quote!(stringify!(#name) => self.__errors.#name.as_mut()));
+            .push(quote!(stringify!(#field_ident) => self.__errors.#field_ident.as_mut()));
 
         self.fields_as_has_errors
-            .push(quote!(!self.__errors.#name.is_empty()));
+            .push(quote!(!self.__errors.#field_ident.is_empty()));
 
         self.fields_as_dyn_field_ref
-            .push(quote!(&self.#name as &dyn #crate_ident::form::DynFormField));
+            .push(quote!(&self.#field_ident as &dyn #crate_ident::form::DynFormField));
 
         self.fields_as_display
-            .push(quote!(::core::fmt::Display::fmt(&self.#name, f)?));
+            .push(quote!(::core::fmt::Display::fmt(&self.#field_ident, f)?));
 
         self.fields_as_display_trait_bound
             .push(quote!(&'dummy <#ty as #crate_ident::form::AsFormField>::Type: ::core::fmt::Display + #crate_ident::__private::rinja::filters::HtmlSafe));
@@ -171,6 +190,7 @@ impl FormDeriveBuilder {
         let context_struct_name = &self.context_struct_name;
         let fields_as_from_context_vars = &self.fields_as_from_context_vars;
         let fields_as_from_context = &self.fields_as_from_context;
+        let fields_as_to_context = &self.fields_as_to_context;
 
         quote! {
             #[#crate_ident::__private::async_trait]
@@ -193,6 +213,18 @@ impl FormDeriveBuilder {
                             #( #fields_as_from_context, )*
                         }))
                     }
+                }
+
+                fn to_context(
+                    &self
+                ) -> Self::Context {
+                    use #crate_ident::form::FormContext;
+                    use #crate_ident::form::AsFormField;
+                    use #crate_ident::form::FormField;
+
+                    let mut context = <Self as #crate_ident::form::Form>::Context::new();
+                    #( #fields_as_to_context; )*
+                    context
                 }
             }
         }
@@ -234,7 +266,7 @@ impl FormDeriveBuilder {
 
         quote! {
             #[derive(::core::fmt::Debug)]
-            struct #context_struct_name {
+            pub struct #context_struct_name {
                 __errors: #context_struct_errors_name,
                 #( #fields_as_struct_fields, )*
             }
@@ -250,10 +282,10 @@ impl FormDeriveBuilder {
 
                 fn fields(
                     &self,
-                ) -> impl ::core::iter::DoubleEndedIterator<
+                ) -> ::std::boxed::Box<dyn ::core::iter::DoubleEndedIterator<
                     Item = &dyn ::cot::form::DynFormField,
-                > + ::core::iter::ExactSizeIterator + '_ {
-                    [#( #fields_as_dyn_field_ref, )*].into_iter()
+                > + '_> {
+                    Box::new([#( #fields_as_dyn_field_ref, )*].into_iter())
                 }
 
                 fn set_value(
