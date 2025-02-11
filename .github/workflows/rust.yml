@@ -132,7 +132,13 @@ jobs:
 
       - name: Reclaim disk space
         run: >
-          sudo rm -rf /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /usr/local/lib/android /usr/local/lib/dotnet /usr/local/lib/swift #magic___^_^___line
+          sudo rm -rf \
+              /opt/hostedtoolcache/CodeQL \
+              /usr/local/.ghcup \
+              /usr/local/lib/android \
+              /usr/local/lib/dotnet \
+              /usr/local/lib/swift
+
       - name: Cache Cargo registry
         uses: Swatinem/rust-cache@v2
 
