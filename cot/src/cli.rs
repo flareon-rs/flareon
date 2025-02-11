@@ -7,20 +7,21 @@ use std::str::FromStr;
 use async_trait::async_trait;
 pub use clap;
 use clap::{value_parser, Arg, ArgMatches, Command};
-use cot::error::ErrorRepr;
-use cot::CotProject;
 use derive_more::Debug;
 
-use crate::{Error, Result};
+use crate::error::ErrorRepr;
+use crate::{Bootstrapper, Error, Result};
 
+const CONFIG_PARAM: &str = "config";
 const COLLECT_STATIC_SUBCOMMAND: &str = "collect-static";
+const CHECK_SUBCOMMAND: &str = "check";
 const LISTEN_PARAM: &str = "listen";
 const COLLECT_STATIC_DIR_PARAM: &str = "dir";
 
 #[derive(Debug)]
-pub(crate) struct Cli {
+pub struct Cli {
     command: Command,
-    #[debug("...")]
+    #[debug("..")]
     tasks: HashMap<Option<String>, Box<dyn CliTask + Send + 'static>>,
 }
 
@@ -30,10 +31,20 @@ impl Cli {
         let default_task = Self::default_task();
         let command = default_task.subcommand();
 
+        let command = command.arg(
+            Arg::new(CONFIG_PARAM)
+                .short('c')
+                .long("config")
+                .value_name("FILE")
+                .default_value("dev")
+                .help("Sets a custom config file"),
+        );
+
         let mut tasks: HashMap<Option<String>, Box<dyn CliTask + Send + 'static>> = HashMap::new();
         tasks.insert(None, Box::new(default_task));
 
         let mut cli = Self { command, tasks };
+        cli.add_task(Check);
         cli.add_task(CollectStatic);
 
         cli
@@ -59,7 +70,7 @@ impl Cli {
         RunServer
     }
 
-    pub(crate) fn add_task<C>(&mut self, task: C)
+    pub fn add_task<C>(&mut self, task: C)
     where
         C: CliTask + Send + 'static,
     {
@@ -76,7 +87,14 @@ impl Cli {
         self.tasks.insert(Some(name), Box::new(task));
     }
 
-    pub(crate) async fn execute(mut self, project: CotProject) -> Result<()> {
+    #[must_use]
+    pub fn get_common_options(&mut self) -> CommonOptions {
+        let matches = self.command.get_matches_mut();
+        CommonOptions::new(matches)
+    }
+
+    #[allow(clippy::future_not_send)] // Send not needed; CLI is run async in a single thread
+    pub(crate) async fn execute(mut self, bootstrapper: Bootstrapper<WithConfig>) -> Result<()> {
         let matches = self.command.get_matches();
 
         let subcommand_name = matches.subcommand_name();
@@ -88,7 +106,7 @@ impl Cli {
         };
 
         task.expect("subcommand should exist if get_matches() didn't fail")
-            .execute(matches, project)
+            .execute(matches, bootstrapper)
             .await
     }
 }
@@ -119,19 +137,42 @@ pub struct CliMetadata {
 /// A trait for defining a CLI command.
 ///
 /// This is meant to be used with [`crate::CotProjectBuilder::add_task`].
-#[async_trait]
+#[async_trait(?Send)]
 pub trait CliTask {
     /// Returns the definition of the task's options as the [`clap`] crate's
     /// [`Command`].
     fn subcommand(&self) -> Command;
 
     /// Executes the task with the given matches and project.
-    async fn execute(&mut self, matches: &ArgMatches, project: CotProject) -> Result<()>;
+    async fn execute(
+        &mut self,
+        matches: &ArgMatches,
+        bootstrapper: Bootstrapper<WithConfig>,
+    ) -> Result<()>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommonOptions {
+    matches: ArgMatches,
+}
+
+impl CommonOptions {
+    #[must_use]
+    fn new(matches: ArgMatches) -> Self {
+        Self { matches }
+    }
+
+    #[must_use]
+    pub fn config(&self) -> &str {
+        self.matches
+            .get_one::<String>("config")
+            .expect("default provided")
+    }
 }
 
 struct RunServer;
 
-#[async_trait]
+#[async_trait(?Send)]
 impl CliTask for RunServer {
     fn subcommand(&self) -> Command {
         Command::default().arg(
@@ -145,7 +186,11 @@ impl CliTask for RunServer {
         )
     }
 
-    async fn execute(&mut self, matches: &ArgMatches, project: CotProject) -> Result<()> {
+    async fn execute(
+        &mut self,
+        matches: &ArgMatches,
+        bootstrapper: Bootstrapper<WithConfig>,
+    ) -> Result<()> {
         let addr_port = matches
             .get_one::<String>(LISTEN_PARAM)
             .expect("default provided");
@@ -156,14 +201,15 @@ impl CliTask for RunServer {
             addr_port.to_owned()
         };
 
-        crate::run(project, &addr_port).await
+        let bootstrapper = bootstrapper.boot().await?;
+        crate::run(bootstrapper, &addr_port).await
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 struct CollectStatic;
 
-#[async_trait]
+#[async_trait(?Send)]
 impl CliTask for CollectStatic {
     fn subcommand(&self) -> Command {
         Command::new(COLLECT_STATIC_SUBCOMMAND)
@@ -176,16 +222,41 @@ impl CliTask for CollectStatic {
             )
     }
 
-    async fn execute(&mut self, matches: &ArgMatches, project: CotProject) -> Result<()> {
+    async fn execute(
+        &mut self,
+        matches: &ArgMatches,
+        bootstrapper: Bootstrapper<WithConfig>,
+    ) -> Result<()> {
         let dir = matches
             .get_one::<PathBuf>(COLLECT_STATIC_DIR_PARAM)
             .expect("required argument");
         println!("Collecting static files into {:?}", dir);
 
-        StaticFiles::from(project.context())
+        let bootstrapper = bootstrapper.with_apps();
+        StaticFiles::from(bootstrapper.context())
             .collect_into(dir)
             .map_err(|e| Error::new(ErrorRepr::CollectStatic { source: e }))?;
 
+        Ok(())
+    }
+}
+
+struct Check;
+#[async_trait(?Send)]
+impl CliTask for Check {
+    fn subcommand(&self) -> Command {
+        Command::new(CHECK_SUBCOMMAND).about(
+            "Verifies the configuration, including connections to the database and other services",
+        )
+    }
+
+    async fn execute(
+        &mut self,
+        _matches: &ArgMatches,
+        bootstrapper: Bootstrapper<WithConfig>,
+    ) -> Result<()> {
+        bootstrapper.boot().await?;
+        println!("Success verifying the configuration");
         Ok(())
     }
 }
@@ -205,18 +276,20 @@ macro_rules! metadata {
 
 pub use metadata;
 
+use crate::project::WithConfig;
 use crate::static_files::StaticFiles;
 
 #[cfg(test)]
 mod tests {
-
     use bytes::Bytes;
     use clap::Command;
+    use cot::test::serial_guard;
     use tempfile::tempdir;
     use thiserror::__private::AsDisplay;
 
     use super::*;
-    use crate::CotApp;
+    use crate::config::ProjectConfig;
+    use crate::{App, AppBuilder, ProjectContext};
 
     #[test]
     fn cli_new() {
@@ -249,13 +322,17 @@ mod tests {
     fn cli_add_task() {
         struct MyTask;
 
-        #[async_trait]
+        #[async_trait(?Send)]
         impl CliTask for MyTask {
             fn subcommand(&self) -> Command {
                 Command::new("my-task")
             }
 
-            async fn execute(&mut self, _matches: &ArgMatches, _project: CotProject) -> Result<()> {
+            async fn execute(
+                &mut self,
+                _matches: &ArgMatches,
+                _bootstrapper: Bootstrapper<WithConfig>,
+            ) -> Result<()> {
                 Ok(())
             }
         }
@@ -286,9 +363,8 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let temp_path = temp_dir.path().join("static").clone();
 
-        struct App;
-
-        impl CotApp for App {
+        struct TestApp;
+        impl App for TestApp {
             fn name(&self) -> &'static str {
                 "test_app"
             }
@@ -302,14 +378,58 @@ mod tests {
             .subcommand()
             .get_matches_from(vec!["test", temp_path.to_str().unwrap()]);
 
-        let project = CotProject::builder()
-            .register_app(App)
-            .build()
-            .await
-            .unwrap();
-        let result = collect_static.execute(&matches, project).await;
+        struct TestProject;
+        impl cot::Project for TestProject {
+            fn register_apps(&self, apps: &mut AppBuilder, context: &ProjectContext<WithConfig>) {
+                apps.register(TestApp);
+            }
+        }
+
+        let bootstrapper = Bootstrapper::new(TestProject).with_config(ProjectConfig::default());
+        let result = collect_static.execute(&matches, bootstrapper).await;
 
         assert!(result.is_ok());
         assert!(temp_path.join("test.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn check_execute() {
+        let config = r#"secret_key = "123abc""#;
+        let result = test_check(config).await;
+
+        assert!(result.is_ok(), "{:?}", result);
+    }
+
+    #[tokio::test]
+    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `geteuid` on OS `linux`
+    #[cfg(feature = "db")]
+    async fn check_execute_db_fail() {
+        let config = r#"
+        [database]
+        url = "postgresql://invalid:invalid@invalid/invalid"
+        "#;
+        let result = test_check(config).await;
+
+        assert!(result.is_err());
+    }
+
+    async fn test_check(config: &str) -> Result<()> {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("config").clone();
+        std::fs::create_dir_all(&config_path).unwrap();
+        std::fs::write(config_path.join("test.toml"), config).unwrap();
+
+        let mut check = Check;
+        let matches = Check.subcommand().get_matches_from(Vec::<&str>::new());
+
+        struct TestProject;
+        impl cot::Project for TestProject {}
+
+        // ensure the tests run sequentially when setting the current directory
+        let _guard = serial_guard();
+
+        std::env::set_current_dir(&temp_dir).unwrap();
+        let bootstrapper = Bootstrapper::new(TestProject).with_config_name("test")?;
+        check.execute(&matches, bootstrapper).await
     }
 }

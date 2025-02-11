@@ -472,6 +472,7 @@ mod tests {
         assert!(field.unique);
     }
 
+    #[cfg(feature = "symbol-resolver")]
     #[test]
     fn find_type_resolved() {
         let input: syn::Type =

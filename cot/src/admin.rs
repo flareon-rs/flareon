@@ -18,7 +18,7 @@ use crate::form::{
 use crate::request::{Request, RequestExt};
 use crate::response::{Response, ResponseExt};
 use crate::router::Router;
-use crate::{reverse_redirect, static_files, Body, CotApp, StatusCode};
+use crate::{reverse_redirect, static_files, App, Body, StatusCode};
 
 #[derive(Debug, Form)]
 struct LoginForm {
@@ -49,7 +49,7 @@ struct ModelTemplate<'a> {
     objects: Vec<Box<dyn AdminModel>>,
 }
 
-async fn index(mut request: Request) -> cot::Result<Response> {
+async fn index(mut request: Request) -> crate::Result<Response> {
     if request.user().await?.is_authenticated() {
         let template = ModelListTemplate {
             request: &request,
@@ -231,16 +231,19 @@ pub trait AdminModel {
 ///
 /// ```
 /// use cot::admin::AdminApp;
-/// use cot::CotProject;
+/// use cot::project::WithConfig;
+/// use cot::{AppBuilder, Project, ProjectContext};
 ///
-/// # #[tokio::main]
-/// # async fn main() -> cot::Result<()> {
-/// CotProject::builder()
-///     .register_app_with_views(AdminApp::new(), "/admin")
-///     .build()
-///     .await?;
-/// # Ok(())
-/// # }
+/// struct MyProject;
+/// impl Project for MyProject {
+///     fn register_apps(
+///         &self,
+///         modules: &mut AppBuilder,
+///         _app_context: &ProjectContext<WithConfig>,
+///     ) {
+///         modules.register_with_views(AdminApp::new(), "/admin");
+///     }
+/// }
 /// ```
 #[derive(Debug, Copy, Clone)]
 pub struct AdminApp;
@@ -258,16 +261,19 @@ impl AdminApp {
     ///
     /// ```
     /// use cot::admin::AdminApp;
-    /// use cot::CotProject;
+    /// use cot::project::WithConfig;
+    /// use cot::{AppBuilder, Project, ProjectContext};
     ///
-    /// # #[tokio::main]
-    /// # async fn main() -> cot::Result<()> {
-    /// CotProject::builder()
-    ///     .register_app_with_views(AdminApp::new(), "/admin")
-    ///     .build()
-    ///     .await?;
-    /// # Ok(())
-    /// # }
+    /// struct MyProject;
+    /// impl Project for MyProject {
+    ///     fn register_apps(
+    ///         &self,
+    ///         modules: &mut AppBuilder,
+    ///         _app_context: &ProjectContext<WithConfig>,
+    ///     ) {
+    ///         modules.register_with_views(AdminApp::new(), "/admin");
+    ///     }
+    /// }
     /// ```
     #[must_use]
     pub fn new() -> Self {
@@ -275,7 +281,7 @@ impl AdminApp {
     }
 }
 
-impl CotApp for AdminApp {
+impl App for AdminApp {
     fn name(&self) -> &'static str {
         "cot_admin"
     }

@@ -3,13 +3,15 @@
 
 [![Rust Build Status](https://github.com/cot-rs/cot/workflows/Rust%20CI/badge.svg)](https://github.com/cot-rs/cot/actions/workflows/rust.yml)
 [![crates.io](https://img.shields.io/crates/v/cot.svg)](https://crates.io/crates/cot)
+[![Guide](https://img.shields.io/website?url=https%3A%2F%2Fcot.rs%2Fguide%2Flatest%2F&label=guide&up_message=online)](https://cot.rs/guide/latest/)
 [![Documentation](https://docs.rs/cot/badge.svg)](https://docs.rs/cot)
 [![codecov](https://codecov.io/gh/cot-rs/cot/branch/master/graph/badge.svg)](https://codecov.io/gh/cot-rs/cot)
 [![Discord chat](https://img.shields.io/discord/1330137289287925781?logo=Discord&logoColor=white)](https://discord.cot.rs)
 </div>
 
 > [!WARNING]
-> Cot is currently missing a lot of features and is **not ready** for anything even remotely close to production use. That said, you are more than welcome to try it out and provide feedback!
+> Cot is currently missing a lot of features and is **not ready** for anything even remotely close to production use.
+> That said, you are more than welcome to try it out and provide feedback!
 
 Cot is an easy to use, modern, and fast web framework for Rust. It has been designed to be familiar if you've ever
 used [Django](https://www.djangoproject.com/), and easy to learn if you haven't. It's a batteries-included framework

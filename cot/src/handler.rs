@@ -35,20 +35,44 @@ where
     }
 }
 
-/// A wrapper around a handler that's used in [`CotProject`].
+/// A wrapper around a handler that's used in
+/// [`Bootstrapper`](cot::Bootstrapper).
 ///
-/// It is returned by [`CotProject::into_context`]. Typically, you don't
-/// need to interact with this type directly.
+/// It is returned by
+/// [`Bootstrapper::into_context_and_handler`](cot::Bootstrapper::into_context_and_handler).
+/// Typically, you don't need to interact with this type directly, except for
+/// creating it in [`Project::middlewares`](cot::Project::middlewares) through
+/// the [`RootHandlerBuilder::build`](cot::project::RootHandlerBuilder::build).
+/// method.
 ///
 /// # Examples
 ///
 /// ```
-/// use cot::CotProject;
+/// use cot::config::ProjectConfig;
+/// use cot::project::{RootHandlerBuilder, WithApps};
+/// use cot::static_files::StaticFilesMiddleware;
+/// use cot::{Bootstrapper, BoxedHandler, Project, ProjectContext};
+///
+/// struct MyProject;
+/// impl Project for MyProject {
+///     fn middlewares(
+///         &self,
+///         handler: RootHandlerBuilder,
+///         context: &ProjectContext<WithApps>,
+///     ) -> BoxedHandler {
+///         handler
+///             .middleware(StaticFilesMiddleware::from_app_context(context))
+///             .build()
+///     }
+/// }
 ///
 /// # #[tokio::main]
 /// # async fn main() -> cot::Result<()> {
-/// let project = CotProject::builder().build().await?;
-/// let (context, handler) = project.into_context();
+/// let bootstrapper = Bootstrapper::new(MyProject)
+///     .with_config(ProjectConfig::default())
+///     .boot()
+///     .await?;
+/// let (context, handler) = bootstrapper.into_context_and_handler();
 /// # Ok(())
 /// # }
 /// ```

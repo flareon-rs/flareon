@@ -23,19 +23,30 @@ use crate::{Body, Error};
 ///
 /// This is useful for converting a response from a middleware that is
 /// compatible with the `tower` crate to a response that is compatible with
-/// Cot. It's applied automatically by [`cot::CotProjectBuilder::middleware()`]
+/// Cot. It's applied automatically by
+/// [`RootHandlerBuilder::middleware()`](cot::project::RootHandlerBuilder::middleware())
 /// and is not needed to be added manually.
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```
 /// use cot::middleware::LiveReloadMiddleware;
-/// use cot::CotProject;
+/// use cot::project::{RootHandlerBuilder, WithApps};
+/// use cot::{BoxedHandler, Project, ProjectContext};
 ///
-/// let app = CotProject::builder()
-///     // IntoCotResponseLayer used internally in middleware()
-///     .middleware(LiveReloadMiddleware::new())
-///     .build();
+/// struct MyProject;
+/// impl Project for MyProject {
+///     fn middlewares(
+///         &self,
+///         handler: RootHandlerBuilder,
+///         context: &ProjectContext<WithApps>,
+///     ) -> BoxedHandler {
+///         handler
+///             // IntoCotResponseLayer used internally in middleware()
+///             .middleware(LiveReloadMiddleware::from_app_context(context))
+///             .build()
+///     }
+/// }
 /// ```
 #[derive(Debug, Copy, Clone)]
 pub struct IntoCotResponseLayer;
@@ -45,7 +56,7 @@ impl IntoCotResponseLayer {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```
     /// use cot::middleware::IntoCotResponseLayer;
     ///
     /// let middleware = IntoCotResponseLayer::new();
@@ -126,19 +137,30 @@ where
 ///
 /// This is useful for converting a response from a middleware that is
 /// compatible with the `tower` crate to a response that is compatible with
-/// Cot. It's applied automatically by [`cot::CotProjectBuilder::middleware()`]
+/// Cot. It's applied automatically by
+/// [`RootHandlerBuilder::middleware()`](cot::project::RootHandlerBuilder::middleware())
 /// and is not needed to be added manually.
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```
 /// use cot::middleware::LiveReloadMiddleware;
-/// use cot::CotProject;
+/// use cot::project::{RootHandlerBuilder, WithApps};
+/// use cot::{BoxedHandler, Project, ProjectContext};
 ///
-/// let app = CotProject::builder()
-///     // IntoCotErrorLayer used internally in middleware()
-///     .middleware(LiveReloadMiddleware::new())
-///     .build();
+/// struct MyProject;
+/// impl Project for MyProject {
+///     fn middlewares(
+///         &self,
+///         handler: RootHandlerBuilder,
+///         context: &ProjectContext<WithApps>,
+///     ) -> BoxedHandler {
+///         handler
+///             // IntoCotErrorLayer used internally in middleware()
+///             .middleware(LiveReloadMiddleware::from_app_context(context))
+///             .build()
+///     }
+/// }
 /// ```
 #[derive(Debug, Copy, Clone)]
 pub struct IntoCotErrorLayer;
@@ -148,7 +170,7 @@ impl IntoCotErrorLayer {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```
     /// use cot::middleware::IntoCotErrorLayer;
     ///
     /// let middleware = IntoCotErrorLayer::new();
@@ -250,14 +272,40 @@ impl<S> tower::Layer<S> for SessionMiddleware {
 }
 
 #[cfg(feature = "live-reload")]
+type LiveReloadLayerType = tower::util::Either<
+    (
+        IntoCotErrorLayer,
+        IntoCotResponseLayer,
+        tower_livereload::LiveReloadLayer,
+    ),
+    tower::layer::util::Identity,
+>;
+
+#[cfg(feature = "live-reload")]
 #[derive(Debug, Clone)]
-pub struct LiveReloadMiddleware(tower_livereload::LiveReloadLayer);
+pub struct LiveReloadMiddleware(LiveReloadLayerType);
 
 #[cfg(feature = "live-reload")]
 impl LiveReloadMiddleware {
     #[must_use]
     pub fn new() -> Self {
-        Self(tower_livereload::LiveReloadLayer::new())
+        Self::with_enabled(true)
+    }
+
+    #[must_use]
+    pub fn from_app_context(app_context: &crate::ProjectContext<crate::project::WithApps>) -> Self {
+        Self::with_enabled(app_context.config().middlewares.live_reload.enabled)
+    }
+
+    fn with_enabled(enabled: bool) -> Self {
+        let option_layer = enabled.then(|| {
+            (
+                IntoCotErrorLayer::new(),
+                IntoCotResponseLayer::new(),
+                tower_livereload::LiveReloadLayer::new(),
+            )
+        });
+        Self(tower::util::option_layer(option_layer))
     }
 }
 
@@ -270,7 +318,7 @@ impl Default for LiveReloadMiddleware {
 
 #[cfg(feature = "live-reload")]
 impl<S> tower::Layer<S> for LiveReloadMiddleware {
-    type Service = <tower_livereload::LiveReloadLayer as tower::Layer<S>>::Service;
+    type Service = <LiveReloadLayerType as tower::Layer<S>>::Service;
 
     fn layer(&self, inner: S) -> Self::Service {
         self.0.layer(inner)

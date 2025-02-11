@@ -1,7 +1,10 @@
+use cot::cli::CliMetadata;
+use cot::config::ProjectConfig;
+use cot::project::WithConfig;
 use cot::request::{Request, RequestExt};
 use cot::response::{Response, ResponseExt};
 use cot::router::{Route, Router};
-use cot::{CotApp, CotProject, StatusCode};
+use cot::{App, AppBuilder, Project, ProjectContext, StatusCode};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -26,7 +29,7 @@ async fn add(mut request: Request) -> cot::Result<Response> {
 
 struct AddApp;
 
-impl CotApp for AddApp {
+impl App for AddApp {
     fn name(&self) -> &'static str {
         env!("CARGO_PKG_NAME")
     }
@@ -39,13 +42,23 @@ impl CotApp for AddApp {
 // Test with:
 // curl --header "Content-Type: application/json" --request POST --data '{"a": 123, "b": 456}' 'http://127.0.0.1:8080/'
 
-#[cot::main]
-async fn main() -> cot::Result<CotProject> {
-    let cot_project = CotProject::builder()
-        .with_cli(cot::cli::metadata!())
-        .register_app_with_views(AddApp, "")
-        .build()
-        .await?;
+struct JsonProject;
 
-    Ok(cot_project)
+impl Project for JsonProject {
+    fn cli_metadata(&self) -> CliMetadata {
+        cot::cli::metadata!()
+    }
+
+    fn config(&self, _config_name: &str) -> cot::Result<ProjectConfig> {
+        Ok(ProjectConfig::dev_default())
+    }
+
+    fn register_apps(&self, modules: &mut AppBuilder, _app_context: &ProjectContext<WithConfig>) {
+        modules.register_with_views(AddApp, "");
+    }
+}
+
+#[cot::main]
+fn main() -> impl Project {
+    JsonProject
 }

@@ -9,7 +9,7 @@ use derive_more::Deref;
 use rinja::filters::HtmlSafe;
 
 use crate::form::{AsFormField, FormField, FormFieldOptions, FormFieldValidationError};
-use crate::html::{Html, HtmlTag};
+use crate::html::HtmlTag;
 
 macro_rules! impl_form_field {
     ($field_type_name:ident, $field_options_type_name:ident, $purpose:literal $(, $generic_param:ident $(: $generic_param_bound:ident $(+ $generic_param_bound_more:ident)*)?)?) => {

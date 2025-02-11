@@ -1,6 +1,12 @@
-use cot::CotProject;
+use cot::Project;
+
+struct MyProject;
+impl Project for MyProject {}
 
 #[cot::main]
-async fn main() -> cot::Result<CotProject> {
+fn main() -> impl Project {
     std::process::exit(0);
+
+    #[allow(unreachable_code)]
+    MyProject
 }
