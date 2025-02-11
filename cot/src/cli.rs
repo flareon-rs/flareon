@@ -393,7 +393,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
     async fn check_execute() {
         let config = r#"secret_key = "123abc""#;
         let result = test_check(config).await;
