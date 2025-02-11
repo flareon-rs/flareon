@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
+    #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `geteuid` on OS `linux`
     #[cfg(feature = "db")]
     async fn check_execute_db_fail() {
         let config = r#"
