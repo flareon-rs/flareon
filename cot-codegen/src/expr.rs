@@ -10,6 +10,7 @@ enum ItemToken {
     Literal(syn::Lit),
     Ident(syn::Ident),
     MemberAccess(MemberAccessParser),
+    PathAccess(PathAccessParser),
     FunctionCall(FunctionCallParser),
     Reference(ReferenceParser),
     Op(OpParser),
@@ -29,6 +30,8 @@ impl Parse for ItemToken {
             input.parse().map(ItemToken::Reference)
         } else if lookahead.peek(Token![.]) {
             input.parse().map(ItemToken::MemberAccess)
+        } else if lookahead.peek(Token![::]) {
+            input.parse().map(ItemToken::PathAccess)
         } else if lookahead.peek(syn::token::Paren) {
             input.parse().map(ItemToken::FunctionCall)
         } else if lookahead.peek(syn::Lit) {
@@ -48,6 +51,7 @@ impl ItemToken {
             ItemToken::Literal(lit) => lit.span(),
             ItemToken::Ident(ident) => ident.span(),
             ItemToken::MemberAccess(member_access) => member_access.span(),
+            ItemToken::PathAccess(path_access) => path_access.span(),
             ItemToken::FunctionCall(function_call) => function_call.span(),
             ItemToken::Reference(reference) => reference.span(),
             ItemToken::Op(op) => op.span(),
@@ -117,6 +121,28 @@ impl Parse for MemberAccessParser {
         Ok(Self {
             dot: input.parse()?,
             member_name: input.parse()?,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct PathAccessParser {
+    colons: Token![::],
+    path_segment: syn::Ident,
+}
+
+impl PathAccessParser {
+    #[must_use]
+    fn span(&self) -> proc_macro2::Span {
+        self.path_segment.span()
+    }
+}
+
+impl Parse for PathAccessParser {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        Ok(Self {
+            colons: input.parse()?,
+            path_segment: input.parse()?,
         })
     }
 }
@@ -290,6 +316,11 @@ pub enum Expr {
         member_name: syn::Ident,
         member_access_token: Token![.],
     },
+    PathAccess {
+        parent: Box<Expr>,
+        path_segment: syn::Ident,
+        path_access_token: Token![::],
+    },
     FunctionCall {
         function: Box<Expr>,
         args: Vec<syn::Expr>,
@@ -374,6 +405,14 @@ impl Expr {
                         member_access_token: member_access.dot,
                     };
                 }
+                ItemToken::PathAccess(path_access) => {
+                    input.parse::<ItemToken>()?;
+                    lhs = Expr::PathAccess {
+                        parent: Box::new(lhs),
+                        path_segment: path_access.path_segment,
+                        path_access_token: path_access.colons,
+                    };
+                }
                 ItemToken::FunctionCall(call) => {
                     input.parse::<ItemToken>()?;
                     let args = call.args.into_iter().collect::<Vec<_>>();
@@ -452,6 +491,14 @@ impl Expr {
             } => {
                 let parent_tokens = parent.as_tokens_impl(mode)?;
                 Some(quote! {#parent_tokens #member_access_token #member_name})
+            }
+            Expr::PathAccess {
+                parent,
+                path_segment,
+                path_access_token,
+            } => {
+                let parent_tokens = parent.as_tokens_impl(mode)?;
+                Some(quote! {#parent_tokens #path_access_token #path_segment})
             }
             Expr::FunctionCall { function, args } => {
                 let function_tokens = function.as_tokens_impl(mode)?;
@@ -672,6 +719,17 @@ mod tests {
     }
 
     #[test]
+    fn parse_path_access_multiple() {
+        let input = quote! { $a == foo::bar::baz };
+        let expected = Expr::Eq(
+            Box::new(field("a")),
+            Box::new(path_access(path_access(value("foo"), "bar"), "baz")),
+        );
+
+        assert_eq!(expected, unwrap_syn(Expr::parse(input)));
+    }
+
+    #[test]
     fn parse_reference() {
         let input = quote! { &foo };
         let expected = reference("foo");
@@ -710,6 +768,14 @@ mod tests {
     #[test]
     fn tokens_method() {
         let input = quote! { string.contains("that") };
+        let expr = unwrap_syn(Expr::parse(input.clone()));
+
+        assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
+    }
+
+    #[test]
+    fn tokens_path() {
+        let input = quote! { my_crate::path::to_something() };
         let expr = unwrap_syn(Expr::parse(input.clone()));
 
         assert_eq!(input.to_string(), expr.as_tokens().unwrap().to_string());
@@ -833,6 +899,15 @@ mod tests {
             parent: Box::new(parent),
             member_name: syn::Ident::new(member_name, span()),
             member_access_token: Token![.](span()),
+        }
+    }
+
+    #[must_use]
+    fn path_access(parent: Expr, path_segment: &str) -> Expr {
+        Expr::PathAccess {
+            parent: Box::new(parent),
+            path_segment: syn::Ident::new(path_segment, span()),
+            path_access_token: Token![::](span()),
         }
     }
 

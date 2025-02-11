@@ -60,6 +60,20 @@ pub(super) fn expr_to_tokens(model_name: &syn::Type, expr: Expr) -> TokenStream 
             )
             .to_compile_error(),
         },
+        Expr::PathAccess {
+            parent,
+            path_segment,
+            ..
+        } => match parent.as_tokens() {
+            Some(tokens) => {
+                quote!(#crate_name::db::query::Expr::value(#tokens::#path_segment))
+            }
+            None => syn::Error::new_spanned(
+                parent.as_tokens_full(),
+                "accessing paths of values that reference database fields is unsupported",
+            )
+            .to_compile_error(),
+        },
         Expr::FunctionCall { function, args } => match function.as_tokens() {
             Some(tokens) => {
                 quote!(#crate_name::db::query::Expr::value(#tokens(#(#args),*)))
