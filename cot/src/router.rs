@@ -46,7 +46,7 @@ pub mod path;
 ///
 /// This struct is used to route requests to their respective views. It can be
 /// created directly by calling the [`Router::with_urls`] method, and that's
-/// what is typically done in [`cot::CotApp::router`] implementations.
+/// what is typically done in [`cot::App::router`] implementations.
 ///
 /// # Examples
 ///
@@ -177,7 +177,7 @@ impl Router {
 
     /// Handle a request.
     ///
-    /// This method is called by the [`CotApp`](crate::CotApp) to handle
+    /// This method is called by the [`CotApp`](crate::App) to handle
     /// a request.
     ///
     /// # Errors
@@ -299,7 +299,7 @@ struct HandlerFound<'a> {
 
 /// A service that routes requests to their respective views.
 ///
-/// This is mostly an internal service used by the [`CotApp`](crate::CotApp) to
+/// This is mostly an internal service used by the [`CotApp`](crate::App) to
 /// route requests to their respective views with an interface that is
 /// compatible with the [`tower::Service`] trait.
 #[derive(Debug, Clone)]

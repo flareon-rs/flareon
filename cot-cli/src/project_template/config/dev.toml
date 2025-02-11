@@ -1,0 +1,7 @@
+secret_key = "{{ dev_secret_key }}"
+
+[database]
+url = "sqlite://db.sqlite3?mode=rwc"
+
+[middlewares]
+live_reload.enabled = true

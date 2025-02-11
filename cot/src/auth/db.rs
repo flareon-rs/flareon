@@ -20,7 +20,7 @@ use crate::config::SecretKey;
 use crate::db::migrations::SyncDynMigration;
 use crate::db::{model, query, Auto, DatabaseBackend, LimitedString, Model};
 use crate::request::{Request, RequestExt};
-use crate::CotApp;
+use crate::App;
 
 pub mod migrations;
 
@@ -512,10 +512,18 @@ impl DatabaseUserBackend {
     ///
     /// ```
     /// use cot::auth::db::DatabaseUserBackend;
+    /// use cot::auth::AuthBackend;
     /// use cot::config::ProjectConfig;
+    /// use cot::project::WithApps;
+    /// use cot::{Project, ProjectContext};
     ///
-    /// let backend = DatabaseUserBackend::new();
-    /// let config = ProjectConfig::builder().auth_backend(backend).build();
+    /// struct HelloProject;
+    /// impl Project for HelloProject {
+    ///     fn auth_backend(&self, app_context: &ProjectContext<WithApps>) -> Box<dyn AuthBackend> {
+    ///         Box::new(DatabaseUserBackend::new())
+    ///         // note that it's usually better to just set the auth backend in the config
+    ///     }
+    /// }
     /// ```
     #[must_use]
     pub fn new() -> Self {
@@ -573,21 +581,26 @@ impl DatabaseUserApp {
     /// ```no_run
     /// use cot::auth::db::DatabaseUserApp;
     /// use cot::config::{DatabaseConfig, ProjectConfig};
-    /// use cot::CotProject;
+    /// use cot::project::WithConfig;
+    /// use cot::{App, AppBuilder, Project, ProjectContext};
+    ///
+    /// struct HelloProject;
+    /// impl Project for HelloProject {
+    ///     fn config(&self, config_name: &str) -> cot::Result<ProjectConfig> {
+    ///         Ok(ProjectConfig::builder()
+    ///             .database(DatabaseConfig::builder().url("sqlite::memory:").build())
+    ///             .build())
+    ///     }
+    ///
+    ///     fn register_apps(&self, apps: &mut AppBuilder, _context: &ProjectContext<WithConfig>) {
+    ///         use cot::project::WithConfig;
+    ///         apps.register_with_views(DatabaseUserApp::new(), "");
+    ///     }
+    /// }
     ///
     /// #[cot::main]
-    /// async fn main() -> cot::Result<CotProject> {
-    ///     let cot_project = CotProject::builder()
-    ///         .config(
-    ///             ProjectConfig::builder()
-    ///                 .database_config(DatabaseConfig::builder().url("sqlite::memory:").build())
-    ///                 .build(),
-    ///         )
-    ///         .register_app(DatabaseUserApp::new())
-    ///         .build()
-    ///         .await?;
-    ///
-    ///     Ok(cot_project)
+    /// fn main() -> impl Project {
+    ///     HelloProject
     /// }
     /// ```
     #[must_use]
@@ -596,7 +609,7 @@ impl DatabaseUserApp {
     }
 }
 
-impl CotApp for DatabaseUserApp {
+impl App for DatabaseUserApp {
     fn name(&self) -> &'static str {
         "cot_db_user"
     }

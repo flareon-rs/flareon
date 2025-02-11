@@ -20,16 +20,22 @@ fn new_project_compile_test() {
     .unwrap();
 
     let output = cargo(&project_path)
-        .arg("build")
+        .arg("run")
         .arg("--quiet")
+        .arg("--")
+        .arg("check")
         .output()
         .unwrap();
 
+    let status = output.status;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(status.success(), "status: {}, stderr: {}", status, stderr);
     assert!(
-        output.status.success(),
+        stdout.contains("Success verifying the configuration"),
         "status: {}, stderr: {}",
-        output.status,
-        String::from_utf8_lossy(&output.stderr)
+        status,
+        stderr
     );
 }
 

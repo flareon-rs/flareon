@@ -1,6 +1,4 @@
-use cot::db::DatabaseError;
-
-use crate::db::{DatabaseBackend, Model, Result};
+use crate::db::{DatabaseBackend, DatabaseError, Model, Result};
 
 /// A foreign key to another model.
 ///

@@ -24,9 +24,11 @@ darling.workspace = true
 cot.workspace = true
 cot_codegen = { workspace = true, features = ["symbol-resolver"] }
 glob.workspace = true
+hex.workspace = true
 petgraph.workspace = true
 prettyplease.workspace = true
 proc-macro2 = { workspace = true, features = ["span-locations"] }
+rand = { workspace = true, features = ["std", "std_rng", "os_rng"] }
 quote.workspace = true
 syn.workspace = true
 tracing.workspace = true

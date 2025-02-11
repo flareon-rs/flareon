@@ -1,9 +1,11 @@
 use bytes::Bytes;
+use cot::config::ProjectConfig;
+use cot::project::WithConfig;
 use cot::request::{Request, RequestExt};
 use cot::response::{Response, ResponseExt};
 use cot::router::{Route, Router};
 use cot::test::Client;
-use cot::{Body, CotApp, CotProject, StatusCode};
+use cot::{App, AppBuilder, Body, Project, ProjectContext, StatusCode};
 
 async fn index(_request: Request) -> cot::Result<Response> {
     Ok(Response::new_html(
@@ -21,9 +23,9 @@ async fn parameterized(request: Request) -> cot::Result<Response> {
 #[tokio::test]
 #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
 async fn test_index() {
-    let mut client = Client::new(project().await);
+    let client = Client::new(project().await);
 
-    let response = client.get("/").await.unwrap();
+    let response = client.await.get("/").await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         response.into_body().into_bytes().await.unwrap(),
@@ -34,9 +36,9 @@ async fn test_index() {
 #[tokio::test]
 #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
 async fn path_params() {
-    let mut client = Client::new(project().await);
+    let client = Client::new(project().await);
 
-    let response = client.get("/get/John").await.unwrap();
+    let response = client.await.get("/get/John").await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         response.into_body().into_bytes().await.unwrap(),
@@ -45,9 +47,9 @@ async fn path_params() {
 }
 
 #[must_use]
-async fn project() -> CotProject {
+async fn project() -> impl Project {
     struct RouterApp;
-    impl CotApp for RouterApp {
+    impl App for RouterApp {
         fn name(&self) -> &'static str {
             "router-app"
         }
@@ -60,9 +62,16 @@ async fn project() -> CotProject {
         }
     }
 
-    CotProject::builder()
-        .register_app_with_views(RouterApp, "")
-        .build()
-        .await
-        .unwrap()
+    struct TestProject;
+    impl Project for TestProject {
+        fn config(&self, _config_name: &str) -> cot::Result<ProjectConfig> {
+            Ok(ProjectConfig::default())
+        }
+
+        fn register_apps(&self, apps: &mut AppBuilder, context: &ProjectContext<WithConfig>) {
+            apps.register_with_views(RouterApp, "");
+        }
+    }
+
+    TestProject
 }

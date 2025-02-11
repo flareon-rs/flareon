@@ -118,32 +118,35 @@ pub fn dbtest(_args: TokenStream, input: TokenStream) -> TokenStream {
 
 /// An attribute macro that defines an entry point to a Cot-powered app.
 ///
-/// This macro is meant to wrap a function returning
-/// [`cot::Result<cot::CotProject>`]. It should initialize a [`CotProject`] and
-/// return it, while the macro takes care of initializing an async runtime,
-/// creating a CLI and running the app.
+/// This macro is meant to wrap a function returning a structure implementing
+/// [`CotProject`]. It should just initialize a [`CotProject`] and return it,
+/// while the macro takes care of initializing an async runtime, creating a CLI
+/// and running the app.
 ///
 /// # Examples
 ///
 /// ```no_run
-/// use cot::{CotApp, CotProject};
+/// use cot::project::WithConfig;
+/// use cot::{App, AppBuilder, Project, ProjectContext};
 ///
 /// struct HelloApp;
 ///
-/// impl CotApp for HelloApp {
+/// impl App for HelloApp {
 ///     fn name(&self) -> &'static str {
 ///         env!("CARGO_PKG_NAME")
 ///     }
 /// }
 ///
-/// #[cot::main]
-/// async fn main() -> cot::Result<CotProject> {
-///     let cot_project = CotProject::builder()
-///         .register_app_with_views(HelloApp, "")
-///         .build()
-///         .await?;
+/// struct HelloProject;
+/// impl Project for HelloProject {
+///     fn register_apps(&self, apps: &mut AppBuilder, _context: &ProjectContext<WithConfig>) {
+///         apps.register_with_views(HelloApp, "");
+///     }
+/// }
 ///
-///     Ok(cot_project)
+/// #[cot::main]
+/// fn main() -> impl Project {
+///     HelloProject
 /// }
 /// ```
 #[proc_macro_attribute]

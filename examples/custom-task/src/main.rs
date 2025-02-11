@@ -9,8 +9,10 @@
 use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser};
 use cot::cli::clap::{ArgMatches, Command};
-use cot::cli::CliTask;
-use cot::{CotApp, CotProject};
+use cot::cli::{Cli, CliMetadata, CliTask};
+use cot::config::ProjectConfig;
+use cot::project::WithConfig;
+use cot::{Bootstrapper, Project};
 
 #[derive(Parser)]
 #[command(name = "frobnicate", about = "Frobnicate something")]
@@ -21,13 +23,17 @@ struct FrobnicateCommand {
 
 struct Frobnicate;
 
-#[async_trait]
+#[async_trait(?Send)]
 impl CliTask for Frobnicate {
     fn subcommand(&self) -> Command {
         FrobnicateCommand::command()
     }
 
-    async fn execute(&mut self, matches: &ArgMatches, _project: CotProject) -> cot::Result<()> {
+    async fn execute(
+        &mut self,
+        matches: &ArgMatches,
+        _bootstrapper: Bootstrapper<WithConfig>,
+    ) -> cot::Result<()> {
         let command = FrobnicateCommand::from_arg_matches(matches).expect("invalid arguments");
 
         println!("Frobnicating {}...", command.what);
@@ -36,22 +42,23 @@ impl CliTask for Frobnicate {
     }
 }
 
-struct HelloApp;
+struct CustomTaskProject;
 
-impl CotApp for HelloApp {
-    fn name(&self) -> &'static str {
-        env!("CARGO_PKG_NAME")
+impl Project for CustomTaskProject {
+    fn cli_metadata(&self) -> CliMetadata {
+        cot::cli::metadata!()
+    }
+
+    fn config(&self, _config_name: &str) -> cot::Result<ProjectConfig> {
+        Ok(ProjectConfig::dev_default())
+    }
+
+    fn register_tasks(&self, cli: &mut Cli) {
+        cli.add_task(Frobnicate)
     }
 }
 
 #[cot::main]
-async fn main() -> cot::Result<CotProject> {
-    let cot_project = CotProject::builder()
-        .with_cli(cot::cli::metadata!())
-        .add_task(Frobnicate)
-        .register_app_with_views(HelloApp, "")
-        .build()
-        .await?;
-
-    Ok(cot_project)
+fn main() -> impl Project {
+    CustomTaskProject
 }

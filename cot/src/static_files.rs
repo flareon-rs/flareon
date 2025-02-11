@@ -16,8 +16,9 @@ use http::{header, Request};
 use pin_project_lite::pin_project;
 use tower::Service;
 
+use crate::project::WithApps;
 use crate::response::{Response, ResponseExt};
-use crate::{AppContext, Body};
+use crate::{Body, ProjectContext};
 
 /// Macro to define static files by specifying their paths.
 ///
@@ -26,13 +27,13 @@ use crate::{AppContext, Body};
 /// project root, where the `Cargo.toml` file is).
 ///
 /// This is mainly useful with the
-/// [`CotApp::static_files`](crate::CotApp::static_files) trait method.
+/// [`CotApp::static_files`](crate::App::static_files) trait method.
 ///
 /// # Example
 ///
 /// ```
 /// use bytes::Bytes;
-/// use cot::{static_files, CotApp};
+/// use cot::{static_files, App};
 ///
 /// pub struct ExampleApp;
 ///
@@ -43,7 +44,7 @@ use crate::{AppContext, Body};
 /// //     └── admin
 /// //         └── admin.css
 ///
-/// impl CotApp for ExampleApp {
+/// impl App for ExampleApp {
 ///     fn name(&self) -> &str {
 ///         "test_app"
 ///     }
@@ -113,12 +114,12 @@ impl Default for StaticFiles {
     }
 }
 
-impl From<&AppContext> for StaticFiles {
-    fn from(app_context: &AppContext) -> Self {
+impl From<&ProjectContext<WithApps>> for StaticFiles {
+    fn from(app_context: &ProjectContext<WithApps>) -> Self {
         let mut static_files = StaticFiles::new();
 
-        for app in app_context.apps() {
-            for (path, content) in app.static_files() {
+        for module in app_context.apps() {
+            for (path, content) in module.static_files() {
                 static_files.add_file(&path, content);
             }
         }
@@ -154,7 +155,7 @@ impl File {
 /// Middleware for serving static files.
 ///
 /// This middleware serves static files defined by the applications by using
-/// the [`CotApp::static_files`](crate::CotApp::static_files) trait
+/// the [`CotApp::static_files`](crate::App::static_files) trait
 /// method. The middleware serves files from the `/static/` path.
 ///
 /// If a request is made to a path starting with `/static/`, the middleware
@@ -169,7 +170,7 @@ impl StaticFilesMiddleware {
     /// Creates a new `StaticFilesMiddleware` instance from the application
     /// context.
     #[must_use]
-    pub fn from_app_context(app_context: &AppContext) -> Self {
+    pub fn from_app_context(app_context: &ProjectContext<WithApps>) -> Self {
         Self {
             static_files: Arc::new(StaticFiles::from(app_context)),
         }
@@ -284,7 +285,9 @@ mod tests {
     use tower::{Layer, ServiceExt};
 
     use super::*;
-    use crate::{CotApp, CotProject};
+    use crate::config::ProjectConfig;
+    use crate::project::WithConfig;
+    use crate::{App, AppBuilder, Bootstrapper, Project};
 
     #[test]
     #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
@@ -372,7 +375,7 @@ mod tests {
     #[cfg_attr(miri, ignore)] // unsupported operation: can't call foreign function `sqlite3_open_v2`
     async fn static_files_middleware_from_app_context() {
         struct App1;
-        impl CotApp for App1 {
+        impl App for App1 {
             fn name(&self) -> &'static str {
                 "app1"
             }
@@ -383,7 +386,7 @@ mod tests {
         }
 
         struct App2;
-        impl CotApp for App2 {
+        impl App for App2 {
             fn name(&self) -> &'static str {
                 "app2"
             }
@@ -393,16 +396,18 @@ mod tests {
             }
         }
 
-        let project = CotProject::builder()
-            .register_app(App1)
-            .register_app(App2)
-            .build()
-            .await
-            .unwrap();
+        struct TestProject;
+        impl Project for TestProject {
+            fn register_apps(&self, apps: &mut AppBuilder, context: &ProjectContext<WithConfig>) {
+                apps.register(App1);
+                apps.register(App2);
+            }
+        }
 
-        let (app_context, _handler) = project.into_context();
-        let middleware = StaticFilesMiddleware::from_app_context(&app_context);
-
+        let bootstrapper = Bootstrapper::new(TestProject)
+            .with_config(ProjectConfig::default())
+            .with_apps();
+        let middleware = StaticFilesMiddleware::from_app_context(bootstrapper.context());
         let static_files = middleware.static_files;
 
         let file = static_files.get_file("admin/admin.css").unwrap();

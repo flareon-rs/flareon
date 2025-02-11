@@ -19,9 +19,7 @@ pub(super) fn fn_to_cot_main(main_function_decl: ItemFn) -> syn::Result<TokenStr
     let result = quote! {
         fn main() {
             let body = async {
-                let project: #crate_name::CotProject = __cot_main().await.expect(
-                    "failed to build the Cot project"
-                );
+                let project = __cot_main();
                 #crate_name::run_cli(project).await.expect(
                     "failed to run the Cot project"
                 );
@@ -37,7 +35,7 @@ pub(super) fn fn_to_cot_main(main_function_decl: ItemFn) -> syn::Result<TokenStr
                     .block_on(body);
             }
         }
-
     };
+
     Ok(result)
 }

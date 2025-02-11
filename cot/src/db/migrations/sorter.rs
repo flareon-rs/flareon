@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 
-use cot::db::migrations::MigrationDependency;
 use thiserror::Error;
 
-use crate::db::migrations::{DynMigration, MigrationDependencyInner, OperationInner};
+use crate::db::migrations::{
+    DynMigration, MigrationDependency, MigrationDependencyInner, OperationInner,
+};
 use crate::utils::graph::{apply_permutation, Graph};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[non_exhaustive]
 pub enum MigrationSorterError {
     #[error("Cycle detected in migrations")]
-    CycleDetected(#[from] cot::utils::graph::CycleDetected),
+    CycleDetected(#[from] crate::utils::graph::CycleDetected),
     #[error("Dependency not found: {}", format_migration_dependency(.0))]
     InvalidDependency(MigrationDependency),
     #[error("Migration defined twice: {app_name}::{migration_name}")]
