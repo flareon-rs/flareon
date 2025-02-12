@@ -1757,6 +1757,7 @@ pub async fn run_at(
         std::panic::set_hook(Box::new(new_hook));
     }
     axum::serve(listener, handler.into_make_service())
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .map_err(|e| ErrorRepr::StartServer { source: e })?;
     if register_panic_hook {
@@ -1890,6 +1891,30 @@ async fn pass_to_axum(
 
 fn response_cot_to_axum(response: Response) -> axum::response::Response {
     response.map(axum::body::Body::new)
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 #[cfg(test)]
