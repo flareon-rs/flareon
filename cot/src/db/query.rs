@@ -2,7 +2,7 @@
 
 use std::marker::PhantomData;
 
-use derive_more::Debug;
+use derive_more::with_trait::Debug;
 use sea_query::{ExprTrait, IntoColumnRef};
 
 use crate::db;

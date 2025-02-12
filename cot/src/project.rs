@@ -28,7 +28,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::handler::HandlerWithoutStateExt;
 use bytes::Bytes;
-use derive_more::Debug;
+use derive_more::with_trait::Debug;
 use futures_util::FutureExt;
 use http::request::Parts;
 use tower::{Layer, Service};

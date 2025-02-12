@@ -16,7 +16,7 @@
 #![allow(missing_copy_implementations)]
 
 use derive_builder::Builder;
-use derive_more::{Debug, From};
+use derive_more::with_trait::{Debug, From};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 

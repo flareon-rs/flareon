@@ -1,7 +1,7 @@
 use std::future::Future;
 
 use async_trait::async_trait;
-use tower::util::BoxCloneService;
+use tower::util::BoxCloneSyncService;
 
 use crate::request::Request;
 use crate::response::Response;
@@ -76,4 +76,4 @@ where
 /// # Ok(())
 /// # }
 /// ```
-pub type BoxedHandler = BoxCloneService<Request, Response, Error>;
+pub type BoxedHandler = BoxCloneSyncService<Request, Response, Error>;

@@ -29,7 +29,7 @@ use std::task::{Context, Poll};
 
 use axum::http::StatusCode;
 use bytes::Bytes;
-use derive_more::Debug;
+use derive_more::with_trait::Debug;
 use tracing::debug;
 
 use crate::error::ErrorRepr;
