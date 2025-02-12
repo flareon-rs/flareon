@@ -23,7 +23,7 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       matrix:
-        rust: [stable, nightly]
+        rust: [stable, nightly, "1.84"] # 1.84 is the MSRV
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     name: Build & test
